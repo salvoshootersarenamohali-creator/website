@@ -9,9 +9,14 @@ import { ArrowRight, Clock, User } from "lucide-react"
 
 export function FeaturedCourses() {
     const featured = courses.slice(0, 3)
+    const courseColors = [
+        "from-emerald-500/30 via-primary/20 to-black",
+        "from-rose-500/30 via-primary/20 to-black",
+        "from-sky-500/30 via-primary/20 to-black",
+    ]
 
     return (
-        <section className="py-24 bg-black">
+        <section className="py-24 bg-[linear-gradient(180deg,#12070a_0%,#050806_45%,#08090d_100%)]">
             <div className="container mx-auto px-4">
                 <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
                     <div>
@@ -26,11 +31,15 @@ export function FeaturedCourses() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {featured.map((course) => (
-                        <Card key={course.id} className="bg-neutral-900 border-white/10 hover:border-primary/50 transition-all duration-300 group overflow-hidden flex flex-col">
+                    {featured.map((course, index) => (
+                        <Card key={course.id} className="bg-neutral-900/90 border-white/10 hover:border-primary/50 transition-all duration-300 group overflow-hidden flex flex-col shadow-xl shadow-black/25">
                             <div className="aspect-video bg-neutral-800 relative overflow-hidden">
-                                {/* Placeholder Image */}
-                                <div className="absolute inset-0 bg-neutral-800 group-hover:scale-105 transition-transform duration-500" />
+                                <div className={`absolute inset-0 bg-gradient-to-br ${courseColors[index]} group-hover:scale-105 transition-transform duration-500`} />
+                                <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.07)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:32px_32px] opacity-30" />
+                                <div className="absolute bottom-5 right-5 h-20 w-20 rounded-full border border-white/20">
+                                    <div className="absolute inset-5 rounded-full border border-primary/50" />
+                                    <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
+                                </div>
                                 <div className="absolute top-4 left-4">
                                     <Badge className="bg-black/50 backdrop-blur border-white/10 text-white hover:bg-black/70">{course.discipline}</Badge>
                                 </div>

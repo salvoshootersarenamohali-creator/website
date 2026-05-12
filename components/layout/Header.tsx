@@ -2,7 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Menu, X, Crosshair } from "lucide-react"
+import Image from "next/image"
+import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -14,6 +15,7 @@ const navigation = [
     { name: "Corporate", href: "/corporate" },
     { name: "Shop", href: "/shop" },
     { name: "Facilities", href: "/facilities" },
+    { name: "Gallery", href: "/gallery" },
 ]
 
 export function Header() {
@@ -30,25 +32,22 @@ export function Header() {
     return (
         <header
             className={cn(
-                "fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b border-transparent",
-                isScrolled ? "bg-black/90 backdrop-blur-md border-white/10 py-4" : "bg-transparent py-6"
+                "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+                isScrolled
+                    ? "bg-[#060806]/95 backdrop-blur-md py-3 shadow-lg shadow-emerald-950/20"
+                    : "bg-black/95 py-3"
             )}
         >
-            <div className="container mx-auto px-4 flex items-center justify-between">
-                <Link href="/" className="flex items-center gap-2 group">
-                    <div className="relative">
-                        <Crosshair className="h-8 w-8 text-primary transition-transform group-hover:rotate-90" />
-                        <div className="absolute inset-0 bg-primary/20 blur-lg rounded-full" />
-                    </div>
-
-                    <div className="flex flex-col">
-                        <span className="text-xl font-bold tracking-tighter text-white leading-none">
-                            SALVO
-                        </span>
-                        <span className="text-[10px] tracking-[0.2em] text-primary font-medium uppercase">
-                            Shooters Arena
-                        </span>
-                    </div>
+            <div className="container mx-auto px-4 flex min-h-20 items-center justify-between">
+                <Link href="/" className="flex items-center">
+                    <Image
+                        src="/salvo-logo.png"
+                        alt="Salvo Shooters Arena"
+                        width={320}
+                        height={128}
+                        priority
+                        className="h-14 w-auto md:h-16"
+                    />
                 </Link>
 
                 {/* Desktop Navigation */}

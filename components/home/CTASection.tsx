@@ -3,8 +3,10 @@ import Link from "next/link"
 
 export function CTASection() {
     return (
-        <section className="py-24 bg-primary text-black relative overflow-hidden">
+        <section className="py-24 bg-[linear-gradient(135deg,#d4af37,#f2d57a_38%,#1f8f76)] text-black relative overflow-hidden">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-multiply" />
+            <div className="absolute -left-24 top-0 h-64 w-64 rounded-full bg-white/20 blur-3xl" />
+            <div className="absolute -right-24 bottom-0 h-64 w-64 rounded-full bg-rose-600/25 blur-3xl" />
 
             <div className="container mx-auto px-4 relative z-10 text-center">
                 <h2 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">READY TO AIM HIGHER?</h2>

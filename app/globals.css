@@ -62,7 +62,10 @@
 }
 
 body {
-  background-color: hsl(var(--background));
+  background:
+    radial-gradient(circle at top left, rgba(24, 91, 78, 0.2), transparent 32rem),
+    radial-gradient(circle at top right, rgba(126, 41, 55, 0.18), transparent 34rem),
+    hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: var(--font-outfit), sans-serif;
 }

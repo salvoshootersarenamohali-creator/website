@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { testimonials } from "@/data/testimonials"
 import { motion, AnimatePresence } from "framer-motion"
-import { Quote, ArrowLeft, ArrowRight } from "lucide-react"
+import { ArrowLeft, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function Testimonials() {
@@ -18,7 +18,7 @@ export function Testimonials() {
     }
 
     return (
-        <section className="py-24 bg-neutral-900 overflow-hidden">
+        <section className="py-24 bg-[linear-gradient(135deg,#111827,#0f1115_42%,#1b0b12)] overflow-hidden">
             <div className="container mx-auto px-4">
                 <div className="text-center mb-16">
                     <h2 className="text-3xl md:text-5xl font-bold text-white mb-4">CHAMPIONS SPEAK</h2>
@@ -26,11 +26,7 @@ export function Testimonials() {
                 </div>
 
                 <div className="relative max-w-4xl mx-auto">
-                    <div className="absolute top-0 left-0 -translate-x-4 -translate-y-4 text-primary/10">
-                        <Quote className="w-32 h-32" />
-                    </div>
-
-                    <div className="relative z-10 min-h-[300px] flex items-center justify-center">
+                    <div className="relative z-10 min-h-[300px] flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-6 py-10 shadow-xl shadow-black/20">
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={currentIndex}
@@ -41,7 +37,7 @@ export function Testimonials() {
                                 className="text-center"
                             >
                                 <p className="text-xl md:text-3xl text-white font-medium leading-relaxed italic mb-8">
-                                    "{testimonials[currentIndex].quote}"
+                                    {testimonials[currentIndex].quote}
                                 </p>
                                 <div className="flex flex-col items-center gap-2">
                                     <div className="w-16 h-16 rounded-full bg-neutral-700 mb-2 border-2 border-primary" /> {/* Placeholder Avatar */}
