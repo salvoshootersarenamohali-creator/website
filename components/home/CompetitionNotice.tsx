@@ -55,22 +55,14 @@ export function CompetitionNotice() {
                         </button>
 
                         <div className="relative z-10 grid gap-7 p-6 md:grid-cols-[1fr_1.35fr] md:p-9 lg:p-10">
-                            <div className="relative min-h-[260px] overflow-hidden rounded-md border border-white/10 bg-neutral-950 md:min-h-[360px]">
+                            <div className="relative min-h-[360px] overflow-hidden rounded-md border border-white/10 bg-neutral-950 md:min-h-[520px]">
                                 <Image
-                                    src="/competition-range.JPG"
-                                    alt="Shooters training at a 10m indoor range"
+                                    src="/pop-up.jpeg"
+                                    alt="Salvo shooting competition announcement"
                                     fill
                                     sizes="(min-width: 768px) 40vw, 100vw"
-                                    className="object-cover"
+                                    className="object-contain"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                                <div className="absolute inset-0 bg-primary/10 mix-blend-color" />
-                                <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between gap-3">
-                                    <span className="rounded-full border border-white/15 bg-black/55 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white">
-                                        Live Range Energy
-                                    </span>
-                                    <span className="hidden h-px flex-1 bg-gradient-to-r from-primary/70 to-transparent sm:block" />
-                                </div>
                             </div>
 
                             <div className="flex flex-col justify-center pr-10 md:pr-12">
