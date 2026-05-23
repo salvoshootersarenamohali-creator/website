@@ -54,7 +54,7 @@ export function Hero() {
                     transition={{ duration: 0.8, delay: 0.4 }}
                     className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed"
                 >
-                    Master the art of precision at Mohali’s premier shooting arena.
+                    Master the art of precision at India’s premium shooting arena.
                     World-class coaching, state-of-the-art ranges, and a community of champions.
                 </motion.p>
 

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Bell, CalendarClock, Crosshair, Trophy, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -101,6 +102,13 @@ export function CompetitionNotice() {
                                         10m Air Pistol
                                     </span>
                                 </div>
+
+                                <Link
+                                    href="/register"
+                                    className="mt-7 inline-flex h-12 w-fit animate-pulse items-center justify-center rounded-md bg-[#D4AF37] px-7 text-sm font-semibold uppercase tracking-[0.12em] text-black shadow-[0_0_26px_rgba(212,175,55,0.42)] transition hover:bg-[#E5C558] hover:shadow-[0_0_36px_rgba(229,197,88,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                                >
+                                    Register Now
+                                </Link>
                             </div>
                         </div>
                     </div>

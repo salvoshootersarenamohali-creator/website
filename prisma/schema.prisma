@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Registration {
+  id             String              @id @default(cuid())
+  name           String
+  academy        String
+  gender         String
+  dateOfBirth    DateTime
+  phone          String
+  preferredDate  DateTime
+  preferredSlot  String
+  paymentMode    String
+  paymentStatus  String
+  amount         Int
+  utrNumber      String?
+  screenshotPath String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  entries        RegistrationEntry[]
+
+  @@index([preferredDate])
+  @@index([paymentStatus])
+}
+
+model RegistrationEntry {
+  id             String       @id @default(cuid())
+  registrationId String
+  eventId        String
+  eventTitle     String
+  discipline     String
+  ruleSet        String
+  categoryCode   String
+  categoryLabel  String
+  fee            Int
+  seriesScores   Json?
+  totalScore     Int?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([categoryCode])
+  @@index([ruleSet])
+}

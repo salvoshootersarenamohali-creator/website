@@ -69,3 +69,65 @@ body {
   color: hsl(var(--foreground));
   font-family: var(--font-outfit), sans-serif;
 }
+
+.field {
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.75rem 0.875rem;
+  color: #ffffff;
+  outline: none;
+}
+
+.field:focus {
+  border-color: #D4AF37;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2);
+}
+
+.field option {
+  background: #050505;
+  color: #ffffff;
+}
+
+.admin-button {
+  display: inline-flex;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.admin-button:hover {
+  border-color: rgba(212, 175, 55, 0.75);
+}
+
+.admin-button.gold {
+  border-color: #D4AF37;
+  background: #D4AF37;
+  color: #000000;
+}
+
+@media print {
+  body {
+    background: white !important;
+  }
+
+  header,
+  footer,
+  .print-card ~ *,
+  body > div:not(:has(.print-card)) {
+    display: none !important;
+  }
+
+  .print-card {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+}
