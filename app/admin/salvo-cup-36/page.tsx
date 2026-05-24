@@ -228,19 +228,17 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                 ))}
             </div>
 
-            <div className="print-card overflow-hidden rounded-lg bg-white text-black">
-                <div className="bg-neutral-950 px-8 py-5 text-white">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-3xl font-black text-[#D4AF37]">36th SALVO CUP</p>
-                            <p className="text-sm uppercase tracking-[0.2em] text-white/60">Competitor Card</p>
-                        </div>
-                        <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={170} height={68} className="h-12 w-auto" />
+            <div className="print-card salvo-competitor-card bg-white text-black">
+                <div className="salvo-print-header">
+                    <div className="salvo-print-logo-frame">
+                        <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={260} height={104} className="salvo-print-logo" />
                     </div>
+                    <h2>36th Salvo Cup Shooting Championship</h2>
+                    <h3>COMPETITOR CARD</h3>
                 </div>
-                <PrintableCard registration={registration} title="COMPETITOR CARD" />
-                <div className="mx-8 border-t-2 border-black" />
-                <PrintableCard registration={registration} title="FOR OFFICE USE ONLY" />
+                <PrintableCard registration={registration} variant="competitor" />
+                <div className="salvo-section-divider" />
+                <PrintableCard registration={registration} variant="office" />
             </div>
         </div>
     )
@@ -291,42 +289,50 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     )
 }
 
-function PrintableCard({ registration, title }: { registration: AdminRegistration; title: string }) {
+function PrintableCard({ registration, variant }: { registration: AdminRegistration; variant: "competitor" | "office" }) {
+    const eventRows = [
+        registration.entries[0] ? `${registration.entries[0].categoryCode} - ${registration.entries[0].categoryLabel}` : "",
+        registration.entries[1] ? `${registration.entries[1].categoryCode} - ${registration.entries[1].categoryLabel}` : "",
+        registration.entries[2] ? `${registration.entries[2].categoryCode} - ${registration.entries[2].categoryLabel}` : "",
+    ]
+
     return (
-        <div className="px-8 py-6 font-serif text-lg">
-            <div className="mb-5 grid grid-cols-[1fr_auto] items-end border-b-2 border-black pb-2">
-                <h3 className="text-center text-xl font-bold underline">{title}</h3>
-                <p><span className="font-bold">Date:</span> {dateOnly(registration.preferredDate)}</p>
+        <section className="salvo-print-section">
+            <Image src="/salvo-logo.png" alt="" width={430} height={172} className="salvo-print-watermark" aria-hidden="true" />
+            <div className="salvo-section-title-row">
+                {variant === "office" ? <h4>FOR OFFICE USE ONLY</h4> : <span />}
+                <p><span>Date:</span> {dateOnly(registration.preferredDate)}</p>
             </div>
-            <div className="space-y-4">
+            <div className="salvo-print-fields">
                 <CardLine label="1. Name" value={registration.name} />
                 <CardLine label="2. Club Name" value={registration.academy} />
                 <CardLine label="3. Contact" value={registration.phone} />
-                <div>
+                <div className="salvo-category-row">
                     <p>4. Category/Event:</p>
-                    <div className="mt-2 space-y-2 pl-10">
-                        {registration.entries.map((entry, index) => (
-                            <p key={entry.id} className="border-b border-dotted border-black pb-1">
-                                {String.fromCharCode(97 + index)}) {entry.categoryCode} - {entry.categoryLabel}
-                            </p>
+                    <div className="salvo-category-lines">
+                        {eventRows.map((value, index) => (
+                            <div key={index} className="salvo-category-line">
+                                <span>{String.fromCharCode(97 + index)})</span>
+                                <p>{value}</p>
+                            </div>
                         ))}
                     </div>
                 </div>
-                <CardLine label="5. Amount Paid" value={`${formatCurrency(registration.amount)} (${registration.paymentMode === "cash" ? "Cash - Pending" : "Online - Paid"})`} />
+                <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${registration.paymentMode === "cash" ? "Cash - Pending" : "Online - Paid"})`} compact />
             </div>
-            <div className="mt-10 flex justify-between">
+            <div className={`salvo-signatures ${variant === "office" ? "salvo-signatures-office" : ""}`}>
                 <p>Official Signature</p>
-                <p>Shooter Signature</p>
+                {variant === "competitor" && <p>Shooter Signature</p>}
             </div>
-        </div>
+        </section>
     )
 }
 
-function CardLine({ label, value }: { label: string; value: string }) {
+function CardLine({ label, value, compact }: { label: string; value: string; compact?: boolean }) {
     return (
-        <div className="grid grid-cols-[170px_1fr] gap-4">
+        <div className={`salvo-field-line ${compact ? "salvo-field-line-compact" : ""}`}>
             <p>{label}:</p>
-            <p className="border-b border-dotted border-black pb-1">{value}</p>
+            <span>{value}</span>
         </div>
     )
 }
