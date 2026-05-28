@@ -6,6 +6,7 @@ import { Download, Loader2, Lock, Medal, Printer, RefreshCw, Search, Trophy, Use
 import { formatCurrency, getSeriesCount } from "@/lib/competition"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
+type PaymentMode = "cash" | "upi"
 
 type AdminEntry = {
     id: string
@@ -28,7 +29,7 @@ type AdminRegistration = {
     phone: string
     preferredDate: string
     preferredSlot: string
-    paymentMode: string
+    paymentMode: PaymentMode
     paymentStatus: PaymentStatus
     paymentConfirmedBy: string | null
     paymentConfirmedAt: string | null
@@ -450,8 +451,12 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
 function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registrationId: string; adminPin: string; onChanged: () => void }) {
     const [coachName, setCoachName] = React.useState(coachNames[0])
     const [coachCode, setCoachCode] = React.useState("")
+    const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("cash")
+    const [utrNumber, setUtrNumber] = React.useState("")
     const [savingStatus, setSavingStatus] = React.useState<PaymentStatus | "">("")
     const [error, setError] = React.useState("")
+    const isOnline = paymentMode === "upi"
+    const canSubmit = Boolean(coachCode) && (!isOnline || /^\d{12}$/.test(utrNumber))
 
     const updatePayment = async (paymentStatus: Exclude<PaymentStatus, "Pending">) => {
         setSavingStatus(paymentStatus)
@@ -460,11 +465,12 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
             const response = await fetch(`/api/admin/registrations/${registrationId}/payment`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ coachName, coachCode, paymentStatus }),
+                body: JSON.stringify({ coachName, coachCode, paymentStatus, paymentMode, utrNumber }),
             })
             const data = await response.json()
             if (!response.ok) throw new Error(data.error ?? "Unable to update payment status.")
             setCoachCode("")
+            setUtrNumber("")
             onChanged()
         } catch (updateError) {
             setError(updateError instanceof Error ? updateError.message : "Unable to update payment status.")
@@ -477,13 +483,17 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
         <div className="mb-6 rounded-md border border-amber-400/20 bg-amber-400/[0.06] p-4">
             <div className="mb-3">
                 <p className="font-bold text-amber-100">Pending Payment Action</p>
-                <p className="mt-1 text-sm text-white/50">Select your coach name and enter your code to mark this payment.</p>
+                <p className="mt-1 text-sm text-white/50">Select the method, confirm your coach code, and mark this payment.</p>
             </div>
-            <div className="grid gap-3 md:grid-cols-[180px_1fr_auto_auto]">
+            <div className="grid gap-3 md:grid-cols-[160px_160px_1fr]">
                 <select value={coachName} onChange={(event) => setCoachName(event.target.value)} className="field">
                     {coachNames.map((name) => (
                         <option key={name} value={name}>{name}</option>
                     ))}
+                </select>
+                <select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="field">
+                    <option value="cash">Cash</option>
+                    <option value="upi">Online</option>
                 </select>
                 <input
                     value={coachCode}
@@ -492,20 +502,33 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
                     className="field"
                     placeholder="Coach code"
                 />
+                {isOnline && (
+                    <input
+                        value={utrNumber}
+                        onChange={(event) => setUtrNumber(event.target.value.replace(/\D/g, "").slice(0, 12))}
+                        className="field md:col-span-3"
+                        inputMode="numeric"
+                        placeholder="12-digit UTR number"
+                    />
+                )}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3">
                 <button
                     onClick={() => updatePayment("Paid")}
-                    disabled={Boolean(savingStatus) || !coachCode}
+                    disabled={Boolean(savingStatus) || !canSubmit}
                     className="h-11 rounded-md bg-emerald-500 px-4 font-bold text-black disabled:opacity-60"
                 >
                     {savingStatus === "Paid" ? "Saving..." : "Mark Paid"}
                 </button>
-                <button
-                    onClick={() => updatePayment("Sponsored")}
-                    disabled={Boolean(savingStatus) || !coachCode}
-                    className="h-11 rounded-md bg-sky-400 px-4 font-bold text-black disabled:opacity-60"
-                >
-                    {savingStatus === "Sponsored" ? "Saving..." : "Mark Sponsored"}
-                </button>
+                {!isOnline && (
+                    <button
+                        onClick={() => updatePayment("Sponsored")}
+                        disabled={Boolean(savingStatus) || !canSubmit}
+                        className="h-11 rounded-md bg-sky-400 px-4 font-bold text-black disabled:opacity-60"
+                    >
+                        {savingStatus === "Sponsored" ? "Saving..." : "Mark Sponsored"}
+                    </button>
+                )}
             </div>
             {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         </div>

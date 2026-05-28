@@ -7,6 +7,7 @@ type RouteContext = {
 }
 
 const allowedStatuses = new Set(["Paid", "Sponsored"])
+const allowedPaymentModes = new Set(["cash", "upi"])
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!isAdminRequest(request)) return adminUnauthorized()
@@ -15,10 +16,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const body = await request.json()
     const coachName = String(body.coachName ?? "").trim().toLowerCase()
     const coachCode = String(body.coachCode ?? "").trim()
-    const paymentStatus = String(body.paymentStatus ?? "").trim()
+    const requestedPaymentStatus = String(body.paymentStatus ?? "").trim()
+    const paymentMode = String(body.paymentMode ?? "").trim()
+    const utrNumber = String(body.utrNumber ?? "").trim()
 
-    if (!allowedStatuses.has(paymentStatus)) {
+    if (!allowedPaymentModes.has(paymentMode)) {
+        return Response.json({ error: "Payment method must be cash or online." }, { status: 400 })
+    }
+
+    if (!allowedStatuses.has(requestedPaymentStatus)) {
         return Response.json({ error: "Payment status must be Paid or Sponsored." }, { status: 400 })
+    }
+
+    if (paymentMode === "upi" && !/^\d{12}$/.test(utrNumber)) {
+        return Response.json({ error: "Online payments require a 12-digit UTR number." }, { status: 400 })
     }
 
     if (!isCoachName(coachName) || !isValidCoachCode(coachName, coachCode)) {
@@ -34,7 +45,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updated = await prisma.registration.update({
         where: { id },
         data: {
-            paymentStatus,
+            paymentMode,
+            paymentStatus: paymentMode === "upi" ? "Paid" : requestedPaymentStatus,
+            utrNumber: paymentMode === "upi" ? utrNumber : null,
             paymentConfirmedBy: coachName,
             paymentConfirmedAt: new Date(),
         },
