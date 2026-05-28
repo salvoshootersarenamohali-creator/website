@@ -19,6 +19,8 @@ model Registration {
   preferredSlot  String
   paymentMode    String
   paymentStatus  String
+  paymentConfirmedBy String?
+  paymentConfirmedAt DateTime?
   amount         Int
   utrNumber      String?
   screenshotPath String?

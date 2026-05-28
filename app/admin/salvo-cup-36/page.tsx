@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { Download, Loader2, Lock, Printer, RefreshCw, Search, Trophy } from "lucide-react"
+import { Download, Loader2, Lock, Medal, Printer, RefreshCw, Search, Trophy, Users } from "lucide-react"
 import { formatCurrency, getSeriesCount } from "@/lib/competition"
+
+type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 
 type AdminEntry = {
     id: string
@@ -27,7 +29,9 @@ type AdminRegistration = {
     preferredDate: string
     preferredSlot: string
     paymentMode: string
-    paymentStatus: string
+    paymentStatus: PaymentStatus
+    paymentConfirmedBy: string | null
+    paymentConfirmedAt: string | null
     amount: number
     utrNumber: string | null
     screenshotPath: string | null
@@ -35,8 +39,32 @@ type AdminRegistration = {
     entries: AdminEntry[]
 }
 
+type AdminView = "registrations" | "results"
+
+type ResultRow = {
+    registration: AdminRegistration
+    entry: AdminEntry
+}
+
+const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
+
 function dateOnly(value: string) {
     return value.slice(0, 10)
+}
+
+function categorySortValue(code: string) {
+    const match = code.match(/^([A-Za-z]+)-(\d+)$/)
+    return match ? `${match[1]}-${match[2].padStart(4, "0")}` : code
+}
+
+function paymentBadgeClass(status: PaymentStatus) {
+    if (status === "Paid") return "bg-emerald-500/15 text-emerald-200"
+    if (status === "Sponsored") return "bg-sky-500/15 text-sky-200"
+    return "bg-amber-500/15 text-amber-200"
+}
+
+function formatPaymentAmount(registration: AdminRegistration) {
+    return `${formatCurrency(registration.amount)} (${registration.paymentStatus})`
 }
 
 export default function SalvoCupAdminPage() {
@@ -46,10 +74,24 @@ export default function SalvoCupAdminPage() {
     const [selectedId, setSelectedId] = React.useState("")
     const [query, setQuery] = React.useState("")
     const [filter, setFilter] = React.useState("all")
+    const [view, setView] = React.useState<AdminView>("registrations")
+    const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState("")
 
     const selected = registrations.find((registration) => registration.id === selectedId) ?? registrations[0]
+
+    const categoryOptions = React.useMemo(() => {
+        const categories = new Map<string, string>()
+        registrations.forEach((registration) => {
+            registration.entries.forEach((entry) => {
+                categories.set(entry.categoryCode, entry.categoryLabel)
+            })
+        })
+
+        return Array.from(categories, ([code, label]) => ({ code, label }))
+            .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
+    }, [registrations])
 
     const filtered = registrations.filter((registration) => {
         const haystack = `${registration.name} ${registration.academy} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
@@ -57,6 +99,15 @@ export default function SalvoCupAdminPage() {
         const matchesFilter = filter === "all" || registration.paymentStatus === filter || registration.entries.some((entry) => entry.ruleSet === filter || entry.discipline === filter)
         return matchesQuery && matchesFilter
     })
+
+    React.useEffect(() => {
+        setSelectedCategories((current) => {
+            const availableCodes = categoryOptions.map((category) => category.code)
+            const validCurrent = current.filter((code) => availableCodes.includes(code))
+            if (validCurrent.length) return validCurrent
+            return availableCodes
+        })
+    }, [categoryOptions])
 
     const loadRegistrations = React.useCallback(async (adminPin = activePin) => {
         if (!adminPin) return
@@ -133,6 +184,32 @@ export default function SalvoCupAdminPage() {
                         <button className="mt-5 h-11 w-full rounded-md bg-[#D4AF37] font-bold text-black">Open Admin</button>
                     </form>
                 ) : (
+                    <div>
+                        <div className="mb-5 flex flex-wrap gap-2">
+                            <button
+                                onClick={() => setView("registrations")}
+                                className={`admin-button ${view === "registrations" ? "gold" : ""}`}
+                            >
+                                <Users className="h-4 w-4" />
+                                Registrations
+                            </button>
+                            <button
+                                onClick={() => setView("results")}
+                                className={`admin-button ${view === "results" ? "gold" : ""}`}
+                            >
+                                <Medal className="h-4 w-4" />
+                                Results
+                            </button>
+                        </div>
+
+                        {view === "results" ? (
+                            <ResultsView
+                                registrations={registrations}
+                                categoryOptions={categoryOptions}
+                                selectedCategories={selectedCategories}
+                                onSelectedCategoriesChange={setSelectedCategories}
+                            />
+                        ) : (
                     <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
                         <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
                             <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px]">
@@ -143,6 +220,7 @@ export default function SalvoCupAdminPage() {
                                 <select value={filter} onChange={(event) => setFilter(event.target.value)} className="field">
                                     <option value="all">All</option>
                                     <option value="Paid">Paid</option>
+                                    <option value="Sponsored">Sponsored</option>
                                     <option value="Pending">Pending</option>
                                     <option value="ISSF">ISSF</option>
                                     <option value="NR">NR</option>
@@ -168,7 +246,7 @@ export default function SalvoCupAdminPage() {
                                                     <p className="font-bold">{registration.name}</p>
                                                     <p className="text-sm text-white/55">{registration.academy}</p>
                                                 </div>
-                                                <span className={`rounded-full px-2 py-1 text-xs font-bold ${registration.paymentStatus === "Paid" ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
+                                                <span className={`rounded-full px-2 py-1 text-xs font-bold ${paymentBadgeClass(registration.paymentStatus)}`}>
                                                     {registration.paymentStatus}
                                                 </span>
                                             </div>
@@ -188,9 +266,126 @@ export default function SalvoCupAdminPage() {
                             )}
                         </section>
                     </div>
+                        )}
+                    </div>
                 )}
             </div>
         </div>
+    )
+}
+
+function ResultsView({
+    registrations,
+    categoryOptions,
+    selectedCategories,
+    onSelectedCategoriesChange,
+}: {
+    registrations: AdminRegistration[]
+    categoryOptions: { code: string; label: string }[]
+    selectedCategories: string[]
+    onSelectedCategoriesChange: (categories: string[]) => void
+}) {
+    const selectedSet = React.useMemo(() => new Set(selectedCategories), [selectedCategories])
+    const groupedResults = React.useMemo(() => {
+        const groups = new Map<string, { label: string; rows: ResultRow[] }>()
+
+        registrations.forEach((registration) => {
+            registration.entries.forEach((entry) => {
+                if (!selectedSet.has(entry.categoryCode)) return
+                const group = groups.get(entry.categoryCode) ?? { label: entry.categoryLabel, rows: [] }
+                group.rows.push({ registration, entry })
+                groups.set(entry.categoryCode, group)
+            })
+        })
+
+        return Array.from(groups, ([code, group]) => ({
+            code,
+            label: group.label,
+            rows: group.rows.sort((a, b) => {
+                const aScored = a.entry.totalScore !== null
+                const bScored = b.entry.totalScore !== null
+                if (aScored !== bScored) return aScored ? -1 : 1
+                if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
+                return a.registration.name.localeCompare(b.registration.name)
+            }),
+        })).sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
+    }, [registrations, selectedSet])
+
+    const toggleCategory = (code: string) => {
+        onSelectedCategoriesChange(
+            selectedSet.has(code)
+                ? selectedCategories.filter((category) => category !== code)
+                : [...selectedCategories, code]
+        )
+    }
+
+    return (
+        <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h2 className="text-2xl font-black">Category Results</h2>
+                    <p className="mt-1 text-sm text-white/50">Categories are shown in ascending order. Scores rank highest to lowest.</p>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={() => onSelectedCategoriesChange(categoryOptions.map((category) => category.code))} className="admin-button">
+                        Select All
+                    </button>
+                    <button onClick={() => onSelectedCategoriesChange([])} className="admin-button">
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            <div className="mb-6 flex max-h-44 flex-wrap gap-2 overflow-auto rounded-md border border-white/10 bg-black/25 p-3">
+                {categoryOptions.map((category) => (
+                    <button
+                        key={category.code}
+                        onClick={() => toggleCategory(category.code)}
+                        className={`rounded-md border px-3 py-2 text-left text-sm transition ${selectedSet.has(category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/30"}`}
+                    >
+                        <span className="block font-bold">{category.code}</span>
+                        <span className="block max-w-52 truncate text-xs">{category.label}</span>
+                    </button>
+                ))}
+            </div>
+
+            <div className="space-y-5">
+                {groupedResults.length ? groupedResults.map((category) => (
+                    <div key={category.code} className="rounded-md border border-white/10 bg-white/[0.03]">
+                        <div className="border-b border-white/10 p-4">
+                            <h3 className="font-black text-[#D4AF37]">{category.code} - {category.label}</h3>
+                            <p className="mt-1 text-xs text-white/45">{category.rows.length} entries</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[720px] text-left text-sm">
+                                <thead className="text-xs uppercase tracking-[0.16em] text-white/40">
+                                    <tr className="border-b border-white/10">
+                                        <th className="px-4 py-3">Rank</th>
+                                        <th className="px-4 py-3">Shooter</th>
+                                        <th className="px-4 py-3">Academy</th>
+                                        <th className="px-4 py-3">Event</th>
+                                        <th className="px-4 py-3 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {category.rows.map((row, index) => (
+                                        <tr key={row.entry.id} className="border-b border-white/5 last:border-0">
+                                            <td className="px-4 py-3 font-bold">{row.entry.totalScore === null ? "-" : index + 1}</td>
+                                            <td className="px-4 py-3">{row.registration.name}</td>
+                                            <td className="px-4 py-3 text-white/65">{row.registration.academy}</td>
+                                            <td className="px-4 py-3 text-white/65">{row.entry.eventTitle}</td>
+                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.entry.totalScore ?? "-"}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )) : (
+                    <p className="rounded-md border border-white/10 bg-white/[0.03] p-6 text-white/50">Select at least one category to view results.</p>
+                )}
+            </div>
+        </section>
     )
 }
 
@@ -213,13 +408,21 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                 <Stat label="Amount" value={formatCurrency(registration.amount)} />
                 <Stat label="Payment" value={`${registration.paymentMode} / ${registration.paymentStatus}`} />
                 <Stat label="UTR" value={registration.utrNumber ?? "-"} />
-                <Stat label="Entries" value={String(registration.entries.length)} />
+                <Stat label="Confirmed By" value={registration.paymentConfirmedBy ?? "-"} />
             </div>
+
+            {registration.paymentConfirmedAt && (
+                <p className="mb-6 text-sm text-white/45">Payment confirmed on {dateOnly(registration.paymentConfirmedAt)}.</p>
+            )}
 
             {registration.screenshotPath && (
                 <a href={registration.screenshotPath} target="_blank" rel="noreferrer" className="mb-6 inline-block text-sm font-bold text-[#D4AF37] underline">
                     View payment screenshot
                 </a>
+            )}
+
+            {registration.paymentStatus === "Pending" && (
+                <PaymentConfirmation registrationId={registration.id} adminPin={adminPin} onChanged={onChanged} />
             )}
 
             <div className="mb-8 space-y-4">
@@ -244,11 +447,81 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
     )
 }
 
+function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registrationId: string; adminPin: string; onChanged: () => void }) {
+    const [coachName, setCoachName] = React.useState(coachNames[0])
+    const [coachCode, setCoachCode] = React.useState("")
+    const [savingStatus, setSavingStatus] = React.useState<PaymentStatus | "">("")
+    const [error, setError] = React.useState("")
+
+    const updatePayment = async (paymentStatus: Exclude<PaymentStatus, "Pending">) => {
+        setSavingStatus(paymentStatus)
+        setError("")
+        try {
+            const response = await fetch(`/api/admin/registrations/${registrationId}/payment`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                body: JSON.stringify({ coachName, coachCode, paymentStatus }),
+            })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.error ?? "Unable to update payment status.")
+            setCoachCode("")
+            onChanged()
+        } catch (updateError) {
+            setError(updateError instanceof Error ? updateError.message : "Unable to update payment status.")
+        } finally {
+            setSavingStatus("")
+        }
+    }
+
+    return (
+        <div className="mb-6 rounded-md border border-amber-400/20 bg-amber-400/[0.06] p-4">
+            <div className="mb-3">
+                <p className="font-bold text-amber-100">Pending Payment Action</p>
+                <p className="mt-1 text-sm text-white/50">Select your coach name and enter your code to mark this payment.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[180px_1fr_auto_auto]">
+                <select value={coachName} onChange={(event) => setCoachName(event.target.value)} className="field">
+                    {coachNames.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                    ))}
+                </select>
+                <input
+                    value={coachCode}
+                    onChange={(event) => setCoachCode(event.target.value)}
+                    type="password"
+                    className="field"
+                    placeholder="Coach code"
+                />
+                <button
+                    onClick={() => updatePayment("Paid")}
+                    disabled={Boolean(savingStatus) || !coachCode}
+                    className="h-11 rounded-md bg-emerald-500 px-4 font-bold text-black disabled:opacity-60"
+                >
+                    {savingStatus === "Paid" ? "Saving..." : "Mark Paid"}
+                </button>
+                <button
+                    onClick={() => updatePayment("Sponsored")}
+                    disabled={Boolean(savingStatus) || !coachCode}
+                    className="h-11 rounded-md bg-sky-400 px-4 font-bold text-black disabled:opacity-60"
+                >
+                    {savingStatus === "Sponsored" ? "Saving..." : "Mark Sponsored"}
+                </button>
+            </div>
+            {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+        </div>
+    )
+}
+
 function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin: string; onChanged: () => void }) {
     const count = getSeriesCount(entry.ruleSet === "ISSF" ? "ISSF" : "NR")
-    const existing = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-    const [scores, setScores] = React.useState<string[]>(Array.from({ length: count }, (_, index) => String(existing[index] ?? "")))
+    const initialScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
+    const [scores, setScores] = React.useState<string[]>(Array.from({ length: count }, (_, index) => String(initialScores[index] ?? "")))
     const [saving, setSaving] = React.useState(false)
+
+    React.useEffect(() => {
+        const currentScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
+        setScores(Array.from({ length: count }, (_, index) => String(currentScores[index] ?? "")))
+    }, [count, entry.id, entry.seriesScores])
 
     const save = async () => {
         setSaving(true)
@@ -318,7 +591,7 @@ function PrintableCard({ registration, variant }: { registration: AdminRegistrat
                         ))}
                     </div>
                 </div>
-                <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${registration.paymentMode === "cash" ? "Cash - Pending" : "Online - Paid"})`} compact />
+                <CardLine label="6. Amount Paid" value={formatPaymentAmount(registration)} compact />
             </div>
             <div className={`salvo-signatures ${variant === "office" ? "salvo-signatures-office" : ""}`}>
                 <p>Official Signature</p>

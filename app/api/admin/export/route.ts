@@ -8,6 +8,14 @@ function formatDate(value: Date) {
     return value.toISOString().slice(0, 10)
 }
 
+function formatOptionalDate(value: Date | null) {
+    return value ? formatDate(value) : ""
+}
+
+function formatPaymentAmount(registration: { amount: number; paymentStatus: string }) {
+    return `${formatCurrency(registration.amount)} (${registration.paymentStatus})`
+}
+
 export async function GET(request: NextRequest) {
     if (!isAdminRequest(request)) return adminUnauthorized()
 
@@ -32,6 +40,9 @@ export async function GET(request: NextRequest) {
                 "Series 5": scores[4] ?? "",
                 "Series 6": scores[5] ?? "",
                 Total: entry.totalScore ?? "",
+                "Payment Status": registration.paymentStatus,
+                "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
+                "Payment Confirmed At": formatOptionalDate(registration.paymentConfirmedAt),
             }
         })
     )
@@ -47,12 +58,14 @@ export async function GET(request: NextRequest) {
         Slot: registration.preferredSlot,
         "Payment Mode": registration.paymentMode,
         "Payment Status": registration.paymentStatus,
+        "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
+        "Payment Confirmed At": formatOptionalDate(registration.paymentConfirmedAt),
         UTR: registration.utrNumber ?? "",
         "Category/Event a": registration.entries[0] ? `${registration.entries[0].categoryCode} - ${registration.entries[0].categoryLabel}` : "",
         "Category/Event b": registration.entries[1] ? `${registration.entries[1].categoryCode} - ${registration.entries[1].categoryLabel}` : "",
         "Category/Event c": registration.entries[2] ? `${registration.entries[2].categoryCode} - ${registration.entries[2].categoryLabel}` : "",
         "Other Entries": registration.entries.slice(3).map((entry) => `${entry.categoryCode} - ${entry.categoryLabel}`).join("; "),
-        "Amount Paid": `${formatCurrency(registration.amount)} (${registration.paymentMode === "cash" ? "Cash Pending" : "Online Paid"})`,
+        "Amount Paid": formatPaymentAmount(registration),
     }))
 
     const workbook = XLSX.utils.book_new()
