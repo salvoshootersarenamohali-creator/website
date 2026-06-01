@@ -8,8 +8,25 @@ type IncomingEntry = {
     categoryCode: string
 }
 
+type ErrorWithMessage = {
+    message: string
+}
+
 function cleanPhone(phone: string) {
     return phone.replace(/[^\d+]/g, "")
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error) return error.message
+    if (
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof (error as ErrorWithMessage).message === "string"
+    ) {
+        return (error as ErrorWithMessage).message
+    }
+    return fallback
 }
 
 function isValidDate(value: string) {
@@ -150,7 +167,7 @@ export async function POST(request: NextRequest) {
 
         return Response.json({ registration })
     } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to save registration."
+        const message = getErrorMessage(error, "Unable to save registration.")
         return Response.json({ error: message }, { status: 500 })
     }
 }
