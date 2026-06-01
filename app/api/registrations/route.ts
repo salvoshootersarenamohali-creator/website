@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises"
-import path from "node:path"
+import { v2 as cloudinary, type UploadApiResponse } from "cloudinary"
 import { NextRequest } from "next/server"
 import { ENTRY_FEE, getAgeFromDobYear, getEligibleCategories, getEventById } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
@@ -23,14 +22,38 @@ async function saveScreenshot(file: File) {
     if (!allowedTypes.has(file.type)) {
         throw new Error("Payment screenshot must be a PNG, JPG, or WEBP image.")
     }
+    if (file.size > 5 * 1024 * 1024) {
+        throw new Error("Payment screenshot must be smaller than 5MB.")
+    }
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        throw new Error("Cloudinary is not configured for payment screenshot uploads.")
+    }
 
-    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg"
-    const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`
-    const relativePath = `/uploads/payments/${fileName}`
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "payments")
-    await mkdir(uploadDir, { recursive: true })
-    await writeFile(path.join(uploadDir, fileName), Buffer.from(await file.arrayBuffer()))
-    return relativePath
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true,
+    })
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: "salvo/payment-screenshots",
+                resource_type: "image",
+                public_id: `${Date.now()}-${crypto.randomUUID()}`,
+                overwrite: false,
+            },
+            (error, result) => {
+                if (error || !result) reject(error ?? new Error("Unable to upload payment screenshot."))
+                else resolve(result)
+            }
+        )
+        stream.end(buffer)
+    })
+
+    return uploadResult.secure_url
 }
 
 export async function POST(request: NextRequest) {
