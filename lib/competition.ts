@@ -84,7 +84,7 @@ export const slotOptions = [
 export function getAgeFromDobYear(dob: string) {
     const year = Number(dob.slice(0, 4))
     if (!year || Number.isNaN(year)) return null
-    return COMPETITION_YEAR - year
+    return COMPETITION_YEAR - year - 1
 }
 
 export function getBaseBracket(age: number): AgeBracket | null {
