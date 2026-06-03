@@ -62,3 +62,40 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         return Response.json({ error: "Unable to save score. Check the database connection and migrations." }, { status: 500 })
     }
 }
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+    if (!isAdminRequest(request)) return adminUnauthorized()
+
+    try {
+        const { id } = await context.params
+        const entry = await prisma.registrationEntry.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                fee: true,
+                registrationId: true,
+                registration: {
+                    select: {
+                        amount: true,
+                    },
+                },
+            },
+        })
+
+        if (!entry) return Response.json({ error: "Entry not found." }, { status: 404 })
+
+        const nextAmount = Math.max(0, entry.registration.amount - entry.fee)
+        await prisma.$transaction([
+            prisma.registrationEntry.delete({ where: { id } }),
+            prisma.registration.update({
+                where: { id: entry.registrationId },
+                data: { amount: nextAmount },
+            }),
+        ])
+
+        return Response.json({ deletedEntryId: id, amount: nextAmount })
+    } catch (error) {
+        console.error("Unable to delete entry", error)
+        return Response.json({ error: "Unable to delete entry. Check the database connection and try again." }, { status: 500 })
+    }
+}

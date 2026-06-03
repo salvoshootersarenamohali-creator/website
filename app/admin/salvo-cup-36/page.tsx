@@ -835,6 +835,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     const initialShots = Array.isArray(entry.shotScores) ? entry.shotScores : []
     const [shots, setShots] = React.useState<string[]>(Array.from({ length: shotCount }, (_, index) => String(initialShots[index] ?? "")))
     const [saving, setSaving] = React.useState(false)
+    const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
     const parsedShots = shots.map((shot) => Number(shot))
     const validShots = parsedShots.filter((score, index) => isValidShotText(shots[index]) && Number.isFinite(score))
@@ -886,6 +887,27 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
         }
     }
 
+    const deleteEntry = async () => {
+        const confirmed = window.confirm(`Delete this entry?\n\n${entry.categoryCode} - ${entry.categoryLabel}`)
+        if (!confirmed) return
+
+        setDeleting(true)
+        setError("")
+        try {
+            const response = await fetch(`/api/admin/entries/${entry.id}/score`, {
+                method: "DELETE",
+                headers: { "x-admin-pin": adminPin },
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete entry.")
+            onChanged()
+        } catch (deleteError) {
+            setError(deleteError instanceof Error ? deleteError.message : "Unable to delete entry.")
+        } finally {
+            setDeleting(false)
+        }
+    }
+
     return (
         <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -893,10 +915,20 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                     <p className="font-bold">{entry.categoryCode} - {entry.categoryLabel}</p>
                     <p className="text-sm text-white/45">{entry.ruleSet} | {shotCount} shots | 10x is 10.4+</p>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-right">
-                    <MiniCount label="Total" value={complete ? liveTotal.toFixed(1) : formatScore(entry.totalScore)} />
-                    <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />
-                    <MiniCount label="Filled" value={`${validShots.length}/${shotCount}`} />
+                <div className="flex flex-wrap items-start justify-end gap-2">
+                    <div className="grid grid-cols-3 gap-2 text-right">
+                        <MiniCount label="Total" value={complete ? liveTotal.toFixed(1) : formatScore(entry.totalScore)} />
+                        <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />
+                        <MiniCount label="Filled" value={`${validShots.length}/${shotCount}`} />
+                    </div>
+                    <button
+                        onClick={deleteEntry}
+                        disabled={saving || deleting}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:border-red-300 disabled:opacity-60"
+                    >
+                        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Delete
+                    </button>
                 </div>
             </div>
 
@@ -929,7 +961,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button onClick={save} disabled={saving} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
+                <button onClick={save} disabled={saving || deleting} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
                     {saving ? "Saving..." : "Save Score"}
                 </button>
                 {error ? (
