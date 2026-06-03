@@ -43,7 +43,9 @@ model RegistrationEntry {
   categoryLabel  String
   fee            Int
   seriesScores   Json?
-  totalScore     Int?
+  shotScores     Json?
+  innerTenCount  Int          @default(0)
+  totalScore     Float?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)

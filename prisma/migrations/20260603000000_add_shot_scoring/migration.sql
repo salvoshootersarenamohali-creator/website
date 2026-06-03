@@ -1,0 +1,7 @@
+ALTER TABLE "RegistrationEntry"
+ADD COLUMN "shotScores" JSONB,
+ADD COLUMN "innerTenCount" INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE "RegistrationEntry"
+ALTER COLUMN "totalScore" TYPE DOUBLE PRECISION
+USING "totalScore"::DOUBLE PRECISION;

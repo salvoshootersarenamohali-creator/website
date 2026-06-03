@@ -2,14 +2,15 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { Download, Loader2, Lock, Medal, Printer, RefreshCw, Search, Trophy, Users } from "lucide-react"
-import { formatCurrency, getSeriesCount } from "@/lib/competition"
+import { BarChart3, Download, Loader2, Lock, Medal, Printer, RefreshCw, Search, Trash2, Trophy, Users } from "lucide-react"
+import { formatCurrency, getSeriesCount, getShotCount, SHOTS_PER_SERIES } from "@/lib/competition"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 type PaymentMode = "cash" | "upi"
 
 type AdminEntry = {
     id: string
+    eventId: string
     eventTitle: string
     discipline: string
     ruleSet: string
@@ -17,6 +18,8 @@ type AdminEntry = {
     categoryLabel: string
     fee: number
     seriesScores: number[] | null
+    shotScores: number[] | null
+    innerTenCount: number
     totalScore: number | null
 }
 
@@ -40,14 +43,21 @@ type AdminRegistration = {
     entries: AdminEntry[]
 }
 
-type AdminView = "registrations" | "results"
+type AdminView = "stats" | "registrations" | "results"
 
 type ResultRow = {
     registration: AdminRegistration
     entry: AdminEntry
+    rank: number | null
+}
+
+type DuplicateGroup = {
+    registration: AdminRegistration
+    entries: AdminEntry[]
 }
 
 const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
+const canUseDemoData = process.env.NODE_ENV !== "production"
 
 function dateOnly(value: string) {
     return value.slice(0, 10)
@@ -68,6 +78,134 @@ function formatPaymentAmount(registration: AdminRegistration) {
     return `${formatCurrency(registration.amount)} (${registration.paymentStatus})`
 }
 
+async function readResponseJson(response: Response) {
+    const text = await response.text()
+    if (!text) return {}
+
+    try {
+        return JSON.parse(text) as Record<string, unknown>
+    } catch {
+        return { error: text }
+    }
+}
+
+function formatScore(score: number | null | undefined) {
+    return typeof score === "number" ? score.toFixed(1) : "-"
+}
+
+function getRuleSet(entry: AdminEntry) {
+    return entry.ruleSet === "ISSF" ? "ISSF" : "NR"
+}
+
+function isEntryScored(entry: AdminEntry) {
+    return Array.isArray(entry.shotScores) && entry.shotScores.length === getShotCount(getRuleSet(entry))
+}
+
+function isValidShotText(value: string) {
+    const text = value.trim()
+    const score = Number(text)
+    return Boolean(text) && /^\d{1,2}(\.\d)?$/.test(text) && Number.isFinite(score) && score >= 0 && score <= 10.9
+}
+
+function academyLabel(value: string) {
+    return value.trim() || "Unassigned Range"
+}
+
+function getDuplicateGroups(registrations: AdminRegistration[]) {
+    const groups: DuplicateGroup[] = []
+
+    registrations.forEach((registration) => {
+        const entryGroups = new Map<string, AdminEntry[]>()
+        registration.entries.forEach((entry) => {
+            const key = `${entry.eventId}:${entry.categoryCode}`
+            entryGroups.set(key, [...(entryGroups.get(key) ?? []), entry])
+        })
+
+        entryGroups.forEach((entries) => {
+            if (entries.length > 1) groups.push({ registration, entries })
+        })
+    })
+
+    return groups
+}
+
+function makeDemoShots(count: number, seed: number) {
+    return Array.from({ length: count }, (_, index) => {
+        const pattern = (index * 7 + seed * 3) % 11
+        return Number((9.1 + pattern * 0.16).toFixed(1))
+    })
+}
+
+function buildDemoEntry(index: number, entry: Pick<AdminEntry, "eventId" | "eventTitle" | "discipline" | "ruleSet" | "categoryCode" | "categoryLabel" | "fee">): AdminEntry {
+    const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
+    const shots = makeDemoShots(getShotCount(ruleSet), index)
+    const seriesScores = Array.from({ length: getSeriesCount(ruleSet) }, (_, seriesIndex) => {
+        const seriesShots = shots.slice(seriesIndex * SHOTS_PER_SERIES, (seriesIndex + 1) * SHOTS_PER_SERIES)
+        return Number(seriesShots.reduce((sum, score) => sum + score, 0).toFixed(1))
+    })
+
+    return {
+        ...entry,
+        id: `demo-entry-${index}-${entry.categoryCode}`,
+        shotScores: shots,
+        seriesScores,
+        innerTenCount: shots.filter((score) => score >= 10.4).length,
+        totalScore: Number(shots.reduce((sum, score) => sum + score, 0).toFixed(1)),
+    }
+}
+
+function buildDemoRegistrations(): AdminRegistration[] {
+    const academies = ["Salvo Shooters Arena", "Delhi Rifle Club", "North Range Academy", "Target Point Club", "Precision Shooters"]
+    const students = [
+        ["Aarav Mehta", "male", "2008-04-18", "Paid"],
+        ["Siya Kapoor", "female", "2010-08-22", "Pending"],
+        ["Kabir Singh", "male", "2005-01-14", "Paid"],
+        ["Ananya Rao", "female", "2012-11-07", "Sponsored"],
+        ["Vivaan Sharma", "male", "1998-06-02", "Paid"],
+        ["Ira Malhotra", "female", "2007-09-19", "Paid"],
+        ["Reyansh Gupta", "male", "2014-03-11", "Pending"],
+        ["Myra Bansal", "female", "2009-12-30", "Paid"],
+        ["Arjun Nair", "male", "1984-02-05", "Sponsored"],
+        ["Tara Sethi", "female", "2006-07-16", "Paid"],
+        ["Dev Khanna", "male", "2011-05-09", "Pending"],
+        ["Nisha Verma", "female", "1995-10-24", "Paid"],
+    ] as const
+    const entryTemplates = [
+        { eventId: "issf-air-rifle", eventTitle: "ISSF Air Rifle", discipline: "rifle", ruleSet: "ISSF", categoryCode: "R-05", categoryLabel: "ISSF Air Rifle Youth Men", fee: 1000 },
+        { eventId: "nr-air-rifle", eventTitle: "NR Air Rifle", discipline: "rifle", ruleSet: "NR", categoryCode: "R-15", categoryLabel: "NR Air Rifle Youth Men", fee: 1000 },
+        { eventId: "issf-air-pistol", eventTitle: "ISSF Air Pistol", discipline: "pistol", ruleSet: "ISSF", categoryCode: "S-03", categoryLabel: "ISSF Air Pistol Junior Men", fee: 1000 },
+        { eventId: "nr-air-pistol", eventTitle: "NR Air Pistol", discipline: "pistol", ruleSet: "NR", categoryCode: "S-17", categoryLabel: "NR Air Pistol Sub Youth Men", fee: 1000 },
+        { eventId: "nr-air-rifle", eventTitle: "NR Air Rifle", discipline: "rifle", ruleSet: "NR", categoryCode: "R-21", categoryLabel: "NR Air Rifle Sitting Under 12 Little Champ Girls", fee: 1000 },
+    ] satisfies Pick<AdminEntry, "eventId" | "eventTitle" | "discipline" | "ruleSet" | "categoryCode" | "categoryLabel" | "fee">[]
+
+    return students.map(([name, gender, dateOfBirth, paymentStatus], index) => {
+        const entries = [
+            buildDemoEntry(index * 2, entryTemplates[index % entryTemplates.length]),
+            ...(index % 3 === 0 ? [buildDemoEntry(index * 2 + 1, entryTemplates[(index + 1) % entryTemplates.length])] : []),
+        ]
+
+        return {
+            id: `demo-registration-${index}`,
+            name,
+            academy: academies[index % academies.length],
+            gender,
+            dateOfBirth: `${dateOfBirth}T00:00:00.000Z`,
+            phone: `90000000${String(index).padStart(2, "0")}`,
+            preferredDate: `2026-06-0${(index % 3) + 5}T00:00:00.000Z`,
+            preferredSlot: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM"][index % 3],
+            paymentMode: index % 2 === 0 ? "upi" : "cash",
+            paymentStatus,
+            paymentConfirmedBy: paymentStatus === "Pending" ? null : "demo",
+            paymentConfirmedAt: paymentStatus === "Pending" ? null : "2026-06-03T10:00:00.000Z",
+            amount: entries.length * 1000,
+            utrNumber: index % 2 === 0 ? `1234567890${String(index).padStart(2, "0")}` : null,
+            screenshotPath: null,
+            createdAt: `2026-06-03T10:${String(index).padStart(2, "0")}:00.000Z`,
+            entries,
+        }
+    })
+}
+
 export default function SalvoCupAdminPage() {
     const [pin, setPin] = React.useState("")
     const [activePin, setActivePin] = React.useState("")
@@ -75,7 +213,7 @@ export default function SalvoCupAdminPage() {
     const [selectedId, setSelectedId] = React.useState("")
     const [query, setQuery] = React.useState("")
     const [filter, setFilter] = React.useState("all")
-    const [view, setView] = React.useState<AdminView>("registrations")
+    const [view, setView] = React.useState<AdminView>("stats")
     const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState("")
@@ -116,12 +254,20 @@ export default function SalvoCupAdminPage() {
         setError("")
         try {
             const response = await fetch("/api/admin/registrations", { headers: { "x-admin-pin": adminPin } })
-            const data = await response.json()
-            if (!response.ok) throw new Error(data.error ?? "Unable to load registrations.")
-            setRegistrations(data.registrations)
-            setSelectedId((current) => current || data.registrations[0]?.id || "")
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load registrations.")
+            const nextRegistrations = Array.isArray(data.registrations) ? data.registrations as AdminRegistration[] : []
+            setRegistrations(nextRegistrations)
+            setSelectedId((current) => current || nextRegistrations[0]?.id || "")
         } catch (loadError) {
-            setError(loadError instanceof Error ? loadError.message : "Unable to load registrations.")
+            const message = loadError instanceof Error ? loadError.message : "Unable to load registrations."
+            if (canUseDemoData) {
+                setRegistrations(buildDemoRegistrations())
+                setSelectedId("demo-registration-0")
+                setError(`${message} Showing demo data so the admin graphs can be previewed.`)
+            } else {
+                setError(message)
+            }
         } finally {
             setIsLoading(false)
         }
@@ -137,8 +283,8 @@ export default function SalvoCupAdminPage() {
         setError("")
         const response = await fetch("/api/admin/export", { headers: { "x-admin-pin": activePin } })
         if (!response.ok) {
-            const data = await response.json()
-            setError(data.error ?? "Export failed.")
+            const data = await readResponseJson(response)
+            setError(typeof data.error === "string" ? data.error : "Export failed.")
             return
         }
         const blob = await response.blob()
@@ -187,23 +333,25 @@ export default function SalvoCupAdminPage() {
                 ) : (
                     <div>
                         <div className="mb-5 flex flex-wrap gap-2">
-                            <button
-                                onClick={() => setView("registrations")}
-                                className={`admin-button ${view === "registrations" ? "gold" : ""}`}
-                            >
+                            <button onClick={() => setView("stats")} className={`admin-button ${view === "stats" ? "gold" : ""}`}>
+                                <BarChart3 className="h-4 w-4" />
+                                Stats
+                            </button>
+                            <button onClick={() => setView("registrations")} className={`admin-button ${view === "registrations" ? "gold" : ""}`}>
                                 <Users className="h-4 w-4" />
                                 Registrations
                             </button>
-                            <button
-                                onClick={() => setView("results")}
-                                className={`admin-button ${view === "results" ? "gold" : ""}`}
-                            >
+                            <button onClick={() => setView("results")} className={`admin-button ${view === "results" ? "gold" : ""}`}>
                                 <Medal className="h-4 w-4" />
                                 Results
                             </button>
                         </div>
 
-                        {view === "results" ? (
+                        {error && <p className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+
+                        {view === "stats" ? (
+                            <StatsView registrations={registrations} adminPin={activePin} onChanged={() => loadRegistrations()} />
+                        ) : view === "results" ? (
                             <ResultsView
                                 registrations={registrations}
                                 categoryOptions={categoryOptions}
@@ -211,66 +359,215 @@ export default function SalvoCupAdminPage() {
                                 onSelectedCategoriesChange={setSelectedCategories}
                             />
                         ) : (
-                    <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
-                        <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
-                            <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px]">
-                                <label className="relative">
-                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-                                    <input value={query} onChange={(event) => setQuery(event.target.value)} className="field pl-10" placeholder="Search name, academy, phone..." />
-                                </label>
-                                <select value={filter} onChange={(event) => setFilter(event.target.value)} className="field">
-                                    <option value="all">All</option>
-                                    <option value="Paid">Paid</option>
-                                    <option value="Sponsored">Sponsored</option>
-                                    <option value="Pending">Pending</option>
-                                    <option value="ISSF">ISSF</option>
-                                    <option value="NR">NR</option>
-                                    <option value="pistol">Pistol</option>
-                                    <option value="rifle">Rifle</option>
-                                </select>
+                            <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
+                                <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                                    <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px]">
+                                        <label className="relative">
+                                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                                            <input value={query} onChange={(event) => setQuery(event.target.value)} className="field pl-10" placeholder="Search name, range, phone..." />
+                                        </label>
+                                        <select value={filter} onChange={(event) => setFilter(event.target.value)} className="field">
+                                            <option value="all">All</option>
+                                            <option value="Paid">Paid</option>
+                                            <option value="Sponsored">Sponsored</option>
+                                            <option value="Pending">Pending</option>
+                                            <option value="ISSF">ISSF</option>
+                                            <option value="NR">NR</option>
+                                            <option value="pistol">Pistol</option>
+                                            <option value="rifle">Rifle</option>
+                                        </select>
+                                    </div>
+
+                                    {isLoading ? (
+                                        <div className="flex h-52 items-center justify-center text-white/50">
+                                            <Loader2 className="h-6 w-6 animate-spin" />
+                                        </div>
+                                    ) : (
+                                        <div className="max-h-[680px] space-y-3 overflow-auto pr-1">
+                                            {filtered.map((registration) => (
+                                                <button
+                                                    key={registration.id}
+                                                    onClick={() => setSelectedId(registration.id)}
+                                                    className={`w-full rounded-md border p-4 text-left transition ${selected?.id === registration.id ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <p className="font-bold">{registration.name}</p>
+                                                            <p className="text-sm text-white/55">{registration.academy}</p>
+                                                        </div>
+                                                        <span className={`rounded-full px-2 py-1 text-xs font-bold ${paymentBadgeClass(registration.paymentStatus)}`}>
+                                                            {registration.paymentStatus}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-2 text-xs text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
+                                                    <p className="mt-2 text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entries.length} entries</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </section>
+
+                                <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                                    {selected ? (
+                                        <RegistrationDetail registration={selected} adminPin={activePin} onChanged={() => loadRegistrations()} />
+                                    ) : (
+                                        <p className="text-white/50">No registrations found.</p>
+                                    )}
+                                </section>
                             </div>
-
-                            {isLoading ? (
-                                <div className="flex h-52 items-center justify-center text-white/50">
-                                    <Loader2 className="h-6 w-6 animate-spin" />
-                                </div>
-                            ) : (
-                                <div className="max-h-[680px] space-y-3 overflow-auto pr-1">
-                                    {filtered.map((registration) => (
-                                        <button
-                                            key={registration.id}
-                                            onClick={() => setSelectedId(registration.id)}
-                                            className={`w-full rounded-md border p-4 text-left transition ${selected?.id === registration.id ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="font-bold">{registration.name}</p>
-                                                    <p className="text-sm text-white/55">{registration.academy}</p>
-                                                </div>
-                                                <span className={`rounded-full px-2 py-1 text-xs font-bold ${paymentBadgeClass(registration.paymentStatus)}`}>
-                                                    {registration.paymentStatus}
-                                                </span>
-                                            </div>
-                                            <p className="mt-2 text-xs text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
-                                            <p className="mt-2 text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entries.length} entries</p>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-
-                        <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
-                            {selected ? (
-                                <RegistrationDetail registration={selected} adminPin={activePin} onChanged={() => loadRegistrations()} />
-                            ) : (
-                                <p className="text-white/50">No registrations found.</p>
-                            )}
-                        </section>
-                    </div>
                         )}
                     </div>
                 )}
             </div>
+        </div>
+    )
+}
+
+function StatsView({ registrations, adminPin, onChanged }: { registrations: AdminRegistration[]; adminPin: string; onChanged: () => void }) {
+    const [cleanupState, setCleanupState] = React.useState<"idle" | "saving">("idle")
+    const [cleanupMessage, setCleanupMessage] = React.useState("")
+    const duplicateGroups = React.useMemo(() => getDuplicateGroups(registrations), [registrations])
+    const entries = registrations.flatMap((registration) => registration.entries)
+    const totalEntries = entries.length
+    const paidRegistrations = registrations.filter((registration) => registration.paymentStatus === "Paid")
+    const pendingRegistrations = registrations.filter((registration) => registration.paymentStatus === "Pending")
+    const sponsoredRegistrations = registrations.filter((registration) => registration.paymentStatus === "Sponsored")
+    const scoredEntries = entries.filter(isEntryScored).length
+    const collectedAmount = paidRegistrations.reduce((sum, registration) => sum + registration.amount, 0)
+    const expectedAmount = registrations.reduce((sum, registration) => sum + registration.amount, 0)
+    const rangeRows = React.useMemo(() => buildRangeRows(registrations), [registrations])
+    const categoryRows = React.useMemo(() => buildEntryRows(entries, (entry) => `${entry.categoryCode} - ${entry.categoryLabel}`), [entries])
+    const slotRows = React.useMemo(() => buildRegistrationRows(registrations, (registration) => `${dateOnly(registration.preferredDate)} | ${registration.preferredSlot}`), [registrations])
+    const ruleRows = React.useMemo(() => buildEntryRows(entries, (entry) => entry.ruleSet), [entries])
+    const disciplineRows = React.useMemo(() => buildEntryRows(entries, (entry) => entry.discipline), [entries])
+
+    const cleanupDuplicates = async () => {
+        setCleanupState("saving")
+        setCleanupMessage("")
+        try {
+            const response = await fetch("/api/admin/entries/duplicates", {
+                method: "POST",
+                headers: { "x-admin-pin": adminPin },
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete duplicates.")
+            setCleanupMessage(`${typeof data.deletedCount === "number" ? data.deletedCount : 0} duplicate entries deleted.`)
+            onChanged()
+        } catch (cleanupError) {
+            setCleanupMessage(cleanupError instanceof Error ? cleanupError.message : "Unable to delete duplicates.")
+        } finally {
+            setCleanupState("idle")
+        }
+    }
+
+    return (
+        <div className="space-y-6">
+            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                <Stat label="Registrations" value={String(registrations.length)} />
+                <Stat label="Total Entries" value={String(totalEntries)} />
+                <Stat label="Paid" value={String(paidRegistrations.length)} />
+                <Stat label="Pending" value={String(pendingRegistrations.length)} />
+                <Stat label="Sponsored" value={String(sponsoredRegistrations.length)} />
+                <Stat label="Collected" value={formatCurrency(collectedAmount)} />
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-2xl font-black">Range-Wise Students</h2>
+                            <p className="mt-1 text-sm text-white/50">Grouped by the existing academy/range value.</p>
+                        </div>
+                        <div className="text-right text-sm text-white/55">
+                            <p>{scoredEntries} scored</p>
+                            <p>{totalEntries - scoredEntries} unscored</p>
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        {rangeRows.map((row) => (
+                            <details key={row.name} className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                                <summary className="cursor-pointer list-none">
+                                    <div className="grid gap-3 md:grid-cols-[1fr_120px_120px_120px] md:items-center">
+                                        <div>
+                                            <p className="font-bold text-[#D4AF37]">{row.name}</p>
+                                            <p className="mt-1 text-sm text-white/50">{row.students} students | {row.entries} entries | {formatCurrency(row.collected)} collected</p>
+                                        </div>
+                                        <MiniCount label="Paid" value={row.paid} />
+                                        <MiniCount label="Pending" value={row.pending} />
+                                        <MiniCount label="Sponsored" value={row.sponsored} />
+                                    </div>
+                                    <Bar value={row.entries} max={rangeRows[0]?.entries ?? 1} />
+                                </summary>
+                                <div className="mt-4 overflow-x-auto">
+                                    <table className="w-full min-w-[680px] text-left text-sm">
+                                        <thead className="text-xs uppercase tracking-[0.16em] text-white/40">
+                                            <tr className="border-b border-white/10">
+                                                <th className="py-2 pr-3">Student</th>
+                                                <th className="py-2 pr-3">Phone</th>
+                                                <th className="py-2 pr-3">Date/Slot</th>
+                                                <th className="py-2 pr-3">Payment</th>
+                                                <th className="py-2 text-right">Entries</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {row.registrations.map((registration) => (
+                                                <tr key={registration.id} className="border-b border-white/5 last:border-0">
+                                                    <td className="py-2 pr-3 font-bold">{registration.name}</td>
+                                                    <td className="py-2 pr-3 text-white/65">{registration.phone}</td>
+                                                    <td className="py-2 pr-3 text-white/65">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</td>
+                                                    <td className="py-2 pr-3 text-white/65">{registration.paymentStatus}</td>
+                                                    <td className="py-2 text-right text-[#D4AF37]">{registration.entries.length}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="space-y-6">
+                    <ChartPanel title="Entries by Category" rows={categoryRows.slice(0, 10)} />
+                    <ChartPanel title="Date and Slot Load" rows={slotRows} />
+                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-1">
+                        <ChartPanel title="Rule Set" rows={ruleRows} />
+                        <ChartPanel title="Discipline" rows={disciplineRows} />
+                    </div>
+                </div>
+            </section>
+
+            <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h2 className="text-2xl font-black">Duplicate Entries</h2>
+                        <p className="mt-1 text-sm text-white/50">Exact repeated entries inside the same registration are listed here.</p>
+                    </div>
+                    <button onClick={cleanupDuplicates} disabled={!duplicateGroups.length || cleanupState === "saving"} className="admin-button gold disabled:opacity-60">
+                        {cleanupState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Delete Duplicates
+                    </button>
+                </div>
+                <div className="mb-4 grid gap-3 md:grid-cols-3">
+                    <Stat label="Expected Amount" value={formatCurrency(expectedAmount)} />
+                    <Stat label="Duplicate Groups" value={String(duplicateGroups.length)} />
+                    <Stat label="Duplicate Extras" value={String(duplicateGroups.reduce((sum, group) => sum + group.entries.length - 1, 0))} />
+                </div>
+                {cleanupMessage && <p className="mb-4 rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm text-white/70">{cleanupMessage}</p>}
+                {duplicateGroups.length ? (
+                    <div className="space-y-3">
+                        {duplicateGroups.map((group) => (
+                            <div key={`${group.registration.id}-${group.entries[0].eventId}-${group.entries[0].categoryCode}`} className="rounded-md border border-amber-400/20 bg-amber-400/[0.06] p-4">
+                                <p className="font-bold text-amber-100">{group.registration.name}</p>
+                                <p className="mt-1 text-sm text-white/60">{group.entries[0].categoryCode} - {group.entries[0].categoryLabel}</p>
+                                <p className="mt-1 text-xs text-white/45">{group.entries.length - 1} extra duplicate entries will be removed; the oldest entry stays.</p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="rounded-md border border-white/10 bg-white/[0.03] p-6 text-white/50">No exact duplicate entries found.</p>
+                )}
+            </section>
         </div>
     )
 }
@@ -288,7 +585,7 @@ function ResultsView({
 }) {
     const selectedSet = React.useMemo(() => new Set(selectedCategories), [selectedCategories])
     const groupedResults = React.useMemo(() => {
-        const groups = new Map<string, { label: string; rows: ResultRow[] }>()
+        const groups = new Map<string, { label: string; rows: Omit<ResultRow, "rank">[] }>()
 
         registrations.forEach((registration) => {
             registration.entries.forEach((entry) => {
@@ -302,13 +599,7 @@ function ResultsView({
         return Array.from(groups, ([code, group]) => ({
             code,
             label: group.label,
-            rows: group.rows.sort((a, b) => {
-                const aScored = a.entry.totalScore !== null
-                const bScored = b.entry.totalScore !== null
-                if (aScored !== bScored) return aScored ? -1 : 1
-                if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
-                return a.registration.name.localeCompare(b.registration.name)
-            }),
+            rows: rankRows(group.rows),
         })).sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
     }, [registrations, selectedSet])
 
@@ -325,7 +616,7 @@ function ResultsView({
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black">Category Results</h2>
-                    <p className="mt-1 text-sm text-white/50">Categories are shown in ascending order. Scores rank highest to lowest.</p>
+                    <p className="mt-1 text-sm text-white/50">Ranks use total score first, then 10x count for ties.</p>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => onSelectedCategoriesChange(categoryOptions.map((category) => category.code))} className="admin-button">
@@ -358,24 +649,26 @@ function ResultsView({
                             <p className="mt-1 text-xs text-white/45">{category.rows.length} entries</p>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[720px] text-left text-sm">
+                            <table className="w-full min-w-[820px] text-left text-sm">
                                 <thead className="text-xs uppercase tracking-[0.16em] text-white/40">
                                     <tr className="border-b border-white/10">
                                         <th className="px-4 py-3">Rank</th>
                                         <th className="px-4 py-3">Shooter</th>
-                                        <th className="px-4 py-3">Academy</th>
+                                        <th className="px-4 py-3">Academy/Range</th>
                                         <th className="px-4 py-3">Event</th>
+                                        <th className="px-4 py-3 text-right">10x</th>
                                         <th className="px-4 py-3 text-right">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {category.rows.map((row, index) => (
+                                    {category.rows.map((row) => (
                                         <tr key={row.entry.id} className="border-b border-white/5 last:border-0">
-                                            <td className="px-4 py-3 font-bold">{row.entry.totalScore === null ? "-" : index + 1}</td>
+                                            <td className="px-4 py-3 font-bold">{row.rank ?? "-"}</td>
                                             <td className="px-4 py-3">{row.registration.name}</td>
                                             <td className="px-4 py-3 text-white/65">{row.registration.academy}</td>
                                             <td className="px-4 py-3 text-white/65">{row.entry.eventTitle}</td>
-                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.entry.totalScore ?? "-"}</td>
+                                            <td className="px-4 py-3 text-right font-bold">{isEntryScored(row.entry) ? row.entry.innerTenCount : "-"}</td>
+                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.rank ? formatScore(row.entry.totalScore) : "-"}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -467,8 +760,8 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
                 body: JSON.stringify({ coachName, coachCode, paymentStatus, paymentMode, utrNumber }),
             })
-            const data = await response.json()
-            if (!response.ok) throw new Error(data.error ?? "Unable to update payment status.")
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to update payment status.")
             setCoachCode("")
             setUtrNumber("")
             onChanged()
@@ -536,51 +829,238 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
 }
 
 function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin: string; onChanged: () => void }) {
-    const count = getSeriesCount(entry.ruleSet === "ISSF" ? "ISSF" : "NR")
-    const initialScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-    const [scores, setScores] = React.useState<string[]>(Array.from({ length: count }, (_, index) => String(initialScores[index] ?? "")))
+    const ruleSet = getRuleSet(entry)
+    const seriesCount = getSeriesCount(ruleSet)
+    const shotCount = getShotCount(ruleSet)
+    const initialShots = Array.isArray(entry.shotScores) ? entry.shotScores : []
+    const [shots, setShots] = React.useState<string[]>(Array.from({ length: shotCount }, (_, index) => String(initialShots[index] ?? "")))
     const [saving, setSaving] = React.useState(false)
+    const [error, setError] = React.useState("")
+    const parsedShots = shots.map((shot) => Number(shot))
+    const validShots = parsedShots.filter((score, index) => isValidShotText(shots[index]) && Number.isFinite(score))
+    const liveSeries = Array.from({ length: seriesCount }, (_, index) => {
+        const seriesShots = parsedShots.slice(index * SHOTS_PER_SERIES, (index + 1) * SHOTS_PER_SERIES)
+        const seriesTotal = seriesShots.reduce((sum, score, shotIndex) => {
+            const globalIndex = index * SHOTS_PER_SERIES + shotIndex
+            return isValidShotText(shots[globalIndex]) && Number.isFinite(score) ? sum + score : sum
+        }, 0)
+        return Number(seriesTotal.toFixed(1))
+    })
+    const liveTotal = Number(validShots.reduce((sum, score) => sum + score, 0).toFixed(1))
+    const liveInnerTens = validShots.filter((score) => score >= 10.4).length
+    const complete = validShots.length === shotCount
 
     React.useEffect(() => {
-        const currentScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-        setScores(Array.from({ length: count }, (_, index) => String(currentScores[index] ?? "")))
-    }, [count, entry.id, entry.seriesScores])
+        const currentShots = Array.isArray(entry.shotScores) ? entry.shotScores : []
+        setShots(Array.from({ length: shotCount }, (_, index) => String(currentShots[index] ?? "")))
+        setError("")
+    }, [entry.id, entry.shotScores, shotCount])
+
+    const updateShot = (index: number, value: string) => {
+        const next = [...shots]
+        next[index] = value.trim()
+        setShots(next)
+    }
 
     const save = async () => {
+        if (!complete) {
+            setError(`Enter all ${shotCount} shots as values from 0.0 to 10.9.`)
+            return
+        }
+
         setSaving(true)
-        await fetch(`/api/admin/entries/${entry.id}/score`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-            body: JSON.stringify({ scores }),
-        })
-        setSaving(false)
-        onChanged()
+        setError("")
+        try {
+            const response = await fetch(`/api/admin/entries/${entry.id}/score`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                body: JSON.stringify({ shots }),
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save score.")
+            onChanged()
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "Unable to save score.")
+        } finally {
+            setSaving(false)
+        }
     }
 
     return (
         <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
-            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <p className="font-bold">{entry.categoryCode} - {entry.categoryLabel}</p>
-                    <p className="text-sm text-white/45">{entry.ruleSet} | {count} series</p>
+                    <p className="text-sm text-white/45">{entry.ruleSet} | {shotCount} shots | 10x is 10.4+</p>
                 </div>
-                <p className="text-xl font-black text-[#D4AF37]">{entry.totalScore ?? scores.reduce((sum, score) => sum + (Number(score) || 0), 0)}</p>
+                <div className="grid grid-cols-3 gap-2 text-right">
+                    <MiniCount label="Total" value={complete ? liveTotal.toFixed(1) : formatScore(entry.totalScore)} />
+                    <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />
+                    <MiniCount label="Filled" value={`${validShots.length}/${shotCount}`} />
+                </div>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
-                {scores.map((score, index) => (
-                    <label key={index} className="w-20">
-                        <span className="mb-1 block text-xs text-white/45">S{index + 1}</span>
-                        <input value={score} onChange={(event) => {
-                            const next = [...scores]
-                            next[index] = event.target.value
-                            setScores(next)
-                        }} className="field" inputMode="numeric" />
-                    </label>
+
+            <div className="space-y-4">
+                {Array.from({ length: seriesCount }, (_, seriesIndex) => (
+                    <div key={seriesIndex} className="rounded-md border border-white/10 bg-black/25 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                            <p className="font-bold text-[#D4AF37]">Series {seriesIndex + 1}</p>
+                            <p className="text-sm text-white/60">Total {liveSeries[seriesIndex].toFixed(1)}</p>
+                        </div>
+                        <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+                            {Array.from({ length: SHOTS_PER_SERIES }, (_, shotIndex) => {
+                                const globalIndex = seriesIndex * SHOTS_PER_SERIES + shotIndex
+                                return (
+                                    <label key={globalIndex}>
+                                        <span className="mb-1 block text-xs text-white/45">{shotIndex + 1}</span>
+                                        <input
+                                            value={shots[globalIndex]}
+                                            onChange={(event) => updateShot(globalIndex, event.target.value)}
+                                            className="field px-2 py-2 text-center"
+                                            inputMode="decimal"
+                                            placeholder="-"
+                                        />
+                                    </label>
+                                )
+                            })}
+                        </div>
+                    </div>
                 ))}
-                <button onClick={save} disabled={saving} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
-                    {saving ? "Saving..." : "Save"}
-                </button>
             </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button onClick={save} disabled={saving} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
+                    {saving ? "Saving..." : "Save Score"}
+                </button>
+                {error ? (
+                    <p className="text-sm text-red-300">{error}</p>
+                ) : (
+                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : "Complete all shots to rank this entry."}</p>
+                )}
+            </div>
+        </div>
+    )
+}
+
+function rankRows(rows: Omit<ResultRow, "rank">[]): ResultRow[] {
+    const sorted = [...rows].sort((a, b) => {
+        const aScored = isEntryScored(a.entry)
+        const bScored = isEntryScored(b.entry)
+        if (aScored !== bScored) return aScored ? -1 : 1
+        if (!aScored || !bScored) return a.registration.name.localeCompare(b.registration.name)
+        if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
+        if (a.entry.innerTenCount !== b.entry.innerTenCount) return b.entry.innerTenCount - a.entry.innerTenCount
+        return a.registration.name.localeCompare(b.registration.name)
+    })
+
+    let previous: Omit<ResultRow, "rank"> | null = null
+    let previousRank = 0
+    return sorted.map((row, index) => {
+        if (!isEntryScored(row.entry)) return { ...row, rank: null }
+        const sameTie = previous
+            && isEntryScored(previous.entry)
+            && previous.entry.totalScore === row.entry.totalScore
+            && previous.entry.innerTenCount === row.entry.innerTenCount
+        const rank = sameTie ? previousRank : index + 1
+        previous = row
+        previousRank = rank
+        return { ...row, rank }
+    })
+}
+
+function buildRangeRows(registrations: AdminRegistration[]) {
+    const rows = new Map<string, {
+        name: string
+        students: number
+        entries: number
+        paid: number
+        pending: number
+        sponsored: number
+        collected: number
+        registrations: AdminRegistration[]
+    }>()
+
+    registrations.forEach((registration) => {
+        const name = academyLabel(registration.academy)
+        const row = rows.get(name) ?? {
+            name,
+            students: 0,
+            entries: 0,
+            paid: 0,
+            pending: 0,
+            sponsored: 0,
+            collected: 0,
+            registrations: [],
+        }
+
+        row.students += 1
+        row.entries += registration.entries.length
+        row.paid += registration.paymentStatus === "Paid" ? 1 : 0
+        row.pending += registration.paymentStatus === "Pending" ? 1 : 0
+        row.sponsored += registration.paymentStatus === "Sponsored" ? 1 : 0
+        row.collected += registration.paymentStatus === "Paid" ? registration.amount : 0
+        row.registrations.push(registration)
+        rows.set(name, row)
+    })
+
+    return Array.from(rows.values()).sort((a, b) => b.entries - a.entries || a.name.localeCompare(b.name))
+}
+
+function buildEntryRows(entries: AdminEntry[], getName: (entry: AdminEntry) => string) {
+    const rows = new Map<string, number>()
+    entries.forEach((entry) => {
+        const name = getName(entry)
+        rows.set(name, (rows.get(name) ?? 0) + 1)
+    })
+    return Array.from(rows, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+}
+
+function buildRegistrationRows(registrations: AdminRegistration[], getName: (registration: AdminRegistration) => string) {
+    const rows = new Map<string, number>()
+    registrations.forEach((registration) => {
+        const name = getName(registration)
+        rows.set(name, (rows.get(name) ?? 0) + 1)
+    })
+    return Array.from(rows, ([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+}
+
+function ChartPanel({ title, rows }: { title: string; rows: { name: string; value: number }[] }) {
+    const max = rows[0]?.value ?? 1
+
+    return (
+        <div className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+            <h2 className="mb-4 text-xl font-black">{title}</h2>
+            <div className="space-y-3">
+                {rows.length ? rows.map((row) => (
+                    <div key={row.name}>
+                        <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                            <p className="truncate text-white/75">{row.name}</p>
+                            <p className="font-bold text-[#D4AF37]">{row.value}</p>
+                        </div>
+                        <Bar value={row.value} max={max} />
+                    </div>
+                )) : (
+                    <p className="text-sm text-white/50">No data yet.</p>
+                )}
+            </div>
+        </div>
+    )
+}
+
+function Bar({ value, max }: { value: number; max: number }) {
+    const width = max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0
+    return (
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-[#D4AF37]" style={{ width: `${width}%` }} />
+        </div>
+    )
+}
+
+function MiniCount({ label, value }: { label: string; value: string | number }) {
+    return (
+        <div className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">{label}</p>
+            <p className="mt-1 font-bold">{value}</p>
         </div>
     )
 }

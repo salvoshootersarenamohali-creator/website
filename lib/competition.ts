@@ -115,6 +115,12 @@ export function getSeriesCount(ruleSet: RuleSet) {
     return ruleSet === "ISSF" ? 6 : 4
 }
 
+export const SHOTS_PER_SERIES = 10
+
+export function getShotCount(ruleSet: RuleSet) {
+    return getSeriesCount(ruleSet) * SHOTS_PER_SERIES
+}
+
 export function getEventById(eventId: string) {
     return competitionEvents.find((event) => event.id === eventId)
 }
