@@ -18,13 +18,48 @@ export function isCoachName(value: string): value is CoachName {
     return coachNames.includes(value as CoachName)
 }
 
+function getConfiguredCoachCodes() {
+    const rawCodes = process.env.COACH_PAYMENT_CODES
+    if (!rawCodes) return {}
+
+    const parsed = JSON.parse(rawCodes) as unknown
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return Object.fromEntries(
+            Object.entries(parsed as Record<string, unknown>).map(([name, code]) => [
+                name.trim().toLowerCase(),
+                String(code ?? "").trim(),
+            ])
+        )
+    }
+
+    if (Array.isArray(parsed)) {
+        return Object.fromEntries(parsed.flatMap((item, index) => {
+            if (typeof item === "string" || typeof item === "number") {
+                const coachName = coachNames[index]
+                return coachName ? [[coachName, String(item).trim()]] : []
+            }
+
+            if (item && typeof item === "object") {
+                const record = item as Record<string, unknown>
+                const name = String(record.name ?? record.coachName ?? "").trim().toLowerCase()
+                const code = String(record.code ?? record.coachCode ?? "").trim()
+                return name && code ? [[name, code]] : []
+            }
+
+            return []
+        }))
+    }
+
+    return {}
+}
+
 export function isValidCoachCode(coachName: string, coachCode: string) {
     if (!isCoachName(coachName)) return false
 
     try {
-        const configuredCodes = JSON.parse(process.env.COACH_PAYMENT_CODES ?? "{}") as Record<string, string>
+        const configuredCodes = getConfiguredCoachCodes()
         const configuredCode = configuredCodes[coachName]
-        return Boolean(configuredCode) && configuredCode === coachCode
+        return Boolean(configuredCode) && configuredCode === coachCode.trim()
     } catch {
         return false
     }
