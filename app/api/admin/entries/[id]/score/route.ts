@@ -15,7 +15,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const { id } = await context.params
         const body = await request.json()
         const rawSeriesScores = Array.isArray(body.seriesScores) ? body.seriesScores : []
-        const rawSeriesInnerTenCounts = Array.isArray(body.seriesInnerTenCounts) ? body.seriesInnerTenCounts : []
+        const rawInnerTenCount = body.innerTenCount
+        const rawLegacySeriesInnerTenCounts = Array.isArray(body.seriesInnerTenCounts) ? body.seriesInnerTenCounts : []
 
         const entry = await prisma.registrationEntry.findUnique({ where: { id } })
         if (!entry) return Response.json({ error: "Entry not found." }, { status: 404 })
@@ -25,9 +26,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
         if (rawSeriesScores.length !== expectedSeries) {
             return Response.json({ error: `${entry.ruleSet} entries require ${expectedSeries} series totals.` }, { status: 400 })
-        }
-        if (rawSeriesInnerTenCounts.length !== expectedSeries) {
-            return Response.json({ error: `${entry.ruleSet} entries require ${expectedSeries} series 10x counts.` }, { status: 400 })
         }
 
         const seriesScores: number[] = []
@@ -48,27 +46,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             seriesScores.push(ruleSet === "ISSF" ? Number(value.toFixed(1)) : value)
         }
 
-        const seriesInnerTenCounts: number[] = []
-        for (const [index, count] of rawSeriesInnerTenCounts.entries()) {
-            const text = String(count).trim()
-            const value = Number(text)
-            if (!/^\d{1,2}$/.test(text) || !Number.isInteger(value) || value < 0 || value > 10) {
-                return Response.json({ error: `Series ${index + 1} 10x count must be a whole number from 0 to 10.` }, { status: 400 })
+        const maxInnerTenCount = expectedSeries * 10
+        let parsedInnerTenCount = 0
+        if (rawInnerTenCount !== undefined && rawInnerTenCount !== null) {
+            const innerTenText = String(rawInnerTenCount).trim()
+            parsedInnerTenCount = Number(innerTenText)
+            if (!/^\d{1,3}$/.test(innerTenText) || !Number.isInteger(parsedInnerTenCount) || parsedInnerTenCount < 0 || parsedInnerTenCount > maxInnerTenCount) {
+                return Response.json({ error: `Total 10x must be a whole number from 0 to ${maxInnerTenCount}.` }, { status: 400 })
             }
-            seriesInnerTenCounts.push(value)
+        } else if (rawLegacySeriesInnerTenCounts.length === expectedSeries) {
+            const legacyCounts: number[] = []
+            for (const [index, count] of rawLegacySeriesInnerTenCounts.entries()) {
+                const text = String(count).trim()
+                const value = Number(text)
+                if (!/^\d{1,2}$/.test(text) || !Number.isInteger(value) || value < 0 || value > 10) {
+                    return Response.json({ error: `Series ${index + 1} 10x count must be a whole number from 0 to 10.` }, { status: 400 })
+                }
+                legacyCounts.push(value)
+            }
+            parsedInnerTenCount = legacyCounts.reduce((sum, count) => sum + count, 0)
+        } else {
+            return Response.json({ error: `Total 10x must be a whole number from 0 to ${maxInnerTenCount}.` }, { status: 400 })
         }
 
         const totalScore = Number(seriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
-        const innerTenCount = seriesInnerTenCounts.reduce((sum, count) => sum + count, 0)
 
         const updated = await prisma.registrationEntry.update({
             where: { id },
             data: {
                 shotScores: Prisma.JsonNull,
                 seriesScores,
-                seriesInnerTenCounts,
+                seriesInnerTenCounts: Prisma.JsonNull,
                 totalScore,
-                innerTenCount,
+                innerTenCount: parsedInnerTenCount,
             },
         })
 

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { categorySortValue, formatScore, getRuleSet, getSeriesInnerTenCounts, getSeriesScores, isEntryScored, rankRows } from "@/lib/results"
+import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntryScored, rankRows } from "@/lib/results"
 
 export const dynamic = "force-dynamic"
 
@@ -10,7 +10,6 @@ export async function GET() {
             select: {
                 name: true,
                 academy: true,
-                dateOfBirth: true,
                 entries: {
                     orderBy: { createdAt: "asc" },
                     select: {
@@ -21,7 +20,6 @@ export async function GET() {
                         categoryCode: true,
                         categoryLabel: true,
                         seriesScores: true,
-                        seriesInnerTenCounts: true,
                         innerTenCount: true,
                         totalScore: true,
                     },
@@ -36,7 +34,6 @@ export async function GET() {
                 registration: {
                     name: string
                     academy: string
-                    dateOfBirth: Date
                 }
                 entry: typeof registrations[number]["entries"][number]
             }[]
@@ -53,7 +50,6 @@ export async function GET() {
                     registration: {
                         name: registration.name,
                         academy: registration.academy,
-                        dateOfBirth: registration.dateOfBirth,
                     },
                     entry,
                 })
@@ -86,7 +82,6 @@ export async function GET() {
                             ruleSet,
                             scored: isEntryScored(row.entry),
                             seriesScores,
-                            seriesInnerTenCounts: getSeriesInnerTenCounts(row.entry),
                             innerTenCount: row.entry.innerTenCount,
                             totalScore: row.entry.totalScore,
                             displayTotal: formatScore(row.entry.totalScore, ruleSet),

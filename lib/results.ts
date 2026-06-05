@@ -4,14 +4,12 @@ export type ResultEntryLike = {
     categoryCode: string
     ruleSet: string
     seriesScores: unknown
-    seriesInnerTenCounts: unknown
     innerTenCount: number
     totalScore: number | null
 }
 
 export type ResultRegistrationLike = {
     name: string
-    dateOfBirth: string | Date
 }
 
 export type RankedResultRow<TRegistration extends ResultRegistrationLike, TEntry extends ResultEntryLike> = {
@@ -33,10 +31,6 @@ export function getSeriesScores(entry: Pick<ResultEntryLike, "seriesScores">) {
     return Array.isArray(entry.seriesScores) ? entry.seriesScores.filter((score): score is number => typeof score === "number") : []
 }
 
-export function getSeriesInnerTenCounts(entry: Pick<ResultEntryLike, "seriesInnerTenCounts">) {
-    return Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts.filter((count): count is number => typeof count === "number") : []
-}
-
 export function isEntryScored(entry: ResultEntryLike) {
     return getSeriesScores(entry).length === getScoringSeriesCount(getRuleSet(entry), entry)
 }
@@ -49,17 +43,17 @@ export function formatScore(score: number | null | undefined, ruleSet: "NR" | "I
 export function rankRows<TRegistration extends ResultRegistrationLike, TEntry extends ResultEntryLike>(
     rows: { registration: TRegistration; entry: TEntry }[]
 ): RankedResultRow<TRegistration, TEntry>[] {
-    const compareSeriesInnerTens = (a: TEntry, b: TEntry) => {
-        const aCounts = getSeriesInnerTenCounts(a)
-        const bCounts = getSeriesInnerTenCounts(b)
-        const count = Math.max(aCounts.length, bCounts.length)
+    const compareSeriesScores = (a: TEntry, b: TEntry) => {
+        const aScores = getSeriesScores(a)
+        const bScores = getSeriesScores(b)
+        const count = Math.max(aScores.length, bScores.length)
         for (let index = count - 1; index >= 0; index -= 1) {
-            const diff = (bCounts[index] ?? 0) - (aCounts[index] ?? 0)
+            const diff = (bScores[index] ?? 0) - (aScores[index] ?? 0)
             if (diff !== 0) return diff
         }
         return 0
     }
-    const hasSameSeriesInnerTens = (a: TEntry, b: TEntry) => compareSeriesInnerTens(a, b) === 0
+    const hasSameSeriesScores = (a: TEntry, b: TEntry) => compareSeriesScores(a, b) === 0
 
     const sorted = [...rows].sort((a, b) => {
         const aScored = isEntryScored(a.entry)
@@ -68,10 +62,8 @@ export function rankRows<TRegistration extends ResultRegistrationLike, TEntry ex
         if (!aScored || !bScored) return a.registration.name.localeCompare(b.registration.name)
         if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
         if (a.entry.innerTenCount !== b.entry.innerTenCount) return b.entry.innerTenCount - a.entry.innerTenCount
-        const seriesInnerTenDiff = compareSeriesInnerTens(a.entry, b.entry)
-        if (seriesInnerTenDiff !== 0) return seriesInnerTenDiff
-        const ageDiff = new Date(b.registration.dateOfBirth).getTime() - new Date(a.registration.dateOfBirth).getTime()
-        if (ageDiff !== 0) return ageDiff
+        const seriesScoreDiff = compareSeriesScores(a.entry, b.entry)
+        if (seriesScoreDiff !== 0) return seriesScoreDiff
         return a.registration.name.localeCompare(b.registration.name)
     })
 
@@ -83,8 +75,7 @@ export function rankRows<TRegistration extends ResultRegistrationLike, TEntry ex
             && isEntryScored(previous.entry)
             && previous.entry.totalScore === row.entry.totalScore
             && previous.entry.innerTenCount === row.entry.innerTenCount
-            && hasSameSeriesInnerTens(previous.entry, row.entry)
-            && new Date(previous.registration.dateOfBirth).getTime() === new Date(row.registration.dateOfBirth).getTime()
+            && hasSameSeriesScores(previous.entry, row.entry)
         const rank = sameTie ? previousRank : index + 1
         previous = row
         previousRank = rank

@@ -32,7 +32,6 @@ import {
     categorySortValue,
     formatScore,
     getRuleSet,
-    getSeriesInnerTenCounts,
     isEntryScored,
     rankRows,
 } from "@/lib/results"
@@ -129,10 +128,10 @@ function isValidSeriesTotalText(value: string, ruleSet: "NR" | "ISSF") {
     return Boolean(text) && validFormat && Number.isFinite(score) && score >= 0 && score <= maxScore
 }
 
-function isValidSeriesTenText(value: string) {
+function isValidInnerTenText(value: string, max: number) {
     const text = value.trim()
     const count = Number(text)
-    return Boolean(text) && /^\d{1,2}$/.test(text) && Number.isInteger(count) && count >= 0 && count <= 10
+    return Boolean(text) && /^\d{1,3}$/.test(text) && Number.isInteger(count) && count >= 0 && count <= max
 }
 
 function academyLabel(value: string) {
@@ -935,7 +934,7 @@ function ResultsView({
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black">Category Results</h2>
-                    <p className="mt-1 text-sm text-white/50">Ranks use total, overall 10x, last-series 10x backward, then younger age.</p>
+                    <p className="mt-1 text-sm text-white/50">Ranks use total, total 10x, then series totals from last series backward.</p>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => onSelectedCategoriesChange(categoryOptions.map((category) => category.code))} className="admin-button">
@@ -1509,35 +1508,31 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     const ruleSet = getRuleSet(entry)
     const seriesCount = getScoringSeriesCount(ruleSet, entry)
     const initialSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-    const initialSeriesInnerTens = getSeriesInnerTenCounts(entry)
+    const maxInnerTenCount = seriesCount * 10
     const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
-    const [seriesInnerTenCounts, setSeriesInnerTenCounts] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesInnerTens[index] ?? "")))
+    const [innerTenCount, setInnerTenCount] = React.useState(isEntryScored(entry) ? String(entry.innerTenCount) : "")
     const [saving, setSaving] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
     const parsedSeriesScores = seriesScores.map((score) => Number(score))
-    const parsedSeriesInnerTens = seriesInnerTenCounts.map((count) => Number(count))
     const validSeriesScores = parsedSeriesScores.filter((score, index) => isValidSeriesTotalText(seriesScores[index], ruleSet) && Number.isFinite(score))
-    const validSeriesInnerTens = parsedSeriesInnerTens.filter((count, index) => isValidSeriesTenText(seriesInnerTenCounts[index]) && Number.isFinite(count))
+    const validInnerTenCount = isValidInnerTenText(innerTenCount, maxInnerTenCount)
     const invalidSeriesScoreIndexes = seriesScores
         .map((score, index) => ({ score, index }))
         .filter(({ score }) => score.trim() && !isValidSeriesTotalText(score, ruleSet))
         .map(({ index }) => index)
-    const invalidSeriesInnerTenIndexes = seriesInnerTenCounts
-        .map((count, index) => ({ count, index }))
-        .filter(({ count }) => count.trim() && !isValidSeriesTenText(count))
-        .map(({ index }) => index)
+    const invalidInnerTenCount = innerTenCount.trim() && !validInnerTenCount
     const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
-    const liveInnerTens = validSeriesInnerTens.reduce((sum, count) => sum + count, 0)
-    const complete = validSeriesScores.length === seriesCount && validSeriesInnerTens.length === seriesCount
+    const liveInnerTens = validInnerTenCount ? Number(innerTenCount) : entry.innerTenCount
+    const complete = validSeriesScores.length === seriesCount && validInnerTenCount
 
     React.useEffect(() => {
         const currentSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-        const currentSeriesInnerTens = Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts : []
+        const currentSavedScore = currentSeriesScores.length === seriesCount
         setSeriesScores(Array.from({ length: seriesCount }, (_, index) => String(currentSeriesScores[index] ?? "")))
-        setSeriesInnerTenCounts(Array.from({ length: seriesCount }, (_, index) => String(currentSeriesInnerTens[index] ?? "")))
+        setInnerTenCount(currentSavedScore ? String(entry.innerTenCount) : "")
         setError("")
-    }, [entry.id, entry.seriesScores, entry.seriesInnerTenCounts, seriesCount])
+    }, [entry.id, entry.seriesScores, entry.innerTenCount, seriesCount])
 
     const updateSeriesScore = (index: number, value: string) => {
         const next = [...seriesScores]
@@ -1545,23 +1540,16 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
         setSeriesScores(next)
     }
 
-    const updateSeriesInnerTenCount = (index: number, value: string) => {
-        const next = [...seriesInnerTenCounts]
-        next[index] = value.trim()
-        setSeriesInnerTenCounts(next)
-    }
-
     const save = async () => {
         if (!complete) {
             const totalText = ruleSet === "ISSF" ? "0.0 to 109.0 with at most one decimal" : "0 to 100 as whole numbers"
             const invalidScore = invalidSeriesScoreIndexes[0]
-            const invalidInnerTen = invalidSeriesInnerTenIndexes[0]
             if (invalidScore !== undefined) {
                 setError(`Series ${invalidScore + 1} total must be ${totalText}.`)
-            } else if (invalidInnerTen !== undefined) {
-                setError(`Series ${invalidInnerTen + 1} 10x must be a whole number from 0 to 10. Enter total 10x across the match by splitting it per series.`)
+            } else if (invalidInnerTenCount) {
+                setError(`Total 10x must be a whole number from 0 to ${maxInnerTenCount}.`)
             } else {
-                setError(`Enter all ${seriesCount} series totals (${totalText}) and 10x counts from 0 to 10.`)
+                setError(`Enter all ${seriesCount} series totals (${totalText}) and total 10x from 0 to ${maxInnerTenCount}.`)
             }
             return
         }
@@ -1572,7 +1560,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             const response = await fetch(`/api/admin/entries/${entry.id}/score`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ seriesScores, seriesInnerTenCounts }),
+                body: JSON.stringify({ seriesScores, innerTenCount }),
             })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save score.")
@@ -1610,7 +1598,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <p className="font-bold">{entry.categoryCode} - {entry.categoryLabel}</p>
-                    <p className="text-sm text-white/45">{entry.ruleSet} | {seriesCount} series | enter total and 10x for each series</p>
+                    <p className="text-sm text-white/45">{entry.ruleSet} | {seriesCount} series | enter series totals and total 10x</p>
                 </div>
                 <div className="flex flex-wrap items-start justify-end gap-2">
                     <div className="grid grid-cols-3 gap-2 text-right">
@@ -1629,34 +1617,35 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                 </div>
             </div>
 
+            <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-3">
+                <label>
+                    <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Total 10x in match</span>
+                    <input
+                        value={innerTenCount}
+                        onChange={(event) => setInnerTenCount(event.target.value.trim())}
+                        className={`field max-w-xs px-3 py-2 text-center ${invalidInnerTenCount ? "border-red-400 text-red-200" : ""}`}
+                        inputMode="numeric"
+                        placeholder="0"
+                    />
+                </label>
+            </div>
+
             <div className="space-y-4">
                 {Array.from({ length: seriesCount }, (_, seriesIndex) => (
                     <div key={seriesIndex} className="rounded-md border border-white/10 bg-black/25 p-3">
                         <div className="mb-3">
                             <p className="font-bold text-[#D4AF37]">Series {seriesIndex + 1}</p>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <label>
-                                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Series Total</span>
-                                <input
-                                    value={seriesScores[seriesIndex]}
-                                    onChange={(event) => updateSeriesScore(seriesIndex, event.target.value)}
-                                    className={`field px-3 py-2 text-center ${invalidSeriesScoreIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
-                                    inputMode={ruleSet === "ISSF" ? "decimal" : "numeric"}
-                                    placeholder={ruleSet === "ISSF" ? "103.4" : "95"}
-                                />
-                            </label>
-                            <label>
-                                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">10x in this series</span>
-                                <input
-                                    value={seriesInnerTenCounts[seriesIndex]}
-                                    onChange={(event) => updateSeriesInnerTenCount(seriesIndex, event.target.value)}
-                                    className={`field px-3 py-2 text-center ${invalidSeriesInnerTenIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
-                                    inputMode="numeric"
-                                    placeholder="0"
-                                />
-                            </label>
-                        </div>
+                        <label>
+                            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Series Total</span>
+                            <input
+                                value={seriesScores[seriesIndex]}
+                                onChange={(event) => updateSeriesScore(seriesIndex, event.target.value)}
+                                className={`field px-3 py-2 text-center ${invalidSeriesScoreIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
+                                inputMode={ruleSet === "ISSF" ? "decimal" : "numeric"}
+                                placeholder={ruleSet === "ISSF" ? "103.4" : "95"}
+                            />
+                        </label>
                     </div>
                 ))}
             </div>
@@ -1668,7 +1657,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                 {error ? (
                     <p className="text-sm text-red-300">{error}</p>
                 ) : (
-                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : "Complete all series totals and 10x counts to rank this entry."}</p>
+                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : "Complete all series totals and total 10x to rank this entry."}</p>
                 )}
             </div>
         </div>

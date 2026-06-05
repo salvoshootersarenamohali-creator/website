@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
             registration.entries.map((entry) => {
                 const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
                 const scores = Array.isArray(entry.seriesScores) ? entry.seriesScores as number[] : []
-                const seriesInnerTens = Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts as number[] : []
 
                 return {
                     "Sr. No.": index + 1,
@@ -44,17 +43,11 @@ export async function GET(request: NextRequest) {
                     Category: entry.categoryCode,
                     "Category Name": entry.categoryLabel,
                     "Series 1": formatScore(scores[0], ruleSet),
-                    "S1 10x": seriesInnerTens[0] ?? "",
                     "Series 2": formatScore(scores[1], ruleSet),
-                    "S2 10x": seriesInnerTens[1] ?? "",
                     "Series 3": formatScore(scores[2], ruleSet),
-                    "S3 10x": seriesInnerTens[2] ?? "",
                     "Series 4": formatScore(scores[3], ruleSet),
-                    "S4 10x": seriesInnerTens[3] ?? "",
                     "Series 5": formatScore(scores[4], ruleSet),
-                    "S5 10x": seriesInnerTens[4] ?? "",
                     "Series 6": formatScore(scores[5], ruleSet),
-                    "S6 10x": seriesInnerTens[5] ?? "",
                     Total: formatScore(entry.totalScore, ruleSet),
                     "10x": entry.innerTenCount,
                     "Payment Status": registration.paymentStatus,

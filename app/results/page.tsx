@@ -16,7 +16,6 @@ type ResultRow = {
     ruleSet: "NR" | "ISSF"
     scored: boolean
     seriesScores: number[]
-    seriesInnerTenCounts: number[]
     innerTenCount: number
     totalScore: number | null
     displayTotal: string
@@ -75,9 +74,8 @@ function topRankIcon(rank: number | null) {
 
 function seriesLabel(row: ResultRow, index: number) {
     const score = row.seriesScores[index]
-    const tens = row.seriesInnerTenCounts[index]
     if (typeof score !== "number") return "-"
-    return `${row.ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)}${typeof tens === "number" ? ` / ${tens}x` : ""}`
+    return row.ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
 }
 
 export default function ResultsPage() {
