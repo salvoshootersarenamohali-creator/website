@@ -13,10 +13,8 @@ import {
     getEligibleCategories,
     getEntryFee,
     getEventById,
-    getSeriesCount,
-    getShotCount,
+    getScoringSeriesCount,
     LITTLE_CHAMP_ENTRY_FEE,
-    SHOTS_PER_SERIES,
     slotOptions,
 } from "@/lib/competition"
 import {
@@ -45,6 +43,7 @@ type AdminEntry = {
     fee: number
     seriesScores: number[] | null
     shotScores: number[] | null
+    seriesInnerTenCounts: number[] | null
     innerTenCount: number
     totalScore: number | null
 }
@@ -115,8 +114,9 @@ async function readResponseJson(response: Response) {
     }
 }
 
-function formatScore(score: number | null | undefined) {
-    return typeof score === "number" ? score.toFixed(1) : "-"
+function formatScore(score: number | null | undefined, ruleSet: "NR" | "ISSF" = "ISSF") {
+    if (typeof score !== "number") return "-"
+    return ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
 }
 
 function getRuleSet(entry: AdminEntry) {
@@ -124,17 +124,29 @@ function getRuleSet(entry: AdminEntry) {
 }
 
 function isEntryScored(entry: AdminEntry) {
-    return Array.isArray(entry.shotScores) && entry.shotScores.length === getShotCount(getRuleSet(entry))
+    return Array.isArray(entry.seriesScores) && entry.seriesScores.length === getScoringSeriesCount(getRuleSet(entry), entry)
 }
 
 function entryKey(entry: Pick<AdminEntry, "eventId" | "categoryCode"> | SelectedEntry) {
     return `${entry.eventId}:${entry.categoryCode}`
 }
 
-function isValidShotText(value: string) {
+function isValidSeriesTotalText(value: string, ruleSet: "NR" | "ISSF") {
     const text = value.trim()
     const score = Number(text)
-    return Boolean(text) && /^\d{1,2}(\.\d)?$/.test(text) && Number.isFinite(score) && score >= 0 && score <= 10.9
+    const validFormat = ruleSet === "ISSF" ? /^\d{1,3}(\.\d)?$/.test(text) : /^\d{1,3}$/.test(text)
+    const maxScore = ruleSet === "ISSF" ? 109 : 100
+    return Boolean(text) && validFormat && Number.isFinite(score) && score >= 0 && score <= maxScore
+}
+
+function isValidSeriesTenText(value: string) {
+    const text = value.trim()
+    const count = Number(text)
+    return Boolean(text) && /^\d{1,2}$/.test(text) && Number.isInteger(count) && count >= 0 && count <= 10
+}
+
+function getSeriesInnerTenCounts(entry: AdminEntry) {
+    return Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts : []
 }
 
 function academyLabel(value: string) {
@@ -159,28 +171,23 @@ function getDuplicateGroups(registrations: AdminRegistration[]) {
     return groups
 }
 
-function makeDemoShots(count: number, seed: number) {
-    return Array.from({ length: count }, (_, index) => {
-        const pattern = (index * 7 + seed * 3) % 11
-        return Number((9.1 + pattern * 0.16).toFixed(1))
-    })
-}
-
 function buildDemoEntry(index: number, entry: Pick<AdminEntry, "eventId" | "eventTitle" | "discipline" | "ruleSet" | "categoryCode" | "categoryLabel" | "fee">): AdminEntry {
     const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
-    const shots = makeDemoShots(getShotCount(ruleSet), index)
-    const seriesScores = Array.from({ length: getSeriesCount(ruleSet) }, (_, seriesIndex) => {
-        const seriesShots = shots.slice(seriesIndex * SHOTS_PER_SERIES, (seriesIndex + 1) * SHOTS_PER_SERIES)
-        return Number(seriesShots.reduce((sum, score) => sum + score, 0).toFixed(1))
+    const seriesCount = getScoringSeriesCount(ruleSet, entry)
+    const seriesScores = Array.from({ length: seriesCount }, (_, seriesIndex) => {
+        const pattern = (seriesIndex * 7 + index * 3) % 11
+        return ruleSet === "ISSF" ? Number((95.6 + pattern * 0.9).toFixed(1)) : 88 + pattern
     })
+    const seriesInnerTenCounts = Array.from({ length: seriesCount }, (_, seriesIndex) => (seriesIndex + index) % 5)
 
     return {
         ...entry,
         id: `demo-entry-${index}-${entry.categoryCode}`,
-        shotScores: shots,
+        shotScores: null,
         seriesScores,
-        innerTenCount: shots.filter((score) => score >= 10.4).length,
-        totalScore: Number(shots.reduce((sum, score) => sum + score, 0).toFixed(1)),
+        seriesInnerTenCounts,
+        innerTenCount: seriesInnerTenCounts.reduce((sum, count) => sum + count, 0),
+        totalScore: Number(seriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0)),
     }
 }
 
@@ -942,7 +949,7 @@ function ResultsView({
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black">Category Results</h2>
-                    <p className="mt-1 text-sm text-white/50">Ranks use total score first, then 10x count for ties.</p>
+                    <p className="mt-1 text-sm text-white/50">Ranks use total, overall 10x, last-series 10x backward, then younger age.</p>
                 </div>
                 <div className="flex gap-2">
                     <button onClick={() => onSelectedCategoriesChange(categoryOptions.map((category) => category.code))} className="admin-button">
@@ -994,7 +1001,7 @@ function ResultsView({
                                             <td className="px-4 py-3 text-white/65">{row.registration.academy}</td>
                                             <td className="px-4 py-3 text-white/65">{row.entry.eventTitle}</td>
                                             <td className="px-4 py-3 text-right font-bold">{isEntryScored(row.entry) ? row.entry.innerTenCount : "-"}</td>
-                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.rank ? formatScore(row.entry.totalScore) : "-"}</td>
+                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.rank ? formatScore(row.entry.totalScore, getRuleSet(row.entry)) : "-"}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1514,42 +1521,46 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
 
 function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin: string; onChanged: () => void }) {
     const ruleSet = getRuleSet(entry)
-    const seriesCount = getSeriesCount(ruleSet)
-    const shotCount = getShotCount(ruleSet)
-    const initialShots = Array.isArray(entry.shotScores) ? entry.shotScores : []
-    const [shots, setShots] = React.useState<string[]>(Array.from({ length: shotCount }, (_, index) => String(initialShots[index] ?? "")))
+    const seriesCount = getScoringSeriesCount(ruleSet, entry)
+    const initialSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
+    const initialSeriesInnerTens = getSeriesInnerTenCounts(entry)
+    const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
+    const [seriesInnerTenCounts, setSeriesInnerTenCounts] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesInnerTens[index] ?? "")))
     const [saving, setSaving] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
-    const parsedShots = shots.map((shot) => Number(shot))
-    const validShots = parsedShots.filter((score, index) => isValidShotText(shots[index]) && Number.isFinite(score))
-    const liveSeries = Array.from({ length: seriesCount }, (_, index) => {
-        const seriesShots = parsedShots.slice(index * SHOTS_PER_SERIES, (index + 1) * SHOTS_PER_SERIES)
-        const seriesTotal = seriesShots.reduce((sum, score, shotIndex) => {
-            const globalIndex = index * SHOTS_PER_SERIES + shotIndex
-            return isValidShotText(shots[globalIndex]) && Number.isFinite(score) ? sum + score : sum
-        }, 0)
-        return Number(seriesTotal.toFixed(1))
-    })
-    const liveTotal = Number(validShots.reduce((sum, score) => sum + score, 0).toFixed(1))
-    const liveInnerTens = validShots.filter((score) => score >= 10.4).length
-    const complete = validShots.length === shotCount
+    const parsedSeriesScores = seriesScores.map((score) => Number(score))
+    const parsedSeriesInnerTens = seriesInnerTenCounts.map((count) => Number(count))
+    const validSeriesScores = parsedSeriesScores.filter((score, index) => isValidSeriesTotalText(seriesScores[index], ruleSet) && Number.isFinite(score))
+    const validSeriesInnerTens = parsedSeriesInnerTens.filter((count, index) => isValidSeriesTenText(seriesInnerTenCounts[index]) && Number.isFinite(count))
+    const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
+    const liveInnerTens = validSeriesInnerTens.reduce((sum, count) => sum + count, 0)
+    const complete = validSeriesScores.length === seriesCount && validSeriesInnerTens.length === seriesCount
 
     React.useEffect(() => {
-        const currentShots = Array.isArray(entry.shotScores) ? entry.shotScores : []
-        setShots(Array.from({ length: shotCount }, (_, index) => String(currentShots[index] ?? "")))
+        const currentSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
+        const currentSeriesInnerTens = Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts : []
+        setSeriesScores(Array.from({ length: seriesCount }, (_, index) => String(currentSeriesScores[index] ?? "")))
+        setSeriesInnerTenCounts(Array.from({ length: seriesCount }, (_, index) => String(currentSeriesInnerTens[index] ?? "")))
         setError("")
-    }, [entry.id, entry.shotScores, shotCount])
+    }, [entry.id, entry.seriesScores, entry.seriesInnerTenCounts, seriesCount])
 
-    const updateShot = (index: number, value: string) => {
-        const next = [...shots]
+    const updateSeriesScore = (index: number, value: string) => {
+        const next = [...seriesScores]
         next[index] = value.trim()
-        setShots(next)
+        setSeriesScores(next)
+    }
+
+    const updateSeriesInnerTenCount = (index: number, value: string) => {
+        const next = [...seriesInnerTenCounts]
+        next[index] = value.trim()
+        setSeriesInnerTenCounts(next)
     }
 
     const save = async () => {
         if (!complete) {
-            setError(`Enter all ${shotCount} shots as values from 0.0 to 10.9.`)
+            const totalText = ruleSet === "ISSF" ? "0.0 to 109.0 with at most one decimal" : "0 to 100 as whole numbers"
+            setError(`Enter all ${seriesCount} series totals (${totalText}) and 10x counts from 0 to 10.`)
             return
         }
 
@@ -1559,7 +1570,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             const response = await fetch(`/api/admin/entries/${entry.id}/score`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ shots }),
+                body: JSON.stringify({ seriesScores, seriesInnerTenCounts }),
             })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save score.")
@@ -1597,13 +1608,13 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <p className="font-bold">{entry.categoryCode} - {entry.categoryLabel}</p>
-                    <p className="text-sm text-white/45">{entry.ruleSet} | {shotCount} shots | 10x is 10.4+</p>
+                    <p className="text-sm text-white/45">{entry.ruleSet} | {seriesCount} series | enter total and 10x for each series</p>
                 </div>
                 <div className="flex flex-wrap items-start justify-end gap-2">
                     <div className="grid grid-cols-3 gap-2 text-right">
-                        <MiniCount label="Total" value={complete ? liveTotal.toFixed(1) : formatScore(entry.totalScore)} />
+                        <MiniCount label="Total" value={complete ? formatScore(liveTotal, ruleSet) : formatScore(entry.totalScore, ruleSet)} />
                         <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />
-                        <MiniCount label="Filled" value={`${validShots.length}/${shotCount}`} />
+                        <MiniCount label="Series" value={`${Math.min(validSeriesScores.length, validSeriesInnerTens.length)}/${seriesCount}`} />
                     </div>
                     <button
                         onClick={deleteEntry}
@@ -1619,26 +1630,30 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             <div className="space-y-4">
                 {Array.from({ length: seriesCount }, (_, seriesIndex) => (
                     <div key={seriesIndex} className="rounded-md border border-white/10 bg-black/25 p-3">
-                        <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="mb-3">
                             <p className="font-bold text-[#D4AF37]">Series {seriesIndex + 1}</p>
-                            <p className="text-sm text-white/60">Total {liveSeries[seriesIndex].toFixed(1)}</p>
                         </div>
-                        <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
-                            {Array.from({ length: SHOTS_PER_SERIES }, (_, shotIndex) => {
-                                const globalIndex = seriesIndex * SHOTS_PER_SERIES + shotIndex
-                                return (
-                                    <label key={globalIndex}>
-                                        <span className="mb-1 block text-xs text-white/45">{shotIndex + 1}</span>
-                                        <input
-                                            value={shots[globalIndex]}
-                                            onChange={(event) => updateShot(globalIndex, event.target.value)}
-                                            className="field px-2 py-2 text-center"
-                                            inputMode="decimal"
-                                            placeholder="-"
-                                        />
-                                    </label>
-                                )
-                            })}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <label>
+                                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Series Total</span>
+                                <input
+                                    value={seriesScores[seriesIndex]}
+                                    onChange={(event) => updateSeriesScore(seriesIndex, event.target.value)}
+                                    className="field px-3 py-2 text-center"
+                                    inputMode={ruleSet === "ISSF" ? "decimal" : "numeric"}
+                                    placeholder={ruleSet === "ISSF" ? "103.4" : "95"}
+                                />
+                            </label>
+                            <label>
+                                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">10x in this series</span>
+                                <input
+                                    value={seriesInnerTenCounts[seriesIndex]}
+                                    onChange={(event) => updateSeriesInnerTenCount(seriesIndex, event.target.value)}
+                                    className="field px-3 py-2 text-center"
+                                    inputMode="numeric"
+                                    placeholder="0"
+                                />
+                            </label>
                         </div>
                     </div>
                 ))}
@@ -1651,7 +1666,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                 {error ? (
                     <p className="text-sm text-red-300">{error}</p>
                 ) : (
-                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : "Complete all shots to rank this entry."}</p>
+                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : "Complete all series totals and 10x counts to rank this entry."}</p>
                 )}
             </div>
         </div>
@@ -1659,6 +1674,18 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
 }
 
 function rankRows(rows: Omit<ResultRow, "rank">[]): ResultRow[] {
+    const compareSeriesInnerTens = (a: AdminEntry, b: AdminEntry) => {
+        const aCounts = getSeriesInnerTenCounts(a)
+        const bCounts = getSeriesInnerTenCounts(b)
+        const count = Math.max(aCounts.length, bCounts.length)
+        for (let index = count - 1; index >= 0; index -= 1) {
+            const diff = (bCounts[index] ?? 0) - (aCounts[index] ?? 0)
+            if (diff !== 0) return diff
+        }
+        return 0
+    }
+    const hasSameSeriesInnerTens = (a: AdminEntry, b: AdminEntry) => compareSeriesInnerTens(a, b) === 0
+
     const sorted = [...rows].sort((a, b) => {
         const aScored = isEntryScored(a.entry)
         const bScored = isEntryScored(b.entry)
@@ -1666,6 +1693,10 @@ function rankRows(rows: Omit<ResultRow, "rank">[]): ResultRow[] {
         if (!aScored || !bScored) return a.registration.name.localeCompare(b.registration.name)
         if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
         if (a.entry.innerTenCount !== b.entry.innerTenCount) return b.entry.innerTenCount - a.entry.innerTenCount
+        const seriesInnerTenDiff = compareSeriesInnerTens(a.entry, b.entry)
+        if (seriesInnerTenDiff !== 0) return seriesInnerTenDiff
+        const ageDiff = new Date(b.registration.dateOfBirth).getTime() - new Date(a.registration.dateOfBirth).getTime()
+        if (ageDiff !== 0) return ageDiff
         return a.registration.name.localeCompare(b.registration.name)
     })
 
@@ -1677,6 +1708,8 @@ function rankRows(rows: Omit<ResultRow, "rank">[]): ResultRow[] {
             && isEntryScored(previous.entry)
             && previous.entry.totalScore === row.entry.totalScore
             && previous.entry.innerTenCount === row.entry.innerTenCount
+            && hasSameSeriesInnerTens(previous.entry, row.entry)
+            && previous.registration.dateOfBirth === row.registration.dateOfBirth
         const rank = sameTie ? previousRank : index + 1
         previous = row
         previousRank = rank

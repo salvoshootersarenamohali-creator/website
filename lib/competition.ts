@@ -116,6 +116,28 @@ export function getSeriesCount(ruleSet: RuleSet) {
     return ruleSet === "ISSF" ? 6 : 4
 }
 
+type ScoringCategory = {
+    categoryCode?: string | null
+    categoryLabel?: string | null
+    code?: string | null
+    label?: string | null
+    bracket?: AgeBracket | string | null
+}
+
+export function isLittleChampCategory(category: ScoringCategory) {
+    const bracket = String(category.bracket ?? "")
+    const code = String(category.categoryCode ?? category.code ?? "")
+    const label = String(category.categoryLabel ?? category.label ?? "")
+
+    return bracket.startsWith("little")
+        || /little champ/i.test(label)
+        || /^[RS]-(19|20|21|22)$/.test(code)
+}
+
+export function getScoringSeriesCount(ruleSet: RuleSet, category: ScoringCategory) {
+    return isLittleChampCategory(category) ? 2 : getSeriesCount(ruleSet)
+}
+
 export const SHOTS_PER_SERIES = 10
 
 export function getShotCount(ruleSet: RuleSet) {

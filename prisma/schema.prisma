@@ -44,6 +44,7 @@ model RegistrationEntry {
   fee            Int
   seriesScores   Json?
   shotScores     Json?
+  seriesInnerTenCounts Json?
   innerTenCount  Int          @default(0)
   totalScore     Float?
   createdAt      DateTime     @default(now())

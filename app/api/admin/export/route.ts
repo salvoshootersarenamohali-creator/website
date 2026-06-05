@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
-import { formatCurrency, getSeriesCount, SHOTS_PER_SERIES } from "@/lib/competition"
+import { formatCurrency } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 
 function formatDate(value: Date) {
@@ -16,6 +16,11 @@ function formatPaymentAmount(registration: { amount: number; paymentStatus: stri
     return `${formatCurrency(registration.amount)} (${registration.paymentStatus})`
 }
 
+function formatScore(score: unknown, ruleSet: "NR" | "ISSF") {
+    if (typeof score !== "number") return ""
+    return ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
+}
+
 export async function GET(request: NextRequest) {
     if (!isAdminRequest(request)) return adminUnauthorized()
 
@@ -27,16 +32,9 @@ export async function GET(request: NextRequest) {
 
         const registrationRows = registrations.flatMap((registration, index) =>
             registration.entries.map((entry) => {
+                const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
                 const scores = Array.isArray(entry.seriesScores) ? entry.seriesScores as number[] : []
-                const shots = Array.isArray(entry.shotScores) ? entry.shotScores as number[] : []
-                const expectedSeries = getSeriesCount(entry.ruleSet === "ISSF" ? "ISSF" : "NR")
-                const shotColumns = Object.fromEntries(
-                    Array.from({ length: expectedSeries * SHOTS_PER_SERIES }, (_, shotIndex) => {
-                        const seriesNumber = Math.floor(shotIndex / SHOTS_PER_SERIES) + 1
-                        const shotNumber = (shotIndex % SHOTS_PER_SERIES) + 1
-                        return [`S${seriesNumber}-${shotNumber}`, shots[shotIndex] ?? ""]
-                    })
-                )
+                const seriesInnerTens = Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts as number[] : []
 
                 return {
                     "Sr. No.": index + 1,
@@ -45,14 +43,19 @@ export async function GET(request: NextRequest) {
                     Event: entry.eventTitle,
                     Category: entry.categoryCode,
                     "Category Name": entry.categoryLabel,
-                    ...shotColumns,
-                    "Series 1": scores[0] ?? "",
-                    "Series 2": scores[1] ?? "",
-                    "Series 3": scores[2] ?? "",
-                    "Series 4": scores[3] ?? "",
-                    "Series 5": scores[4] ?? "",
-                    "Series 6": scores[5] ?? "",
-                    Total: entry.totalScore ?? "",
+                    "Series 1": formatScore(scores[0], ruleSet),
+                    "S1 10x": seriesInnerTens[0] ?? "",
+                    "Series 2": formatScore(scores[1], ruleSet),
+                    "S2 10x": seriesInnerTens[1] ?? "",
+                    "Series 3": formatScore(scores[2], ruleSet),
+                    "S3 10x": seriesInnerTens[2] ?? "",
+                    "Series 4": formatScore(scores[3], ruleSet),
+                    "S4 10x": seriesInnerTens[3] ?? "",
+                    "Series 5": formatScore(scores[4], ruleSet),
+                    "S5 10x": seriesInnerTens[4] ?? "",
+                    "Series 6": formatScore(scores[5], ruleSet),
+                    "S6 10x": seriesInnerTens[5] ?? "",
+                    Total: formatScore(entry.totalScore, ruleSet),
                     "10x": entry.innerTenCount,
                     "Payment Status": registration.paymentStatus,
                     "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
