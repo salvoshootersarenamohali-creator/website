@@ -98,14 +98,14 @@ export function getBaseBracket(age: number): AgeBracket | null {
     return null
 }
 
-export function getEligibleBrackets(age: number, ruleSet: RuleSet): AgeBracket[] {
+export function getEligibleBrackets(age: number): AgeBracket[] {
     const base = getBaseBracket(age)
     if (!base) return []
 
     if (base === "master") return ["senior", "master"]
     if (base === "senior") return ["senior"]
     if (base === "little-standing") {
-        return ruleSet === "NR" ? ["little-standing", "little-sitting", "sub-youth", "youth", "junior", "senior"] : []
+        return ["little-standing", "little-sitting", "sub-youth", "youth", "junior", "senior"]
     }
 
     const index = ladder.indexOf(base)
@@ -131,7 +131,7 @@ export function isLittleChampCategory(category: ScoringCategory) {
 
     return bracket.startsWith("little")
         || /little champ/i.test(label)
-        || /^[RS]-(19|20|21|22)$/.test(code)
+        || /^[RS]-(19|20|21|22|25|26|27|28)$/.test(code)
 }
 
 export function getScoringSeriesCount(ruleSet: RuleSet, category: ScoringCategory) {
@@ -160,6 +160,8 @@ export function buildCategoryCode(discipline: Discipline, ruleSet: RuleSet, brac
             youth: 5,
             "sub-youth": 7,
             master: 9,
+            "little-standing": 25,
+            "little-sitting": 27,
         }
         number = (map[bracket] ?? 0) + genderOffset
     } else {
@@ -187,7 +189,7 @@ export function buildCategoryLabel(event: CompetitionEvent, bracket: AgeBracket,
 }
 
 export function getEligibleCategories(event: CompetitionEvent, age: number, gender: Gender): CategoryOption[] {
-    return getEligibleBrackets(age, event.ruleSet)
+    return getEligibleBrackets(age)
         .map((bracket) => ({
             code: buildCategoryCode(event.discipline, event.ruleSet, bracket, gender),
             label: buildCategoryLabel(event, bracket, gender),
