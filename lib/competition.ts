@@ -31,6 +31,7 @@ export type AgeBracket = "little-standing" | "little-sitting" | "sub-youth" | "y
 const COMPETITION_YEAR = 2026
 
 export const ENTRY_FEE = 1000
+export const LITTLE_CHAMP_ENTRY_FEE = 800
 
 export const competitionEvents: CompetitionEvent[] = [
     {
@@ -174,6 +175,10 @@ export function getEligibleCategories(event: CompetitionEvent, age: number, gend
             discipline: event.discipline,
         }))
         .filter((category) => Boolean(category.code))
+}
+
+export function getEntryFee(category: Pick<CategoryOption, "bracket">) {
+    return category.bracket.startsWith("little") ? LITTLE_CHAMP_ENTRY_FEE : ENTRY_FEE
 }
 
 export function validateSelection(entries: SelectedEntry[]) {

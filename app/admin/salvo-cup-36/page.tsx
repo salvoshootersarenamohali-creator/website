@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
-import { formatCurrency, getSeriesCount, getShotCount, SHOTS_PER_SERIES, slotOptions } from "@/lib/competition"
+import { formatCurrency, getSeriesCount, getShotCount, LITTLE_CHAMP_ENTRY_FEE, SHOTS_PER_SERIES, slotOptions } from "@/lib/competition"
 import {
     buildDetailSchedule,
     defaultDetailLanes,
@@ -186,7 +186,7 @@ function buildDemoRegistrations(): AdminRegistration[] {
         { eventId: "nr-air-rifle", eventTitle: "NR Air Rifle", discipline: "rifle", ruleSet: "NR", categoryCode: "R-15", categoryLabel: "NR Air Rifle Youth Men", fee: 1000 },
         { eventId: "issf-air-pistol", eventTitle: "ISSF Air Pistol", discipline: "pistol", ruleSet: "ISSF", categoryCode: "S-03", categoryLabel: "ISSF Air Pistol Junior Men", fee: 1000 },
         { eventId: "nr-air-pistol", eventTitle: "NR Air Pistol", discipline: "pistol", ruleSet: "NR", categoryCode: "S-17", categoryLabel: "NR Air Pistol Sub Youth Men", fee: 1000 },
-        { eventId: "nr-air-rifle", eventTitle: "NR Air Rifle", discipline: "rifle", ruleSet: "NR", categoryCode: "R-21", categoryLabel: "NR Air Rifle Sitting Under 12 Little Champ Girls", fee: 1000 },
+        { eventId: "nr-air-rifle", eventTitle: "NR Air Rifle", discipline: "rifle", ruleSet: "NR", categoryCode: "R-21", categoryLabel: "NR Air Rifle Sitting Under 12 Little Champ Girls", fee: LITTLE_CHAMP_ENTRY_FEE },
     ] satisfies Pick<AdminEntry, "eventId" | "eventTitle" | "discipline" | "ruleSet" | "categoryCode" | "categoryLabel" | "fee">[]
 
     return students.map(([name, gender, dateOfBirth, paymentStatus], index) => {
@@ -208,7 +208,7 @@ function buildDemoRegistrations(): AdminRegistration[] {
             paymentStatus,
             paymentConfirmedBy: paymentStatus === "Pending" ? null : "demo",
             paymentConfirmedAt: paymentStatus === "Pending" ? null : "2026-06-03T10:00:00.000Z",
-            amount: entries.length * 1000,
+            amount: entries.reduce((sum, entry) => sum + entry.fee, 0),
             utrNumber: index % 2 === 0 ? `1234567890${String(index).padStart(2, "0")}` : null,
             screenshotPath: null,
             createdAt: `2026-06-03T10:${String(index).padStart(2, "0")}:00.000Z`,

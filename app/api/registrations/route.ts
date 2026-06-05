@@ -1,6 +1,6 @@
 import { v2 as cloudinary, type UploadApiResponse } from "cloudinary"
 import { NextRequest } from "next/server"
-import { ENTRY_FEE, getAgeFromDobYear, getEligibleCategories, getEventById } from "@/lib/competition"
+import { getAgeFromDobYear, getEligibleCategories, getEntryFee, getEventById } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 
 type IncomingEntry = {
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         }
 
         const screenshotFile = screenshot instanceof File && screenshot.size > 0 ? await saveScreenshot(screenshot) : null
-        const amount = resolvedEntries.length * ENTRY_FEE
+        const amount = resolvedEntries.reduce((sum, { category }) => sum + getEntryFee(category), 0)
 
         const registration = await prisma.registration.create({
             data: {
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
                         ruleSet: event.ruleSet,
                         categoryCode: category.code,
                         categoryLabel: category.label,
-                        fee: ENTRY_FEE,
+                        fee: getEntryFee(category),
                     })),
                 },
             },

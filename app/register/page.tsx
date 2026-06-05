@@ -6,6 +6,7 @@ import { CalendarDays, CheckCircle2, CreditCard, Download, IndianRupee, Loader2,
 import {
     CategoryOption,
     ENTRY_FEE,
+    LITTLE_CHAMP_ENTRY_FEE,
     Gender,
     PaymentMode,
     SelectedEntry,
@@ -14,6 +15,7 @@ import {
     formatCurrency,
     getAgeFromDobYear,
     getEligibleCategories,
+    getEntryFee,
     getEventById,
     slotOptions,
 } from "@/lib/competition"
@@ -66,7 +68,6 @@ export default function RegisterPage() {
     const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(null)
 
     const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth) : null
-    const amount = entries.length * ENTRY_FEE
     const selectedEvents = entries.map((entry) => getEventById(entry.eventId)).filter(Boolean)
     const selectedDiscipline = selectedEvents[0]?.discipline
 
@@ -88,6 +89,11 @@ export default function RegisterPage() {
         }
         return map
     }, [age, form.gender])
+    const amount = entries.reduce((sum, entry) => {
+        const eventCategories = categoriesByEvent.get(entry.eventId) ?? []
+        const category = eventCategories.find((item) => item.code === entry.categoryCode)
+        return sum + (category ? getEntryFee(category) : ENTRY_FEE)
+    }, 0)
 
     const isEntrySelected = (eventId: string, categoryCode: string) =>
         entries.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
@@ -288,7 +294,7 @@ export default function RegisterPage() {
                         <section className="space-y-6">
                             <Panel title="Select Event Categories">
                                 <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
-                                    Select every event-category you want to compete in. Each selected category adds {formatCurrency(ENTRY_FEE)}.
+                                    Select every event-category you want to compete in. Little Champ categories are {formatCurrency(LITTLE_CHAMP_ENTRY_FEE)}; all other categories are {formatCurrency(ENTRY_FEE)}.
                                 </div>
                                 <div className="grid gap-5">
                                     {competitionEvents.map((event) => {
@@ -323,6 +329,7 @@ export default function RegisterPage() {
                                                             >
                                                                 <span className="block font-bold">{category.code}</span>
                                                                 <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
+                                                                <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category))}</span>
                                                             </button>
                                                         ))
                                                     ) : (
