@@ -72,11 +72,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
             where: { id },
             select: {
                 id: true,
-                fee: true,
                 registrationId: true,
                 registration: {
                     select: {
-                        amount: true,
+                        id: true,
+                        name: true,
+                        entries: {
+                            select: { id: true },
+                        },
                     },
                 },
             },
@@ -84,18 +87,15 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
         if (!entry) return Response.json({ error: "Entry not found." }, { status: 404 })
 
-        const nextAmount = Math.max(0, entry.registration.amount - entry.fee)
-        await prisma.$transaction([
-            prisma.registrationEntry.delete({ where: { id } }),
-            prisma.registration.update({
-                where: { id: entry.registrationId },
-                data: { amount: nextAmount },
-            }),
-        ])
+        await prisma.registration.delete({ where: { id: entry.registrationId } })
 
-        return Response.json({ deletedEntryId: id, amount: nextAmount })
+        return Response.json({
+            deletedRegistrationId: entry.registration.id,
+            deletedEntryIds: entry.registration.entries.map((registrationEntry) => registrationEntry.id),
+            deletedName: entry.registration.name,
+        })
     } catch (error) {
-        console.error("Unable to delete entry", error)
-        return Response.json({ error: "Unable to delete entry. Check the database connection and try again." }, { status: 500 })
+        console.error("Unable to delete registration", error)
+        return Response.json({ error: "Unable to delete registration. Check the database connection and try again." }, { status: 500 })
     }
 }

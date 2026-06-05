@@ -1195,7 +1195,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     }
 
     const deleteEntry = async () => {
-        const confirmed = window.confirm(`Delete this entry?\n\n${entry.categoryCode} - ${entry.categoryLabel}`)
+        const confirmed = window.confirm(`Delete this person and all their entries from the database?\n\nThis removes ${entry.categoryCode} - ${entry.categoryLabel} and any other entries under the same registration.`)
         if (!confirmed) return
 
         setDeleting(true)
@@ -1206,10 +1206,10 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                 headers: { "x-admin-pin": adminPin },
             })
             const data = await readResponseJson(response)
-            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete entry.")
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete registration.")
             onChanged()
         } catch (deleteError) {
-            setError(deleteError instanceof Error ? deleteError.message : "Unable to delete entry.")
+            setError(deleteError instanceof Error ? deleteError.message : "Unable to delete registration.")
         } finally {
             setDeleting(false)
         }
@@ -1234,7 +1234,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:border-red-300 disabled:opacity-60"
                     >
                         {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        Delete
+                        Delete Person
                     </button>
                 </div>
             </div>
