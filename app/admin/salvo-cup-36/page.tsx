@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
+import { BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
 import {
     CategoryOption,
     Gender,
@@ -90,6 +90,7 @@ type DuplicateGroup = {
 
 const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
 const canUseDemoData = process.env.NODE_ENV !== "production"
+const RESULTS_URL = "https://salvoshootersarena.com/results"
 
 function dateOnly(value: string) {
     return value.slice(0, 10)
@@ -132,6 +133,26 @@ function isValidInnerTenText(value: string, max: number) {
     const text = value.trim()
     const count = Number(text)
     return Boolean(text) && /^\d{1,3}$/.test(text) && Number.isInteger(count) && count >= 0 && count <= max
+}
+
+function normalizeWhatsAppPhone(phone: string) {
+    const digits = phone.replace(/\D/g, "")
+    if (digits.length === 10) return `91${digits}`
+    if (digits.length >= 11 && digits.length <= 15) return digits
+    return ""
+}
+
+function buildWhatsAppScoreUrl(registration: Pick<AdminRegistration, "name" | "phone">, entry: AdminEntry) {
+    const phone = normalizeWhatsAppPhone(registration.phone)
+    if (!phone || !isEntryScored(entry)) return ""
+
+    const message = [
+        `Hi ${registration.name}, your score for ${entry.categoryCode} - ${entry.categoryLabel} has been uploaded.`,
+        `Total: ${formatScore(entry.totalScore, getRuleSet(entry))}, 10x: ${entry.innerTenCount}.`,
+        `View your live category ranking here: ${RESULTS_URL}`,
+    ].join(" ")
+
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
 }
 
 function academyLabel(value: string) {
@@ -1115,7 +1136,7 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
 
             <div className="mb-8 space-y-4">
                 {registration.entries.map((entry) => (
-                    <ScoreRow key={entry.id} entry={entry} adminPin={adminPin} onChanged={onChanged} />
+                    <ScoreRow key={entry.id} registration={registration} entry={entry} adminPin={adminPin} onChanged={onChanged} />
                 ))}
             </div>
 
@@ -1504,13 +1525,24 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
     )
 }
 
-function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin: string; onChanged: () => void }) {
+function ScoreRow({
+    registration,
+    entry,
+    adminPin,
+    onChanged,
+}: {
+    registration: Pick<AdminRegistration, "name" | "phone">
+    entry: AdminEntry
+    adminPin: string
+    onChanged: () => void
+}) {
     const ruleSet = getRuleSet(entry)
     const seriesCount = getScoringSeriesCount(ruleSet, entry)
     const initialSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
+    const savedScore = isEntryScored(entry)
     const maxInnerTenCount = seriesCount * 10
     const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
-    const [innerTenCount, setInnerTenCount] = React.useState(isEntryScored(entry) ? String(entry.innerTenCount) : "")
+    const [innerTenCount, setInnerTenCount] = React.useState(savedScore ? String(entry.innerTenCount) : "")
     const [saving, setSaving] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
@@ -1525,6 +1557,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
     const liveInnerTens = validInnerTenCount ? Number(innerTenCount) : entry.innerTenCount
     const complete = validSeriesScores.length === seriesCount && validInnerTenCount
+    const whatsappUrl = buildWhatsAppScoreUrl(registration, entry)
 
     React.useEffect(() => {
         const currentSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
@@ -1614,6 +1647,23 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                         {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         Delete Person
                     </button>
+                    {savedScore && (
+                        whatsappUrl ? (
+                            <a
+                                href={whatsappUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 text-sm font-bold text-emerald-100 transition hover:border-emerald-300"
+                            >
+                                <MessageCircle className="h-4 w-4" />
+                                Send WhatsApp
+                            </a>
+                        ) : (
+                            <span className="inline-flex h-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] px-3 text-sm font-bold text-white/35">
+                                WhatsApp unavailable
+                            </span>
+                        )
+                    )}
                 </div>
             </div>
 
