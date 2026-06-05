@@ -29,7 +29,13 @@ function getConfiguredCoachCodes() {
     const rawCodes = process.env.COACH_PAYMENT_CODES
     if (!rawCodes) return individualCodes
 
-    const parsed = JSON.parse(rawCodes) as unknown
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(rawCodes)
+    } catch {
+        return individualCodes
+    }
+
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return {
             ...individualCodes,
