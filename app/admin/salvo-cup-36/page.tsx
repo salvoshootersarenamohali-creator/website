@@ -2,8 +2,23 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
-import { formatCurrency, getSeriesCount, getShotCount, LITTLE_CHAMP_ENTRY_FEE, SHOTS_PER_SERIES, slotOptions } from "@/lib/competition"
+import { BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
+import {
+    CategoryOption,
+    Gender,
+    SelectedEntry,
+    competitionEvents,
+    formatCurrency,
+    getAgeFromDobYear,
+    getEligibleCategories,
+    getEntryFee,
+    getEventById,
+    getSeriesCount,
+    getShotCount,
+    LITTLE_CHAMP_ENTRY_FEE,
+    SHOTS_PER_SERIES,
+    slotOptions,
+} from "@/lib/competition"
 import {
     buildDetailSchedule,
     defaultDetailLanes,
@@ -110,6 +125,10 @@ function getRuleSet(entry: AdminEntry) {
 
 function isEntryScored(entry: AdminEntry) {
     return Array.isArray(entry.shotScores) && entry.shotScores.length === getShotCount(getRuleSet(entry))
+}
+
+function entryKey(entry: Pick<AdminEntry, "eventId" | "categoryCode"> | SelectedEntry) {
+    return `${entry.eventId}:${entry.categoryCode}`
 }
 
 function isValidShotText(value: string) {
@@ -993,10 +1012,12 @@ function ResultsView({
 function RegistrationDetail({ registration, adminPin, onChanged }: { registration: AdminRegistration; adminPin: string; onChanged: () => void }) {
     const [deleting, setDeleting] = React.useState(false)
     const [deleteError, setDeleteError] = React.useState("")
+    const [editing, setEditing] = React.useState(false)
 
     React.useEffect(() => {
         setDeleting(false)
         setDeleteError("")
+        setEditing(false)
     }, [registration.id])
 
     const deleteRegistration = async () => {
@@ -1030,6 +1051,10 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                     <p className="mt-2 text-sm text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
+                    <button onClick={() => setEditing((current) => !current)} className="admin-button">
+                        {editing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                        {editing ? "Close Edit" : "Edit"}
+                    </button>
                     <button
                         onClick={deleteRegistration}
                         disabled={deleting}
@@ -1045,6 +1070,18 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                 </div>
             </div>
             {deleteError && <p className="mb-6 text-sm text-red-300">{deleteError}</p>}
+
+            {editing && (
+                <RegistrationEditForm
+                    registration={registration}
+                    adminPin={adminPin}
+                    onCancel={() => setEditing(false)}
+                    onChanged={() => {
+                        setEditing(false)
+                        onChanged()
+                    }}
+                />
+            )}
 
             <div className="mb-6 grid gap-3 md:grid-cols-4">
                 <Stat label="Amount" value={formatCurrency(registration.amount)} />
@@ -1101,6 +1138,288 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                 <PrintableCard registration={registration} variant="competitor" />
                 <div className="salvo-section-divider" />
                 <PrintableCard registration={registration} variant="office" />
+            </div>
+        </div>
+    )
+}
+
+type RegistrationEditFormState = {
+    name: string
+    academy: string
+    gender: "" | Gender
+    dateOfBirth: string
+    phone: string
+    preferredDate: string
+    preferredSlot: string
+    paymentMode: PaymentMode
+    paymentStatus: PaymentStatus
+    utrNumber: string
+}
+
+function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: { registration: AdminRegistration; adminPin: string; onCancel: () => void; onChanged: () => void }) {
+    const [form, setForm] = React.useState<RegistrationEditFormState>(() => ({
+        name: registration.name,
+        academy: registration.academy,
+        gender: registration.gender === "male" || registration.gender === "female" ? registration.gender : "",
+        dateOfBirth: dateOnly(registration.dateOfBirth),
+        phone: registration.phone,
+        preferredDate: dateOnly(registration.preferredDate),
+        preferredSlot: registration.preferredSlot,
+        paymentMode: registration.paymentMode,
+        paymentStatus: registration.paymentStatus,
+        utrNumber: registration.utrNumber ?? "",
+    }))
+    const [entries, setEntries] = React.useState<SelectedEntry[]>(() => registration.entries.map((entry) => ({
+        eventId: entry.eventId,
+        categoryCode: entry.categoryCode,
+    })))
+    const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(() => {
+        const firstEvent = getEventById(registration.entries[0]?.eventId ?? "")
+        return firstEvent?.ruleSet ?? null
+    })
+    const [saving, setSaving] = React.useState(false)
+    const [error, setError] = React.useState("")
+
+    const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth) : null
+    const selectedEvents = entries.map((entry) => getEventById(entry.eventId)).filter(Boolean)
+    const selectedDiscipline = selectedEvents[0]?.discipline
+    const selectedSlots = React.useMemo(
+        () => slotOptions.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
+        [form.preferredDate]
+    )
+    const categoriesByEvent = React.useMemo(() => {
+        const map = new Map<string, CategoryOption[]>()
+        for (const event of competitionEvents) {
+            map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender) : [])
+        }
+        return map
+    }, [age, form.gender])
+    const invalidEntries = entries.filter((entry) => {
+        const categories = categoriesByEvent.get(entry.eventId) ?? []
+        return !categories.some((category) => category.code === entry.categoryCode)
+    })
+    const removedScoredEntries = registration.entries.filter((entry) =>
+        !entries.some((selectedEntry) => entryKey(selectedEntry) === entryKey(entry)) && isEntryScored(entry)
+    )
+    const amount = entries.reduce((sum, entry) => {
+        const categories = categoriesByEvent.get(entry.eventId) ?? []
+        const category = categories.find((item) => item.code === entry.categoryCode)
+        return sum + (category ? getEntryFee(category) : 0)
+    }, 0)
+    const isOnlinePaid = form.paymentMode === "upi" && form.paymentStatus === "Paid"
+
+    React.useEffect(() => {
+        if (!selectedSlots.includes(form.preferredSlot)) {
+            setForm((current) => ({ ...current, preferredSlot: selectedSlots[0] ?? "" }))
+        }
+    }, [form.preferredSlot, selectedSlots])
+
+    const isEntrySelected = (eventId: string, categoryCode: string) =>
+        entries.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
+
+    const canUseEvent = (eventId: string) => {
+        const event = getEventById(eventId)
+        if (!event) return false
+        if (selectedDiscipline && event.discipline !== selectedDiscipline) return false
+        if (selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
+        return true
+    }
+
+    const toggleEntry = (eventId: string, categoryCode: string) => {
+        setError("")
+        const event = getEventById(eventId)
+        if (!event || !canUseEvent(eventId)) return
+
+        setEntries((current) => {
+            const exists = current.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
+            if (exists) {
+                const next = current.filter((entry) => !(entry.eventId === eventId && entry.categoryCode === categoryCode))
+                if (!next.length) setSelectionStartedWith(null)
+                return next
+            }
+            if (!current.length) setSelectionStartedWith(event.ruleSet)
+            return [...current, { eventId, categoryCode }]
+        })
+    }
+
+    const save = async (allowScoredEntryRemoval = false) => {
+        setError("")
+        if (!form.gender) {
+            setError("Select gender before saving.")
+            return
+        }
+        if (!entries.length) {
+            setError("Select at least one event category.")
+            return
+        }
+        if (invalidEntries.length) {
+            setError("Remove or replace categories that are no longer eligible for this shooter.")
+            return
+        }
+        if (isOnlinePaid && !/^\d{12}$/.test(form.utrNumber)) {
+            setError("Online paid registrations require a 12-digit UTR number.")
+            return
+        }
+        if (removedScoredEntries.length && !allowScoredEntryRemoval) {
+            const labels = removedScoredEntries.map((entry) => `${entry.categoryCode} - ${entry.categoryLabel}`).join("\n")
+            const confirmed = window.confirm(`This edit will permanently delete scored entries:\n\n${labels}\n\nContinue?`)
+            if (!confirmed) return
+            await save(true)
+            return
+        }
+
+        setSaving(true)
+        try {
+            const response = await fetch(`/api/admin/registrations/${registration.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                body: JSON.stringify({ ...form, entries, allowScoredEntryRemoval }),
+            })
+            const data = await readResponseJson(response)
+            if (response.status === 409 && data.scoredEntryRemovalRequired === true) {
+                const confirmed = window.confirm("This edit removes entries that already have scores. Continue and delete those scores?")
+                if (confirmed) await save(true)
+                return
+            }
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to update registration.")
+            onChanged()
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : "Unable to update registration.")
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    return (
+        <div className="mb-6 rounded-lg border border-[#D4AF37]/25 bg-[#D4AF37]/[0.06] p-5">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p className="font-bold text-[#E5C558]">Edit Registration</p>
+                    <p className="mt-1 text-sm text-white/55">Changes update cards, exports, stats, details, and result views after save.</p>
+                </div>
+                <p className="text-right text-sm font-bold text-[#D4AF37]">{formatCurrency(amount)}</p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Full Name</span>
+                    <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="field" />
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Academy</span>
+                    <input value={form.academy} onChange={(event) => setForm({ ...form, academy: event.target.value })} className="field" />
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Gender</span>
+                    <select value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as "" | Gender })} className="field">
+                        <option value="">Select gender</option>
+                        <option value="male">Male / Boy</option>
+                        <option value="female">Female / Girl</option>
+                    </select>
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Date of Birth</span>
+                    <input type="date" value={form.dateOfBirth} onChange={(event) => setForm({ ...form, dateOfBirth: event.target.value })} className="field" />
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Phone</span>
+                    <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Competition Date</span>
+                    <select value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
+                        {slotOptions.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
+                    </select>
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Time Slot</span>
+                    <select value={form.preferredSlot} onChange={(event) => setForm({ ...form, preferredSlot: event.target.value })} className="field">
+                        {selectedSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                    </select>
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Payment Mode</span>
+                    <select value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value as PaymentMode })} className="field">
+                        <option value="cash">Cash</option>
+                        <option value="upi">Online</option>
+                    </select>
+                </label>
+                <label>
+                    <span className="mb-2 block text-sm font-semibold text-white/70">Payment Status</span>
+                    <select value={form.paymentStatus} onChange={(event) => setForm({ ...form, paymentStatus: event.target.value as PaymentStatus })} className="field">
+                        <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Sponsored">Sponsored</option>
+                    </select>
+                </label>
+                {isOnlinePaid && (
+                    <label>
+                        <span className="mb-2 block text-sm font-semibold text-white/70">12-digit UTR</span>
+                        <input
+                            value={form.utrNumber}
+                            onChange={(event) => setForm({ ...form, utrNumber: event.target.value.replace(/\D/g, "").slice(0, 12) })}
+                            className="field"
+                            inputMode="numeric"
+                        />
+                    </label>
+                )}
+            </div>
+
+            <div className="mt-5 space-y-4">
+                {competitionEvents.map((event) => {
+                    const categories = categoriesByEvent.get(event.id) ?? []
+                    const disabled = !canUseEvent(event.id)
+                    return (
+                        <div key={event.id} className={`rounded-md border p-4 ${disabled ? "border-white/5 bg-black/20 opacity-45" : "border-white/10 bg-black/25"}`}>
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                <p className="font-bold">{event.title}</p>
+                                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#D4AF37]">{event.ruleSet} {event.discipline}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {!form.gender || age === null ? (
+                                    <p className="text-sm text-white/45">Enter gender and date of birth to unlock eligible categories.</p>
+                                ) : categories.length ? categories.map((category) => (
+                                    <button
+                                        key={category.code}
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() => toggleEntry(event.id, category.code)}
+                                        className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60"}`}
+                                    >
+                                        <span className="block font-bold">{category.code}</span>
+                                        <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
+                                        <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category))}</span>
+                                    </button>
+                                )) : (
+                                    <p className="text-sm text-white/45">No eligible categories for this event.</p>
+                                )}
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            {invalidEntries.length > 0 && (
+                <p className="mt-4 rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">
+                    Some selected categories are no longer eligible after the current gender or DOB change.
+                </p>
+            )}
+            {removedScoredEntries.length > 0 && (
+                <p className="mt-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
+                    Saving will remove {removedScoredEntries.length} scored entry{removedScoredEntries.length === 1 ? "" : "ies"} after confirmation.
+                </p>
+            )}
+            {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+
+            <div className="mt-5 flex flex-wrap gap-3">
+                <button onClick={() => save()} disabled={saving} className="admin-button gold disabled:opacity-60">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+                    {saving ? "Saving..." : "Save Changes"}
+                </button>
+                <button onClick={onCancel} disabled={saving} className="admin-button disabled:opacity-60">
+                    <X className="h-4 w-4" />
+                    Cancel
+                </button>
             </div>
         </div>
     )
