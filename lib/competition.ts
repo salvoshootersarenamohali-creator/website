@@ -94,7 +94,7 @@ export function getBaseBracket(age: number): AgeBracket | null {
     if (age >= 19) return "junior"
     if (age >= 16) return "youth"
     if (age >= 12) return "sub-youth"
-    if (age >= 10) return "little-standing"
+    if (age >= 0) return "little-standing"
     return null
 }
 
