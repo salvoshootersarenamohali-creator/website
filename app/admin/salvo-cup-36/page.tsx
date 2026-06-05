@@ -991,6 +991,36 @@ function ResultsView({
 }
 
 function RegistrationDetail({ registration, adminPin, onChanged }: { registration: AdminRegistration; adminPin: string; onChanged: () => void }) {
+    const [deleting, setDeleting] = React.useState(false)
+    const [deleteError, setDeleteError] = React.useState("")
+
+    React.useEffect(() => {
+        setDeleting(false)
+        setDeleteError("")
+    }, [registration.id])
+
+    const deleteRegistration = async () => {
+        const entryText = registration.entries.length === 1 ? "1 entry" : `${registration.entries.length} entries`
+        const confirmed = window.confirm(`Delete this person and all their entries from the database?\n\nThis removes ${registration.name} and ${entryText}.`)
+        if (!confirmed) return
+
+        setDeleting(true)
+        setDeleteError("")
+        try {
+            const response = await fetch(`/api/admin/registrations/${registration.id}`, {
+                method: "DELETE",
+                headers: { "x-admin-pin": adminPin },
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete registration.")
+            onChanged()
+        } catch (deleteError) {
+            setDeleteError(deleteError instanceof Error ? deleteError.message : "Unable to delete registration.")
+        } finally {
+            setDeleting(false)
+        }
+    }
+
     return (
         <div>
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -999,11 +1029,22 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                     <p className="text-white/55">{registration.academy} | {registration.phone}</p>
                     <p className="mt-2 text-sm text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
                 </div>
-                <button onClick={() => window.print()} className="admin-button gold">
-                    <Printer className="h-4 w-4" />
-                    Print Card
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                        onClick={deleteRegistration}
+                        disabled={deleting}
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-4 font-bold text-red-200 transition hover:border-red-300 disabled:opacity-60"
+                    >
+                        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Delete Person
+                    </button>
+                    <button onClick={() => window.print()} className="admin-button gold">
+                        <Printer className="h-4 w-4" />
+                        Print Card
+                    </button>
+                </div>
             </div>
+            {deleteError && <p className="mb-6 text-sm text-red-300">{deleteError}</p>}
 
             <div className="mb-6 grid gap-3 md:grid-cols-4">
                 <Stat label="Amount" value={formatCurrency(registration.amount)} />
@@ -1025,6 +1066,23 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
             {registration.paymentStatus === "Pending" && (
                 <PaymentConfirmation registrationId={registration.id} adminPin={adminPin} onChanged={onChanged} />
             )}
+
+            <div className="mb-6 rounded-md border border-red-400/20 bg-red-500/[0.06] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p className="font-bold text-red-100">Registration Action</p>
+                        <p className="mt-1 text-sm text-white/50">Delete this person from registrations, cards, and results.</p>
+                    </div>
+                    <button
+                        onClick={deleteRegistration}
+                        disabled={deleting}
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-500/15 px-4 font-bold text-red-100 transition hover:border-red-300 disabled:opacity-60"
+                    >
+                        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Delete Person
+                    </button>
+                </div>
+            </div>
 
             <div className="mb-8 space-y-4">
                 {registration.entries.map((entry) => (
