@@ -28,6 +28,14 @@ import {
     getLaneType,
     RuleSet,
 } from "@/lib/details"
+import {
+    categorySortValue,
+    formatScore,
+    getRuleSet,
+    getSeriesInnerTenCounts,
+    isEntryScored,
+    rankRows,
+} from "@/lib/results"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 type PaymentMode = "cash" | "upi"
@@ -88,11 +96,6 @@ function dateOnly(value: string) {
     return value.slice(0, 10)
 }
 
-function categorySortValue(code: string) {
-    const match = code.match(/^([A-Za-z]+)-(\d+)$/)
-    return match ? `${match[1]}-${match[2].padStart(4, "0")}` : code
-}
-
 function paymentBadgeClass(status: PaymentStatus) {
     if (status === "Paid") return "bg-emerald-500/15 text-emerald-200"
     if (status === "Sponsored") return "bg-sky-500/15 text-sky-200"
@@ -114,19 +117,6 @@ async function readResponseJson(response: Response) {
     }
 }
 
-function formatScore(score: number | null | undefined, ruleSet: "NR" | "ISSF" = "ISSF") {
-    if (typeof score !== "number") return "-"
-    return ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
-}
-
-function getRuleSet(entry: AdminEntry) {
-    return entry.ruleSet === "ISSF" ? "ISSF" : "NR"
-}
-
-function isEntryScored(entry: AdminEntry) {
-    return Array.isArray(entry.seriesScores) && entry.seriesScores.length === getScoringSeriesCount(getRuleSet(entry), entry)
-}
-
 function entryKey(entry: Pick<AdminEntry, "eventId" | "categoryCode"> | SelectedEntry) {
     return `${entry.eventId}:${entry.categoryCode}`
 }
@@ -143,10 +133,6 @@ function isValidSeriesTenText(value: string) {
     const text = value.trim()
     const count = Number(text)
     return Boolean(text) && /^\d{1,2}$/.test(text) && Number.isInteger(count) && count >= 0 && count <= 10
-}
-
-function getSeriesInnerTenCounts(entry: AdminEntry) {
-    return Array.isArray(entry.seriesInnerTenCounts) ? entry.seriesInnerTenCounts : []
 }
 
 function academyLabel(value: string) {
@@ -1687,50 +1673,6 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
             </div>
         </div>
     )
-}
-
-function rankRows(rows: Omit<ResultRow, "rank">[]): ResultRow[] {
-    const compareSeriesInnerTens = (a: AdminEntry, b: AdminEntry) => {
-        const aCounts = getSeriesInnerTenCounts(a)
-        const bCounts = getSeriesInnerTenCounts(b)
-        const count = Math.max(aCounts.length, bCounts.length)
-        for (let index = count - 1; index >= 0; index -= 1) {
-            const diff = (bCounts[index] ?? 0) - (aCounts[index] ?? 0)
-            if (diff !== 0) return diff
-        }
-        return 0
-    }
-    const hasSameSeriesInnerTens = (a: AdminEntry, b: AdminEntry) => compareSeriesInnerTens(a, b) === 0
-
-    const sorted = [...rows].sort((a, b) => {
-        const aScored = isEntryScored(a.entry)
-        const bScored = isEntryScored(b.entry)
-        if (aScored !== bScored) return aScored ? -1 : 1
-        if (!aScored || !bScored) return a.registration.name.localeCompare(b.registration.name)
-        if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
-        if (a.entry.innerTenCount !== b.entry.innerTenCount) return b.entry.innerTenCount - a.entry.innerTenCount
-        const seriesInnerTenDiff = compareSeriesInnerTens(a.entry, b.entry)
-        if (seriesInnerTenDiff !== 0) return seriesInnerTenDiff
-        const ageDiff = new Date(b.registration.dateOfBirth).getTime() - new Date(a.registration.dateOfBirth).getTime()
-        if (ageDiff !== 0) return ageDiff
-        return a.registration.name.localeCompare(b.registration.name)
-    })
-
-    let previous: Omit<ResultRow, "rank"> | null = null
-    let previousRank = 0
-    return sorted.map((row, index) => {
-        if (!isEntryScored(row.entry)) return { ...row, rank: null }
-        const sameTie = previous
-            && isEntryScored(previous.entry)
-            && previous.entry.totalScore === row.entry.totalScore
-            && previous.entry.innerTenCount === row.entry.innerTenCount
-            && hasSameSeriesInnerTens(previous.entry, row.entry)
-            && previous.registration.dateOfBirth === row.registration.dateOfBirth
-        const rank = sameTie ? previousRank : index + 1
-        previous = row
-        previousRank = rank
-        return { ...row, rank }
-    })
 }
 
 function buildRangeRows(registrations: AdminRegistration[]) {

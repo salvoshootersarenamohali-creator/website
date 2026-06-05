@@ -12,6 +12,7 @@ const navigation = [
     { name: "Courses", href: "/courses" },
     { name: "Technique", href: "/technique" },
     { name: "Coaching", href: "/coaching" },
+    { name: "Results", href: "/results" },
     { name: "Corporate", href: "/corporate" },
     { name: "Shop", href: "/shop" },
     { name: "Facilities", href: "/facilities" },
@@ -51,7 +52,7 @@ export function Header() {
                 </Link>
 
                 {/* Desktop Navigation */}
-                <nav className="hidden md:flex items-center gap-8">
+                <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
                     {navigation.map((item) => (
                         <Link
                             key={item.name}
@@ -69,7 +70,7 @@ export function Header() {
                 {/* Mobile Navigation */}
                 <Sheet>
                     <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="md:hidden text-white hover:text-primary">
+                        <Button variant="ghost" size="icon" className="lg:hidden text-white hover:text-primary">
                             <Menu className="h-6 w-6" />
                             <span className="sr-only">Toggle menu</span>
                         </Button>
