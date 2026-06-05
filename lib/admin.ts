@@ -19,21 +19,33 @@ export function isCoachName(value: string): value is CoachName {
 }
 
 function getConfiguredCoachCodes() {
+    const individualCodes = Object.fromEntries(
+        coachNames.flatMap((coachName) => {
+            const envName = `COACH_CODE_${coachName.toUpperCase()}`
+            const code = process.env[envName]?.trim()
+            return code ? [[coachName, code]] : []
+        })
+    )
     const rawCodes = process.env.COACH_PAYMENT_CODES
-    if (!rawCodes) return {}
+    if (!rawCodes) return individualCodes
 
     const parsed = JSON.parse(rawCodes) as unknown
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return Object.fromEntries(
+        return {
+            ...individualCodes,
+            ...Object.fromEntries(
             Object.entries(parsed as Record<string, unknown>).map(([name, code]) => [
                 name.trim().toLowerCase(),
                 String(code ?? "").trim(),
             ])
-        )
+            ),
+        }
     }
 
     if (Array.isArray(parsed)) {
-        return Object.fromEntries(parsed.flatMap((item, index) => {
+        return {
+            ...individualCodes,
+            ...Object.fromEntries(parsed.flatMap((item, index) => {
             if (typeof item === "string" || typeof item === "number") {
                 const coachName = coachNames[index]
                 return coachName ? [[coachName, String(item).trim()]] : []
@@ -47,10 +59,11 @@ function getConfiguredCoachCodes() {
             }
 
             return []
-        }))
+            })),
+        }
     }
 
-    return {}
+    return individualCodes
 }
 
 export function isValidCoachCode(coachName: string, coachCode: string) {
