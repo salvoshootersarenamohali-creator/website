@@ -49,11 +49,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
 
         const seriesInnerTenCounts: number[] = []
-        for (const count of rawSeriesInnerTenCounts) {
+        for (const [index, count] of rawSeriesInnerTenCounts.entries()) {
             const text = String(count).trim()
             const value = Number(text)
             if (!/^\d{1,2}$/.test(text) || !Number.isInteger(value) || value < 0 || value > 10) {
-                return Response.json({ error: "Each series 10x count must be a whole number from 0 to 10." }, { status: 400 })
+                return Response.json({ error: `Series ${index + 1} 10x count must be a whole number from 0 to 10.` }, { status: 400 })
             }
             seriesInnerTenCounts.push(value)
         }

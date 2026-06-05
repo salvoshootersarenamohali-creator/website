@@ -1533,6 +1533,14 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     const parsedSeriesInnerTens = seriesInnerTenCounts.map((count) => Number(count))
     const validSeriesScores = parsedSeriesScores.filter((score, index) => isValidSeriesTotalText(seriesScores[index], ruleSet) && Number.isFinite(score))
     const validSeriesInnerTens = parsedSeriesInnerTens.filter((count, index) => isValidSeriesTenText(seriesInnerTenCounts[index]) && Number.isFinite(count))
+    const invalidSeriesScoreIndexes = seriesScores
+        .map((score, index) => ({ score, index }))
+        .filter(({ score }) => score.trim() && !isValidSeriesTotalText(score, ruleSet))
+        .map(({ index }) => index)
+    const invalidSeriesInnerTenIndexes = seriesInnerTenCounts
+        .map((count, index) => ({ count, index }))
+        .filter(({ count }) => count.trim() && !isValidSeriesTenText(count))
+        .map(({ index }) => index)
     const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
     const liveInnerTens = validSeriesInnerTens.reduce((sum, count) => sum + count, 0)
     const complete = validSeriesScores.length === seriesCount && validSeriesInnerTens.length === seriesCount
@@ -1560,7 +1568,15 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
     const save = async () => {
         if (!complete) {
             const totalText = ruleSet === "ISSF" ? "0.0 to 109.0 with at most one decimal" : "0 to 100 as whole numbers"
-            setError(`Enter all ${seriesCount} series totals (${totalText}) and 10x counts from 0 to 10.`)
+            const invalidScore = invalidSeriesScoreIndexes[0]
+            const invalidInnerTen = invalidSeriesInnerTenIndexes[0]
+            if (invalidScore !== undefined) {
+                setError(`Series ${invalidScore + 1} total must be ${totalText}.`)
+            } else if (invalidInnerTen !== undefined) {
+                setError(`Series ${invalidInnerTen + 1} 10x must be a whole number from 0 to 10. Enter total 10x across the match by splitting it per series.`)
+            } else {
+                setError(`Enter all ${seriesCount} series totals (${totalText}) and 10x counts from 0 to 10.`)
+            }
             return
         }
 
@@ -1614,7 +1630,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                     <div className="grid grid-cols-3 gap-2 text-right">
                         <MiniCount label="Total" value={complete ? formatScore(liveTotal, ruleSet) : formatScore(entry.totalScore, ruleSet)} />
                         <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />
-                        <MiniCount label="Series" value={`${Math.min(validSeriesScores.length, validSeriesInnerTens.length)}/${seriesCount}`} />
+                        <MiniCount label="Scores" value={`${validSeriesScores.length}/${seriesCount}`} />
                     </div>
                     <button
                         onClick={deleteEntry}
@@ -1639,7 +1655,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                                 <input
                                     value={seriesScores[seriesIndex]}
                                     onChange={(event) => updateSeriesScore(seriesIndex, event.target.value)}
-                                    className="field px-3 py-2 text-center"
+                                    className={`field px-3 py-2 text-center ${invalidSeriesScoreIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
                                     inputMode={ruleSet === "ISSF" ? "decimal" : "numeric"}
                                     placeholder={ruleSet === "ISSF" ? "103.4" : "95"}
                                 />
@@ -1649,7 +1665,7 @@ function ScoreRow({ entry, adminPin, onChanged }: { entry: AdminEntry; adminPin:
                                 <input
                                     value={seriesInnerTenCounts[seriesIndex]}
                                     onChange={(event) => updateSeriesInnerTenCount(seriesIndex, event.target.value)}
-                                    className="field px-3 py-2 text-center"
+                                    className={`field px-3 py-2 text-center ${invalidSeriesInnerTenIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
                                     inputMode="numeric"
                                     placeholder="0"
                                 />
