@@ -75,7 +75,7 @@ type AdminRegistration = {
     entries: AdminEntry[]
 }
 
-type AdminView = "stats" | "registrations" | "results" | "details"
+type AdminView = "stats" | "registrations" | "results" | "top-students" | "details"
 
 type ResultRow = {
     registration: AdminRegistration
@@ -86,6 +86,12 @@ type ResultRow = {
 type DuplicateGroup = {
     registration: AdminRegistration
     entries: AdminEntry[]
+}
+
+type CombinedLeaderboard = {
+    title: string
+    rangeLabel: string
+    rows: ResultRow[]
 }
 
 const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
@@ -157,6 +163,13 @@ function buildWhatsAppScoreUrl(registration: Pick<AdminRegistration, "name" | "p
 
 function academyLabel(value: string) {
     return value.trim() || "Unassigned Range"
+}
+
+function isCategoryInNumberRange(code: string, prefix: "S" | "R", min: number, max: number) {
+    const match = code.trim().toUpperCase().match(/^([SR])-(\d+)$/)
+    if (!match || match[1] !== prefix) return false
+    const number = Number(match[2])
+    return Number.isInteger(number) && number >= min && number <= max
 }
 
 function getDuplicateGroups(registrations: AdminRegistration[]) {
@@ -388,6 +401,10 @@ export default function SalvoCupAdminPage() {
                                 <Medal className="h-4 w-4" />
                                 Results
                             </button>
+                            <button onClick={() => setView("top-students")} className={`admin-button ${view === "top-students" ? "gold" : ""}`}>
+                                <Trophy className="h-4 w-4" />
+                                Top Students
+                            </button>
                             <button onClick={() => setView("details")} className={`admin-button ${view === "details" ? "gold" : ""}`}>
                                 <CalendarDays className="h-4 w-4" />
                                 Details
@@ -405,6 +422,8 @@ export default function SalvoCupAdminPage() {
                                 selectedCategories={selectedCategories}
                                 onSelectedCategoriesChange={setSelectedCategories}
                             />
+                        ) : view === "top-students" ? (
+                            <TopStudentsView registrations={registrations} />
                         ) : view === "details" ? (
                             <DetailsView registrations={registrations} adminPin={activePin} />
                         ) : (
@@ -1019,6 +1038,100 @@ function ResultsView({
                 )}
             </div>
         </section>
+    )
+}
+
+function TopStudentsView({ registrations }: { registrations: AdminRegistration[] }) {
+    const leaderboards = React.useMemo<CombinedLeaderboard[]>(() => {
+        const buildLeaderboard = (title: string, rangeLabel: string, prefix: "S" | "R", max: number) => {
+            const rows = registrations.flatMap((registration) =>
+                registration.entries
+                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, 1, max))
+                    .filter(isEntryScored)
+                    .map((entry) => ({ registration, entry }))
+            )
+
+            return {
+                title,
+                rangeLabel,
+                rows: rankRows(rows),
+            }
+        }
+
+        return [
+            buildLeaderboard("Pistol Top Students", "Combined S-01 to S-10", "S", 10),
+            buildLeaderboard("Rifle Top Students", "Combined R-01 to R-08", "R", 8),
+        ]
+    }, [registrations])
+
+    return (
+        <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h2 className="text-2xl font-black">Top Students</h2>
+                    <p className="mt-1 text-sm text-white/50">Combined ranked lists for scored S-01 to S-10 pistol entries and R-01 to R-08 rifle entries.</p>
+                </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+                {leaderboards.map((leaderboard) => (
+                    <CombinedLeaderboardPanel key={leaderboard.title} leaderboard={leaderboard} />
+                ))}
+            </div>
+        </section>
+    )
+}
+
+function CombinedLeaderboardPanel({ leaderboard }: { leaderboard: CombinedLeaderboard }) {
+    return (
+        <div className="overflow-hidden rounded-md border border-white/10 bg-white/[0.03]">
+            <div className="border-b border-white/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 className="font-black text-[#D4AF37]">{leaderboard.title}</h3>
+                        <p className="mt-1 text-xs text-white/45">{leaderboard.rangeLabel}</p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2 text-right">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Scored</p>
+                        <p className="mt-1 font-black">{leaderboard.rows.length}</p>
+                    </div>
+                </div>
+            </div>
+
+            {leaderboard.rows.length ? (
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-left text-sm">
+                        <thead className="text-xs uppercase tracking-[0.16em] text-white/40">
+                            <tr className="border-b border-white/10">
+                                <th className="px-4 py-3">Rank</th>
+                                <th className="px-4 py-3">Student</th>
+                                <th className="px-4 py-3">Academy/Range</th>
+                                <th className="px-4 py-3">Category</th>
+                                <th className="px-4 py-3 text-right">10x</th>
+                                <th className="px-4 py-3 text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {leaderboard.rows.map((row) => (
+                                <tr key={row.entry.id} className="border-b border-white/5 last:border-0">
+                                    <td className="px-4 py-3 font-bold">{row.rank ?? "-"}</td>
+                                    <td className="px-4 py-3 font-bold">{row.registration.name}</td>
+                                    <td className="px-4 py-3 text-white/65">{row.registration.academy}</td>
+                                    <td className="px-4 py-3 text-white/65">
+                                        <span className="font-bold text-white/85">{row.entry.categoryCode}</span>
+                                        <span className="ml-2">{row.entry.eventTitle}</span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-bold">{row.entry.innerTenCount}</td>
+                                    <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{formatScore(row.entry.totalScore, getRuleSet(row.entry))}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            ) : (
+                <p className="p-6 text-sm text-white/50">No scored entries found for this combined category range.</p>
+            )}
+        </div>
     )
 }
 
