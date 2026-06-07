@@ -423,6 +423,7 @@ export default function SalvoCupAdminPage() {
                                 categoryOptions={categoryOptions}
                                 selectedCategories={selectedCategories}
                                 onSelectedCategoriesChange={setSelectedCategories}
+                                adminPin={activePin}
                             />
                         ) : view === "top-students" ? (
                             <TopStudentsView registrations={registrations} />
@@ -937,12 +938,16 @@ function ResultsView({
     categoryOptions,
     selectedCategories,
     onSelectedCategoriesChange,
+    adminPin,
 }: {
     registrations: AdminRegistration[]
     categoryOptions: { code: string; label: string }[]
     selectedCategories: string[]
     onSelectedCategoriesChange: (categories: string[]) => void
+    adminPin: string
 }) {
+    const [downloadState, setDownloadState] = React.useState<"idle" | "saving">("idle")
+    const [message, setMessage] = React.useState("")
     const selectedSet = React.useMemo(() => new Set(selectedCategories), [selectedCategories])
     const groupedResults = React.useMemo(() => {
         const groups = new Map<string, { label: string; rows: Omit<ResultRow, "rank">[] }>()
@@ -971,6 +976,30 @@ function ResultsView({
         )
     }
 
+    const downloadCategoryResults = async () => {
+        setDownloadState("saving")
+        setMessage("")
+        try {
+            const response = await fetch("/api/admin/results/export", { headers: { "x-admin-pin": adminPin } })
+            if (!response.ok) {
+                const data = await readResponseJson(response)
+                throw new Error(typeof data.error === "string" ? data.error : "Category results export failed.")
+            }
+
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement("a")
+            link.href = url
+            link.download = "36th-salvo-cup-category-results.xlsx"
+            link.click()
+            URL.revokeObjectURL(url)
+        } catch (downloadError) {
+            setMessage(downloadError instanceof Error ? downloadError.message : "Category results export failed.")
+        } finally {
+            setDownloadState("idle")
+        }
+    }
+
     return (
         <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -978,7 +1007,11 @@ function ResultsView({
                     <h2 className="text-2xl font-black">Category Results</h2>
                     <p className="mt-1 text-sm text-white/50">Ranks use total, total 10x, then series totals from last series backward.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                    <button onClick={downloadCategoryResults} disabled={downloadState === "saving"} className="admin-button disabled:opacity-50">
+                        {downloadState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                        Excel
+                    </button>
                     <button onClick={() => onSelectedCategoriesChange(categoryOptions.map((category) => category.code))} className="admin-button">
                         Select All
                     </button>
@@ -987,6 +1020,8 @@ function ResultsView({
                     </button>
                 </div>
             </div>
+
+            {message && <p className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{message}</p>}
 
             <div className="mb-6 flex max-h-44 flex-wrap gap-2 overflow-auto rounded-md border border-white/10 bg-black/25 p-3">
                 {categoryOptions.map((category) => (
