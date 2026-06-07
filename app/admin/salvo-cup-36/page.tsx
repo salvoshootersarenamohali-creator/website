@@ -1045,10 +1045,10 @@ function ResultsView({
 
 function TopStudentsView({ registrations }: { registrations: AdminRegistration[] }) {
     const leaderboards = React.useMemo<CombinedLeaderboard[]>(() => {
-        const buildLeaderboard = (title: string, rangeLabel: string, prefix: "S" | "R", max: number) => {
+        const buildLeaderboard = (title: string, rangeLabel: string, prefix: "S" | "R", min: number, max: number) => {
             const rows = registrations.flatMap((registration) =>
                 registration.entries
-                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, 1, max))
+                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, min, max))
                     .filter(isEntryScored)
                     .map((entry) => ({ registration, entry }))
             )
@@ -1061,8 +1061,10 @@ function TopStudentsView({ registrations }: { registrations: AdminRegistration[]
         }
 
         return [
-            buildLeaderboard("Pistol Top Students", "Combined S-01 to S-10", "S", 10),
-            buildLeaderboard("Rifle Top Students", "Combined R-01 to R-08", "R", 8),
+            buildLeaderboard("ISSF Pistol Top Students", "Combined S-01 to S-10", "S", 1, 10),
+            buildLeaderboard("ISSF Rifle Top Students", "Combined R-01 to R-08", "R", 1, 8),
+            buildLeaderboard("NR Pistol Top Students", "Combined S-11 to S-24", "S", 11, 24),
+            buildLeaderboard("NR Rifle Top Students", "Combined R-11 to R-24", "R", 11, 24),
         ]
     }, [registrations])
 
@@ -1071,7 +1073,7 @@ function TopStudentsView({ registrations }: { registrations: AdminRegistration[]
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black">Top Students</h2>
-                    <p className="mt-1 text-sm text-white/50">Combined ranked lists for scored S-01 to S-10 pistol entries and R-01 to R-08 rifle entries.</p>
+                    <p className="mt-1 text-sm text-white/50">Combined ranked lists for scored ISSF and NR pistol/rifle category ranges.</p>
                 </div>
             </div>
 

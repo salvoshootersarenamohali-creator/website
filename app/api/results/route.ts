@@ -106,10 +106,10 @@ export async function GET() {
                 }
             })
 
-        const buildTopStudentGroup = (title: string, rangeLabel: string, prefix: "S" | "R", max: number) => {
+        const buildTopStudentGroup = (title: string, rangeLabel: string, prefix: "S" | "R", min: number, max: number) => {
             const rows = registrations.flatMap((registration) =>
                 registration.entries
-                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, 1, max))
+                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, min, max))
                     .filter(isEntryScored)
                     .map((entry) => ({
                         registration: {
@@ -128,8 +128,10 @@ export async function GET() {
         }
 
         const topStudents = [
-            buildTopStudentGroup("Pistol Top Students", "Combined S-01 to S-10", "S", 10),
-            buildTopStudentGroup("Rifle Top Students", "Combined R-01 to R-08", "R", 8),
+            buildTopStudentGroup("ISSF Pistol Top Students", "Combined S-01 to S-10", "S", 1, 10),
+            buildTopStudentGroup("ISSF Rifle Top Students", "Combined R-01 to R-08", "R", 1, 8),
+            buildTopStudentGroup("NR Pistol Top Students", "Combined S-11 to S-24", "S", 11, 24),
+            buildTopStudentGroup("NR Rifle Top Students", "Combined R-11 to R-24", "R", 11, 24),
         ]
 
         return Response.json({
