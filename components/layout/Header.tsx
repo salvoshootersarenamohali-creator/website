@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
@@ -21,6 +22,7 @@ const navigation = [
 
 export function Header() {
     const [isScrolled, setIsScrolled] = React.useState(false)
+    const pathname = usePathname()
 
     React.useEffect(() => {
         const handleScroll = () => {
@@ -29,6 +31,8 @@ export function Header() {
         window.addEventListener("scroll", handleScroll)
         return () => window.removeEventListener("scroll", handleScroll)
     }, [])
+
+    if (pathname === "/results/tv") return null
 
     return (
         <header

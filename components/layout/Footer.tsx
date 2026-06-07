@@ -1,7 +1,14 @@
+"use client"
+
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Crosshair, Facebook, Instagram, Twitter, Mail, MapPin, Phone } from "lucide-react"
 
 export function Footer() {
+    const pathname = usePathname()
+
+    if (pathname === "/results/tv") return null
+
     return (
         <footer className="bg-black border-t border-white/10 pt-16 pb-8">
             <div className="container mx-auto px-4">
