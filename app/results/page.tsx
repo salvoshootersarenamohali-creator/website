@@ -29,6 +29,12 @@ type ResultCategory = {
     rows: ResultRow[]
 }
 
+type TopStudentGroup = {
+    title: string
+    rangeLabel: string
+    rows: ResultRow[]
+}
+
 type ResultsPayload = {
     generatedAt: string
     summary: {
@@ -37,6 +43,7 @@ type ResultsPayload = {
         scored: number
     }
     categories: ResultCategory[]
+    topStudents: TopStudentGroup[]
 }
 
 async function readResponseJson(response: Response) {
@@ -126,6 +133,7 @@ export default function ResultsPage() {
             }))
             .filter((category) => category.rows.length > 0 || !text)
     }, [categories, query, selectedCategory])
+    const topStudents = React.useMemo(() => payload?.topStudents ?? [], [payload])
 
     const scoredPercent = payload && payload.summary.entries > 0
         ? Math.round((payload.summary.scored / payload.summary.entries) * 100)
@@ -245,21 +253,111 @@ export default function ResultsPage() {
                             <p className="font-bold">Results are unavailable right now.</p>
                             <p className="mt-1 text-sm text-red-100/75">{error}</p>
                         </div>
-                    ) : visibleCategories.length ? (
-                        <div className="space-y-6">
-                            {visibleCategories.map((category) => (
-                                <CategoryResults key={category.code} category={category} />
-                            ))}
-                        </div>
                     ) : (
-                        <div className="rounded-lg border border-white/10 bg-neutral-950 p-8 text-center">
-                            <BarChart3 className="mx-auto h-8 w-8 text-white/35" />
-                            <p className="mt-3 font-bold">No matching results found.</p>
-                            <p className="mt-1 text-sm text-white/50">Try another name, academy, event, or category.</p>
+                        <div className="space-y-6">
+                            <TopStudentsSection groups={topStudents} />
+                            {visibleCategories.length ? (
+                                visibleCategories.map((category) => (
+                                    <CategoryResults key={category.code} category={category} />
+                                ))
+                            ) : (
+                                <div className="rounded-lg border border-white/10 bg-neutral-950 p-8 text-center">
+                                    <BarChart3 className="mx-auto h-8 w-8 text-white/35" />
+                                    <p className="mt-3 font-bold">No matching results found.</p>
+                                    <p className="mt-1 text-sm text-white/50">Try another name, academy, event, or category.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
             </section>
+        </div>
+    )
+}
+
+function TopStudentsSection({ groups }: { groups: TopStudentGroup[] }) {
+    if (!groups.length) return null
+
+    return (
+        <section className="rounded-lg border border-[#D4AF37]/25 bg-[linear-gradient(135deg,rgba(212,175,55,0.12),rgba(255,255,255,0.025))] p-4 sm:p-5">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#D4AF37]">
+                        <Trophy className="h-3.5 w-3.5" />
+                        Top Students
+                    </div>
+                    <h2 className="mt-3 text-2xl font-black">Combined Leaderboards</h2>
+                    <p className="mt-1 text-sm text-white/55">Highest scored students across the combined pistol and rifle category ranges.</p>
+                </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+                {groups.map((group) => (
+                    <TopStudentsPanel key={group.title} group={group} />
+                ))}
+            </div>
+        </section>
+    )
+}
+
+function TopStudentsPanel({ group }: { group: TopStudentGroup }) {
+    const topRows = group.rows.slice(0, 10)
+
+    return (
+        <div className="overflow-hidden rounded-lg border border-white/10 bg-black/35">
+            <div className="border-b border-white/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h3 className="font-black text-[#D4AF37]">{group.title}</h3>
+                        <p className="mt-1 text-xs text-white/45">{group.rangeLabel}</p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-right">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Scored</p>
+                        <p className="mt-1 font-black">{group.rows.length}</p>
+                    </div>
+                </div>
+            </div>
+
+            {topRows.length ? (
+                <div>
+                    <div className="grid gap-3 p-3 md:hidden">
+                        {topRows.map((row) => (
+                            <MobileResultCard key={row.id} row={row} />
+                        ))}
+                    </div>
+                    <div className="hidden overflow-x-auto md:block">
+                        <table className="w-full min-w-[720px] text-left text-sm">
+                            <thead className="text-xs uppercase tracking-[0.16em] text-white/40">
+                                <tr className="border-b border-white/10">
+                                    <th className="px-4 py-3">Rank</th>
+                                    <th className="px-4 py-3">Student</th>
+                                    <th className="px-4 py-3">Academy/Range</th>
+                                    <th className="px-4 py-3">Category</th>
+                                    <th className="px-4 py-3 text-right">10x</th>
+                                    <th className="px-4 py-3 text-right">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {topRows.map((row) => (
+                                    <tr key={row.id} className="border-b border-white/5 last:border-0">
+                                        <td className="px-4 py-3"><RankPill rank={row.rank} /></td>
+                                        <td className="px-4 py-3 font-bold">{row.shooterName}</td>
+                                        <td className="px-4 py-3 text-white/65">{row.academy}</td>
+                                        <td className="px-4 py-3 text-white/65">
+                                            <span className="font-bold text-white/85">{row.categoryCode}</span>
+                                            <span className="ml-2">{row.eventTitle}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold">{row.innerTenCount}</td>
+                                        <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.displayTotal}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
+                <p className="p-6 text-sm text-white/50">No scored entries found for this combined category range.</p>
+            )}
         </div>
     )
 }

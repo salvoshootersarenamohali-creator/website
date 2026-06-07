@@ -3,6 +3,13 @@ import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntrySco
 
 export const dynamic = "force-dynamic"
 
+function isCategoryInNumberRange(code: string, prefix: "S" | "R", min: number, max: number) {
+    const match = code.trim().toUpperCase().match(/^([SR])-(\d+)$/)
+    if (!match || match[1] !== prefix) return false
+    const number = Number(match[2])
+    return Number.isInteger(number) && number >= min && number <= max
+}
+
 export async function GET() {
     try {
         const registrations = await prisma.registration.findMany({
@@ -57,6 +64,34 @@ export async function GET() {
             })
         })
 
+        const formatRow = (row: {
+            rank: number | null
+            registration: {
+                name: string
+                academy: string
+            }
+            entry: typeof registrations[number]["entries"][number]
+        }) => {
+            const ruleSet = getRuleSet(row.entry)
+            const seriesScores = getSeriesScores(row.entry)
+            return {
+                id: row.entry.id,
+                rank: row.rank,
+                shooterName: row.registration.name,
+                academy: row.registration.academy,
+                eventId: row.entry.eventId,
+                eventTitle: row.entry.eventTitle,
+                categoryCode: row.entry.categoryCode,
+                categoryLabel: row.entry.categoryLabel,
+                ruleSet,
+                scored: isEntryScored(row.entry),
+                seriesScores,
+                innerTenCount: row.entry.innerTenCount,
+                totalScore: row.entry.totalScore,
+                displayTotal: formatScore(row.entry.totalScore, ruleSet),
+            }
+        }
+
         const categories = Array.from(groups.values())
             .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
             .map((category) => {
@@ -67,28 +102,35 @@ export async function GET() {
                     label: category.label,
                     entryCount: rows.length,
                     scoredCount,
-                    rows: rows.map((row) => {
-                        const ruleSet = getRuleSet(row.entry)
-                        const seriesScores = getSeriesScores(row.entry)
-                        return {
-                            id: row.entry.id,
-                            rank: row.rank,
-                            shooterName: row.registration.name,
-                            academy: row.registration.academy,
-                            eventId: row.entry.eventId,
-                            eventTitle: row.entry.eventTitle,
-                            categoryCode: row.entry.categoryCode,
-                            categoryLabel: row.entry.categoryLabel,
-                            ruleSet,
-                            scored: isEntryScored(row.entry),
-                            seriesScores,
-                            innerTenCount: row.entry.innerTenCount,
-                            totalScore: row.entry.totalScore,
-                            displayTotal: formatScore(row.entry.totalScore, ruleSet),
-                        }
-                    }),
+                    rows: rows.map(formatRow),
                 }
             })
+
+        const buildTopStudentGroup = (title: string, rangeLabel: string, prefix: "S" | "R", max: number) => {
+            const rows = registrations.flatMap((registration) =>
+                registration.entries
+                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, 1, max))
+                    .filter(isEntryScored)
+                    .map((entry) => ({
+                        registration: {
+                            name: registration.name,
+                            academy: registration.academy,
+                        },
+                        entry,
+                    }))
+            )
+
+            return {
+                title,
+                rangeLabel,
+                rows: rankRows(rows).map(formatRow),
+            }
+        }
+
+        const topStudents = [
+            buildTopStudentGroup("Pistol Top Students", "Combined S-01 to S-10", "S", 10),
+            buildTopStudentGroup("Rifle Top Students", "Combined R-01 to R-08", "R", 8),
+        ]
 
         return Response.json({
             generatedAt: new Date().toISOString(),
@@ -98,6 +140,7 @@ export async function GET() {
                 scored: categories.reduce((sum, category) => sum + category.scoredCount, 0),
             },
             categories,
+            topStudents,
         })
     } catch (error) {
         console.error("Unable to load public results", error)
