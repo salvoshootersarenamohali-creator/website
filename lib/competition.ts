@@ -160,8 +160,6 @@ export function buildCategoryCode(discipline: Discipline, ruleSet: RuleSet, brac
             youth: 5,
             "sub-youth": 7,
             master: 9,
-            "little-standing": 25,
-            "little-sitting": 27,
         }
         number = (map[bracket] ?? 0) + genderOffset
     } else {
