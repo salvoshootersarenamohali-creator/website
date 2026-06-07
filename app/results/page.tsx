@@ -4,6 +4,8 @@ import * as React from "react"
 import { AlertCircle, BarChart3, CheckCircle2, Clock3, Loader2, Medal, RefreshCw, Search, Trophy } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+type ResultsTab = "regular" | "para"
+
 type ResultRow = {
     id: string
     rank: number | null
@@ -19,6 +21,7 @@ type ResultRow = {
     innerTenCount: number
     totalScore: number | null
     displayTotal: string
+    isPara: boolean
 }
 
 type ResultCategory = {
@@ -41,8 +44,12 @@ type ResultsPayload = {
         categories: number
         entries: number
         scored: number
+        paraCategories: number
+        paraEntries: number
+        paraScored: number
     }
     categories: ResultCategory[]
+    paraCategories: ResultCategory[]
     topStudents: TopStudentGroup[]
 }
 
@@ -89,6 +96,7 @@ export default function ResultsPage() {
     const [payload, setPayload] = React.useState<ResultsPayload | null>(null)
     const [query, setQuery] = React.useState("")
     const [selectedCategory, setSelectedCategory] = React.useState("all")
+    const [activeTab, setActiveTab] = React.useState<ResultsTab>("regular")
     const [isLoading, setIsLoading] = React.useState(true)
     const [isRefreshing, setIsRefreshing] = React.useState(false)
     const [error, setError] = React.useState("")
@@ -117,7 +125,10 @@ export default function ResultsPage() {
         return () => window.clearInterval(timer)
     }, [loadResults])
 
-    const categories = React.useMemo(() => payload?.categories ?? [], [payload])
+    const categories = React.useMemo(
+        () => activeTab === "para" ? payload?.paraCategories ?? [] : payload?.categories ?? [],
+        [activeTab, payload]
+    )
     const visibleCategories = React.useMemo(() => {
         const text = query.trim().toLowerCase()
         return categories
@@ -134,9 +145,19 @@ export default function ResultsPage() {
             .filter((category) => category.rows.length > 0 || !text)
     }, [categories, query, selectedCategory])
     const topStudents = React.useMemo(() => payload?.topStudents ?? [], [payload])
+    const activeSummary = React.useMemo(() => {
+        if (!payload) return { categories: 0, entries: 0, scored: 0 }
+        return activeTab === "para"
+            ? { categories: payload.summary.paraCategories, entries: payload.summary.paraEntries, scored: payload.summary.paraScored }
+            : { categories: payload.summary.categories, entries: payload.summary.entries, scored: payload.summary.scored }
+    }, [activeTab, payload])
 
-    const scoredPercent = payload && payload.summary.entries > 0
-        ? Math.round((payload.summary.scored / payload.summary.entries) * 100)
+    React.useEffect(() => {
+        setSelectedCategory("all")
+    }, [activeTab])
+
+    const scoredPercent = activeSummary.entries > 0
+        ? Math.round((activeSummary.scored / activeSummary.entries) * 100)
         : 0
 
     return (
@@ -177,8 +198,8 @@ export default function ResultsPage() {
                                 </button>
                             </div>
                             <div className="grid grid-cols-3 gap-2">
-                                <SummaryStat label="Categories" value={payload?.summary.categories ?? 0} />
-                                <SummaryStat label="Entries" value={payload?.summary.entries ?? 0} />
+                                <SummaryStat label="Categories" value={activeSummary.categories} />
+                                <SummaryStat label="Entries" value={activeSummary.entries} />
                                 <SummaryStat label="Scored" value={`${scoredPercent}%`} />
                             </div>
                             {payload?.generatedAt && (
@@ -194,6 +215,21 @@ export default function ResultsPage() {
 
             <section className="px-4 py-6">
                 <div className="container mx-auto">
+                    <div className="mb-5 inline-flex max-w-full overflow-hidden rounded-lg border border-white/10 bg-neutral-950 p-1">
+                        <ResultsTabButton
+                            active={activeTab === "regular"}
+                            label="Results"
+                            count={payload?.summary.entries ?? 0}
+                            onClick={() => setActiveTab("regular")}
+                        />
+                        <ResultsTabButton
+                            active={activeTab === "para"}
+                            label="Para Results"
+                            count={payload?.summary.paraEntries ?? 0}
+                            onClick={() => setActiveTab("para")}
+                        />
+                    </div>
+
                     <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_280px]">
                         <label className="relative">
                             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
@@ -222,7 +258,7 @@ export default function ResultsPage() {
                             )}
                         >
                             <span className="block font-bold">All</span>
-                            <span className="block text-xs opacity-75">{payload?.summary.entries ?? 0} entries</span>
+                            <span className="block text-xs opacity-75">{activeSummary.entries} entries</span>
                         </button>
                         {categories.map((category) => (
                             <button
@@ -255,7 +291,7 @@ export default function ResultsPage() {
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            <TopStudentsSection groups={topStudents} />
+                            {activeTab === "regular" && <TopStudentsSection groups={topStudents} />}
                             {visibleCategories.length ? (
                                 visibleCategories.map((category) => (
                                     <CategoryResults key={category.code} category={category} />
@@ -263,8 +299,10 @@ export default function ResultsPage() {
                             ) : (
                                 <div className="rounded-lg border border-white/10 bg-neutral-950 p-8 text-center">
                                     <BarChart3 className="mx-auto h-8 w-8 text-white/35" />
-                                    <p className="mt-3 font-bold">No matching results found.</p>
-                                    <p className="mt-1 text-sm text-white/50">Try another name, academy, event, or category.</p>
+                                    <p className="mt-3 font-bold">{activeTab === "para" && !categories.length ? "No para results available yet." : "No matching results found."}</p>
+                                    <p className="mt-1 text-sm text-white/50">
+                                        {activeTab === "para" && !categories.length ? "Para entries will appear here once they are marked and scored." : "Try another name, academy, event, or category."}
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -272,6 +310,21 @@ export default function ResultsPage() {
                 </div>
             </section>
         </div>
+    )
+}
+
+function ResultsTabButton({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+                "h-11 rounded-md px-4 text-sm font-black transition",
+                active ? "bg-[#D4AF37] text-black" : "text-white/65 hover:bg-white/[0.06] hover:text-white"
+            )}
+        >
+            {label} <span className="font-semibold opacity-75">({count})</span>
+        </button>
     )
 }
 

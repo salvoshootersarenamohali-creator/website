@@ -29,39 +29,10 @@ export async function GET() {
                         seriesScores: true,
                         innerTenCount: true,
                         totalScore: true,
+                        isPara: true,
                     },
                 },
             },
-        })
-
-        const groups = new Map<string, {
-            code: string
-            label: string
-            rows: {
-                registration: {
-                    name: string
-                    academy: string
-                }
-                entry: typeof registrations[number]["entries"][number]
-            }[]
-        }>()
-
-        registrations.forEach((registration) => {
-            registration.entries.forEach((entry) => {
-                const group = groups.get(entry.categoryCode) ?? {
-                    code: entry.categoryCode,
-                    label: entry.categoryLabel,
-                    rows: [],
-                }
-                group.rows.push({
-                    registration: {
-                        name: registration.name,
-                        academy: registration.academy,
-                    },
-                    entry,
-                })
-                groups.set(entry.categoryCode, group)
-            })
         })
 
         const formatRow = (row: {
@@ -89,26 +60,65 @@ export async function GET() {
                 innerTenCount: row.entry.innerTenCount,
                 totalScore: row.entry.totalScore,
                 displayTotal: formatScore(row.entry.totalScore, ruleSet),
+                isPara: row.entry.isPara,
             }
         }
 
-        const categories = Array.from(groups.values())
-            .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
-            .map((category) => {
-                const rows = rankRows(category.rows)
-                const scoredCount = rows.filter((row) => isEntryScored(row.entry)).length
-                return {
-                    code: category.code,
-                    label: category.label,
-                    entryCount: rows.length,
-                    scoredCount,
-                    rows: rows.map(formatRow),
-                }
+        const buildCategories = (isPara: boolean) => {
+            const groups = new Map<string, {
+                code: string
+                label: string
+                rows: {
+                    registration: {
+                        name: string
+                        academy: string
+                    }
+                    entry: typeof registrations[number]["entries"][number]
+                }[]
+            }>()
+
+            registrations.forEach((registration) => {
+                registration.entries
+                    .filter((entry) => entry.isPara === isPara)
+                    .forEach((entry) => {
+                        const group = groups.get(entry.categoryCode) ?? {
+                            code: entry.categoryCode,
+                            label: entry.categoryLabel,
+                            rows: [],
+                        }
+                        group.rows.push({
+                            registration: {
+                                name: registration.name,
+                                academy: registration.academy,
+                            },
+                            entry,
+                        })
+                        groups.set(entry.categoryCode, group)
+                    })
             })
+
+            return Array.from(groups.values())
+                .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
+                .map((category) => {
+                    const rows = rankRows(category.rows)
+                    const scoredCount = rows.filter((row) => isEntryScored(row.entry)).length
+                    return {
+                        code: category.code,
+                        label: category.label,
+                        entryCount: rows.length,
+                        scoredCount,
+                        rows: rows.map(formatRow),
+                    }
+                })
+        }
+
+        const categories = buildCategories(false)
+        const paraCategories = buildCategories(true)
 
         const buildTopStudentGroup = (title: string, rangeLabel: string, prefix: "S" | "R", min: number, max: number) => {
             const rows = registrations.flatMap((registration) =>
                 registration.entries
+                    .filter((entry) => !entry.isPara)
                     .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, min, max))
                     .filter(isEntryScored)
                     .map((entry) => ({
@@ -140,8 +150,12 @@ export async function GET() {
                 categories: categories.length,
                 entries: categories.reduce((sum, category) => sum + category.entryCount, 0),
                 scored: categories.reduce((sum, category) => sum + category.scoredCount, 0),
+                paraCategories: paraCategories.length,
+                paraEntries: paraCategories.reduce((sum, category) => sum + category.entryCount, 0),
+                paraScored: paraCategories.reduce((sum, category) => sum + category.scoredCount, 0),
             },
             categories,
+            paraCategories,
             topStudents,
         })
     } catch (error) {
