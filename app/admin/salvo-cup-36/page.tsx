@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
+import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
 import {
     CategoryOption,
     Gender,
@@ -53,6 +53,7 @@ type AdminEntry = {
     seriesInnerTenCounts: number[] | null
     innerTenCount: number
     totalScore: number | null
+    isPara: boolean
 }
 
 type AdminRegistration = {
@@ -207,6 +208,7 @@ function buildDemoEntry(index: number, entry: Pick<AdminEntry, "eventId" | "even
         seriesInnerTenCounts,
         innerTenCount: seriesInnerTenCounts.reduce((sum, count) => sum + count, 0),
         totalScore: Number(seriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0)),
+        isPara: index % 5 === 0,
     }
 }
 
@@ -1657,6 +1659,7 @@ function ScoreRow({
     const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
     const [innerTenCount, setInnerTenCount] = React.useState(savedScore ? String(entry.innerTenCount) : "")
     const [saving, setSaving] = React.useState(false)
+    const [markingPara, setMarkingPara] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
     const parsedSeriesScores = seriesScores.map((score) => Number(score))
@@ -1718,6 +1721,25 @@ function ScoreRow({
         }
     }
 
+    const togglePara = async () => {
+        setMarkingPara(true)
+        setError("")
+        try {
+            const response = await fetch(`/api/admin/entries/${entry.id}/para`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                body: JSON.stringify({ isPara: !entry.isPara }),
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to update para entry status.")
+            onChanged()
+        } catch (paraError) {
+            setError(paraError instanceof Error ? paraError.message : "Unable to update para entry status.")
+        } finally {
+            setMarkingPara(false)
+        }
+    }
+
     const deleteEntry = async () => {
         const confirmed = window.confirm(`Delete this person and all their entries from the database?\n\nThis removes ${entry.categoryCode} - ${entry.categoryLabel} and any other entries under the same registration.`)
         if (!confirmed) return
@@ -1743,7 +1765,15 @@ function ScoreRow({
         <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <p className="font-bold">{entry.categoryCode} - {entry.categoryLabel}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-bold">{entry.categoryCode} - {entry.categoryLabel}</p>
+                        {entry.isPara && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/35 bg-sky-400/10 px-2 py-0.5 text-xs font-bold text-sky-100">
+                                <Accessibility className="h-3.5 w-3.5" />
+                                Para
+                            </span>
+                        )}
+                    </div>
                     <p className="text-sm text-white/45">{entry.ruleSet} | {seriesCount} series | enter series totals and total 10x</p>
                 </div>
                 <div className="flex flex-wrap items-start justify-end gap-2">
@@ -1753,8 +1783,16 @@ function ScoreRow({
                         <MiniCount label="Scores" value={`${validSeriesScores.length}/${seriesCount}`} />
                     </div>
                     <button
+                        onClick={togglePara}
+                        disabled={saving || deleting || markingPara}
+                        className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-sm font-bold transition disabled:opacity-60 ${entry.isPara ? "border-sky-300/45 bg-sky-400/15 text-sky-100 hover:border-sky-200" : "border-white/10 bg-white/[0.04] text-white/75 hover:border-sky-300/50 hover:text-sky-100"}`}
+                    >
+                        {markingPara ? <Loader2 className="h-4 w-4 animate-spin" /> : <Accessibility className="h-4 w-4" />}
+                        {entry.isPara ? "Para Entry" : "Mark Para"}
+                    </button>
+                    <button
                         onClick={deleteEntry}
-                        disabled={saving || deleting}
+                        disabled={saving || deleting || markingPara}
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:border-red-300 disabled:opacity-60"
                     >
                         {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -1814,7 +1852,7 @@ function ScoreRow({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button onClick={save} disabled={saving || deleting} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
+                <button onClick={save} disabled={saving || deleting || markingPara} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
                     {saving ? "Saving..." : "Save Score"}
                 </button>
                 {error ? (

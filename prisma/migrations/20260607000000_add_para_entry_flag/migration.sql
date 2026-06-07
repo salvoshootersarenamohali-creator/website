@@ -1,0 +1,2 @@
+ALTER TABLE "RegistrationEntry"
+ADD COLUMN "isPara" BOOLEAN NOT NULL DEFAULT false;

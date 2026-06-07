@@ -47,6 +47,7 @@ model RegistrationEntry {
   seriesInnerTenCounts Json?
   innerTenCount  Int          @default(0)
   totalScore     Float?
+  isPara         Boolean      @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
