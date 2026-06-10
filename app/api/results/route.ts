@@ -1,3 +1,5 @@
+import { NextRequest } from "next/server"
+import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntryScored, rankRows } from "@/lib/results"
 
@@ -10,9 +12,16 @@ function isCategoryInNumberRange(code: string, prefix: "S" | "R", min: number, m
     return Number.isInteger(number) && number >= min && number <= max
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
+        const slug = getCompetitionSlugFromRequest(request)
+        const competition = await getCompetitionBySlugOrActive(slug)
+        if (!competition || !competition.isPublished || (!competition.resultsPublished && !competition.registrationOpen)) {
+            return Response.json({ error: "Results are not available for this competition." }, { status: 404 })
+        }
+
         const registrations = await prisma.registration.findMany({
+            where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
             select: {
                 name: true,
@@ -145,6 +154,7 @@ export async function GET() {
         ]
 
         return Response.json({
+            competition: serializeCompetition(competition),
             generatedAt: new Date().toISOString(),
             summary: {
                 categories: categories.length,

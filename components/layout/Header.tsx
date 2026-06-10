@@ -13,6 +13,7 @@ const navigation = [
     { name: "Courses", href: "/courses" },
     { name: "Technique", href: "/technique" },
     { name: "Coaching", href: "/coaching" },
+    { name: "Competitions", href: "/competitions" },
     { name: "Results", href: "/results" },
     { name: "Corporate", href: "/corporate" },
     { name: "Shop", href: "/shop" },
@@ -32,7 +33,7 @@ export function Header() {
         return () => window.removeEventListener("scroll", handleScroll)
     }, [])
 
-    if (pathname === "/results/tv") return null
+    if (pathname === "/results/tv" || /^\/competitions\/[^/]+\/results\/tv\/?$/.test(pathname)) return null
 
     return (
         <header

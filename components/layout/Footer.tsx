@@ -7,7 +7,7 @@ import { Crosshair, Facebook, Instagram, Twitter, Mail, MapPin, Phone } from "lu
 export function Footer() {
     const pathname = usePathname()
 
-    if (pathname === "/results/tv") return null
+    if (pathname === "/results/tv" || /^\/competitions\/[^/]+\/results\/tv\/?$/.test(pathname)) return null
 
     return (
         <footer className="bg-black border-t border-white/10 pt-16 pb-8">

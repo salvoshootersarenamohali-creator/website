@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { Prisma } from "@prisma/client"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
 import { getScoringSeriesCount } from "@/lib/competition"
+import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
 type RouteContext = {
@@ -18,8 +19,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const rawInnerTenCount = body.innerTenCount
         const rawLegacySeriesInnerTenCounts = Array.isArray(body.seriesInnerTenCounts) ? body.seriesInnerTenCounts : []
 
-        const entry = await prisma.registrationEntry.findUnique({ where: { id } })
+        const slug = getCompetitionSlugFromRequest(request)
+        const competition = await getCompetitionBySlugOrActive(slug)
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+
+        const entry = await prisma.registrationEntry.findUnique({
+            where: { id },
+            include: { registration: { select: { competitionId: true } } },
+        })
         if (!entry) return Response.json({ error: "Entry not found." }, { status: 404 })
+        if (entry.registration.competitionId !== competition.id) return Response.json({ error: "Entry not found for this competition." }, { status: 404 })
 
         const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
         const expectedSeries = getScoringSeriesCount(ruleSet, entry)
@@ -94,6 +103,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     try {
         const { id } = await context.params
+        const slug = getCompetitionSlugFromRequest(request)
+        const competition = await getCompetitionBySlugOrActive(slug)
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
         const entry = await prisma.registrationEntry.findUnique({
             where: { id },
             select: {
@@ -102,6 +114,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
                 registration: {
                     select: {
                         id: true,
+                        competitionId: true,
                         name: true,
                         entries: {
                             select: { id: true },
@@ -112,6 +125,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         })
 
         if (!entry) return Response.json({ error: "Entry not found." }, { status: 404 })
+        if (entry.registration.competitionId !== competition.id) return Response.json({ error: "Entry not found for this competition." }, { status: 404 })
 
         await prisma.registration.delete({ where: { id: entry.registrationId } })
 

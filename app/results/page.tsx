@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { AlertCircle, BarChart3, CheckCircle2, Clock3, Loader2, Medal, RefreshCw, Search, Trophy } from "lucide-react"
+import { PublicCompetition } from "@/lib/competition"
 import { cn } from "@/lib/utils"
 
 type ResultsTab = "regular" | "para"
@@ -39,6 +41,7 @@ type TopStudentGroup = {
 }
 
 type ResultsPayload = {
+    competition?: PublicCompetition
     generatedAt: string
     summary: {
         categories: number
@@ -51,6 +54,11 @@ type ResultsPayload = {
     categories: ResultCategory[]
     paraCategories: ResultCategory[]
     topStudents: TopStudentGroup[]
+}
+
+function getCompetitionSlugFromPath(pathname: string) {
+    const match = pathname.match(/^\/competitions\/([^/]+)\/results\/?$/)
+    return match ? decodeURIComponent(match[1]) : null
 }
 
 async function readResponseJson(response: Response) {
@@ -93,6 +101,8 @@ function seriesLabel(row: ResultRow, index: number) {
 }
 
 export default function ResultsPage() {
+    const pathname = usePathname()
+    const competitionSlug = getCompetitionSlugFromPath(pathname)
     const [payload, setPayload] = React.useState<ResultsPayload | null>(null)
     const [query, setQuery] = React.useState("")
     const [selectedCategory, setSelectedCategory] = React.useState("all")
@@ -107,7 +117,16 @@ export default function ResultsPage() {
         setError("")
 
         try {
-            const response = await fetch("/api/results", { cache: "no-store" })
+            if (!competitionSlug) {
+                const activeResponse = await fetch("/api/competitions/active", { cache: "no-store" })
+                const activeData = await readResponseJson(activeResponse)
+                const activeCompetition = (activeData as { competition?: PublicCompetition }).competition
+                if (activeResponse.ok && activeCompetition?.slug) {
+                    window.location.replace(`/competitions/${activeCompetition.slug}/results`)
+                    return
+                }
+            }
+            const response = await fetch(competitionSlug ? `/api/competitions/${competitionSlug}/results` : "/api/results", { cache: "no-store" })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load results.")
             setPayload(data as unknown as ResultsPayload)
@@ -117,7 +136,7 @@ export default function ResultsPage() {
             setIsLoading(false)
             setIsRefreshing(false)
         }
-    }, [])
+    }, [competitionSlug])
 
     React.useEffect(() => {
         loadResults()
@@ -168,7 +187,7 @@ export default function ResultsPage() {
                         <div>
                             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-[#D4AF37]">
                                 <Trophy className="h-3.5 w-3.5" />
-                                36th Salvo Cup
+                                {payload?.competition?.shortTitle ?? "Competition"}
                             </div>
                             <h1 className="max-w-4xl text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
                                 Live Results

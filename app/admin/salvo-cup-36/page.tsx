@@ -2,20 +2,23 @@
 
 import * as React from "react"
 import Image from "next/image"
+import { usePathname, useRouter } from "next/navigation"
 import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
 import {
     CategoryOption,
+    CompetitionConfig,
     Gender,
+    PublicCompetition,
     SelectedEntry,
-    competitionEvents,
+    defaultCompetitionConfig,
     formatCurrency,
     getAgeFromDobYear,
     getEligibleCategories,
     getEntryFee,
     getEventById,
     getScoringSeriesCount,
+    normalizeCompetitionConfig,
     LITTLE_CHAMP_ENTRY_FEE,
-    slotOptions,
 } from "@/lib/competition"
 import {
     buildDetailSchedule,
@@ -97,7 +100,18 @@ type CombinedLeaderboard = {
 
 const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
 const canUseDemoData = process.env.NODE_ENV !== "production"
-const RESULTS_URL = "https://salvoshootersarena.com/results"
+const FALLBACK_COMPETITION_SLUG = "36th-salvo-cup"
+
+function getAdminCompetitionSlug(pathname: string) {
+    const match = pathname.match(/^\/admin\/competitions\/([^/]+)\/?$/)
+    if (match) return decodeURIComponent(match[1])
+    if (pathname === "/admin/salvo-cup-36") return FALLBACK_COMPETITION_SLUG
+    return FALLBACK_COMPETITION_SLUG
+}
+
+function scopedAdminPath(competitionSlug: string, path: string) {
+    return `/api/admin/competitions/${competitionSlug}${path}`
+}
 
 function dateOnly(value: string) {
     return value.slice(0, 10)
@@ -149,14 +163,14 @@ function normalizeWhatsAppPhone(phone: string) {
     return ""
 }
 
-function buildWhatsAppScoreUrl(registration: Pick<AdminRegistration, "name" | "phone">, entry: AdminEntry) {
+function buildWhatsAppScoreUrl(registration: Pick<AdminRegistration, "name" | "phone">, entry: AdminEntry, resultsUrl: string) {
     const phone = normalizeWhatsAppPhone(registration.phone)
     if (!phone || !isEntryScored(entry)) return ""
 
     const message = [
         `Hi ${registration.name}, your score for ${entry.categoryCode} - ${entry.categoryLabel} has been uploaded.`,
         `Total: ${formatScore(entry.totalScore, getRuleSet(entry))}, 10x: ${entry.innerTenCount}.`,
-        `View your live category ranking here: ${RESULTS_URL}`,
+        `View your live category ranking here: ${resultsUrl}`,
     ].join(" ")
 
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
@@ -265,6 +279,10 @@ function buildDemoRegistrations(): AdminRegistration[] {
 }
 
 export default function SalvoCupAdminPage() {
+    const pathname = usePathname()
+    const router = useRouter()
+    const competitionSlug = getAdminCompetitionSlug(pathname)
+    const [competition, setCompetition] = React.useState<PublicCompetition | null>(null)
     const [pin, setPin] = React.useState("")
     const [activePin, setActivePin] = React.useState("")
     const [registrations, setRegistrations] = React.useState<AdminRegistration[]>([])
@@ -275,8 +293,17 @@ export default function SalvoCupAdminPage() {
     const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState("")
+    const competitionConfig = competition?.config ?? defaultCompetitionConfig
+    const competitionTitle = competition?.title ?? "Competition"
+    const filePrefix = competition?.slug ?? competitionSlug
 
     const selected = registrations.find((registration) => registration.id === selectedId) ?? registrations[0]
+
+    React.useEffect(() => {
+        if (pathname === "/admin/salvo-cup-36") {
+            router.replace(`/admin/competitions/${FALLBACK_COMPETITION_SLUG}`)
+        }
+    }, [pathname, router])
 
     const categoryOptions = React.useMemo(() => {
         const categories = new Map<string, string>()
@@ -311,9 +338,13 @@ export default function SalvoCupAdminPage() {
         setIsLoading(true)
         setError("")
         try {
-            const response = await fetch("/api/admin/registrations", { headers: { "x-admin-pin": adminPin } })
+            const response = await fetch(scopedAdminPath(competitionSlug, "/registrations"), { headers: { "x-admin-pin": adminPin } })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load registrations.")
+            if (data.competition && typeof data.competition === "object") {
+                const loaded = data.competition as PublicCompetition
+                setCompetition({ ...loaded, config: normalizeCompetitionConfig(loaded.config) })
+            }
             const nextRegistrations = Array.isArray(data.registrations) ? data.registrations as AdminRegistration[] : []
             setRegistrations(nextRegistrations)
             setSelectedId((current) => current || nextRegistrations[0]?.id || "")
@@ -329,7 +360,7 @@ export default function SalvoCupAdminPage() {
         } finally {
             setIsLoading(false)
         }
-    }, [activePin])
+    }, [activePin, competitionSlug])
 
     const login = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -339,7 +370,7 @@ export default function SalvoCupAdminPage() {
 
     const exportWorkbook = async () => {
         setError("")
-        const response = await fetch("/api/admin/export", { headers: { "x-admin-pin": activePin } })
+        const response = await fetch(scopedAdminPath(competitionSlug, "/export"), { headers: { "x-admin-pin": activePin } })
         if (!response.ok) {
             const data = await readResponseJson(response)
             setError(typeof data.error === "string" ? data.error : "Export failed.")
@@ -349,7 +380,7 @@ export default function SalvoCupAdminPage() {
         const url = URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = "36th-salvo-cup-registrations.xlsx"
+        link.download = `${filePrefix}-registrations.xlsx`
         link.click()
         URL.revokeObjectURL(url)
     }
@@ -363,7 +394,7 @@ export default function SalvoCupAdminPage() {
                             <Trophy className="h-4 w-4" />
                             Coach Desk
                         </p>
-                        <h1 className="mt-2 text-4xl font-black">36th Salvo Cup Admin</h1>
+                        <h1 className="mt-2 text-4xl font-black">{competitionTitle} Admin</h1>
                     </div>
                     {activePin && (
                         <div className="flex gap-3">
@@ -416,7 +447,7 @@ export default function SalvoCupAdminPage() {
                         {error && <p className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
 
                         {view === "stats" ? (
-                            <StatsView registrations={registrations} adminPin={activePin} onChanged={() => loadRegistrations()} />
+                            <StatsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} onChanged={() => loadRegistrations()} />
                         ) : view === "results" ? (
                             <ResultsView
                                 registrations={registrations}
@@ -424,11 +455,12 @@ export default function SalvoCupAdminPage() {
                                 selectedCategories={selectedCategories}
                                 onSelectedCategoriesChange={setSelectedCategories}
                                 adminPin={activePin}
+                                competitionSlug={competitionSlug}
                             />
                         ) : view === "top-students" ? (
                             <TopStudentsView registrations={registrations} />
                         ) : view === "details" ? (
-                            <DetailsView registrations={registrations} adminPin={activePin} />
+                            <DetailsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} />
                         ) : (
                             <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
                                 <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
@@ -480,7 +512,7 @@ export default function SalvoCupAdminPage() {
 
                                 <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
                                     {selected ? (
-                                        <RegistrationDetail registration={selected} adminPin={activePin} onChanged={() => loadRegistrations()} />
+                                        <RegistrationDetail registration={selected} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} onChanged={() => loadRegistrations()} />
                                     ) : (
                                         <p className="text-white/50">No registrations found.</p>
                                     )}
@@ -494,8 +526,20 @@ export default function SalvoCupAdminPage() {
     )
 }
 
-function DetailsView({ registrations, adminPin }: { registrations: AdminRegistration[]; adminPin: string }) {
-    const firstDate = slotOptions[0]?.date ?? new Date().toISOString().slice(0, 10)
+function DetailsView({
+    registrations,
+    adminPin,
+    competitionSlug,
+    competitionTitle,
+    config,
+}: {
+    registrations: AdminRegistration[]
+    adminPin: string
+    competitionSlug: string
+    competitionTitle: string
+    config: CompetitionConfig
+}) {
+    const firstDate = config.slotOptions[0]?.date ?? new Date().toISOString().slice(0, 10)
     const [selectedDate, setSelectedDate] = React.useState(firstDate)
     const [ruleSetMode, setRuleSetMode] = React.useState<"both" | RuleSet>("both")
     const [lanes, setLanes] = React.useState<DetailLaneConfig>(defaultDetailLanes)
@@ -555,7 +599,7 @@ function DetailsView({ registrations, adminPin }: { registrations: AdminRegistra
         setDownloadState("saving")
         setMessage("")
         try {
-            const response = await fetch("/api/admin/details/export", {
+            const response = await fetch(scopedAdminPath(competitionSlug, "/details/export"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
                 body: JSON.stringify(generatedConfig),
@@ -569,7 +613,7 @@ function DetailsView({ registrations, adminPin }: { registrations: AdminRegistra
             const url = URL.createObjectURL(blob)
             const link = document.createElement("a")
             link.href = url
-            link.download = `36th-salvo-cup-details-${generatedConfig.date}.xlsx`
+            link.download = `${competitionSlug}-details-${generatedConfig.date}.xlsx`
             link.click()
             URL.revokeObjectURL(url)
         } catch (downloadError) {
@@ -608,7 +652,7 @@ function DetailsView({ registrations, adminPin }: { registrations: AdminRegistra
                         <label>
                             <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/40">Day</span>
                             <select value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="field">
-                                {slotOptions.map((option) => (
+                                {config.slotOptions.map((option) => (
                                     <option key={option.date} value={option.date}>{option.label}</option>
                                 ))}
                             </select>
@@ -693,7 +737,7 @@ function DetailsView({ registrations, adminPin }: { registrations: AdminRegistra
                 </div>
                 {schedule.details.length ? (
                     <div className="detail-print-stack">
-                        {schedule.details.map((detail) => <PrintableDetailSheet key={detail.id} detail={detail} />)}
+                        {schedule.details.map((detail) => <PrintableDetailSheet key={detail.id} detail={detail} competitionTitle={competitionTitle} />)}
                     </div>
                 ) : (
                     <div className="p-8 text-center text-black/55">Generate detail sheets after choosing a date, lanes, and first sighting time.</div>
@@ -744,10 +788,10 @@ function LaneEditor({
     )
 }
 
-function PrintableDetailSheet({ detail }: { detail: ReturnType<typeof buildDetailSchedule>["details"][number] }) {
+function PrintableDetailSheet({ detail, competitionTitle }: { detail: ReturnType<typeof buildDetailSchedule>["details"][number]; competitionTitle: string }) {
     return (
         <article className="detail-sheet">
-            <h2>36th SALVO CUP</h2>
+            <h2>{competitionTitle.toUpperCase()}</h2>
             <div className="detail-meta-grid">
                 <p><span>DETAIL NO.</span> {detail.detailNumber} ({detail.ruleSet})</p>
                 <p><span>REPORTING TIME:</span> {formatClockLabel(detail.reportingTime)}</p>
@@ -784,7 +828,7 @@ function PrintableDetailSheet({ detail }: { detail: ReturnType<typeof buildDetai
     )
 }
 
-function StatsView({ registrations, adminPin, onChanged }: { registrations: AdminRegistration[]; adminPin: string; onChanged: () => void }) {
+function StatsView({ registrations, adminPin, competitionSlug, onChanged }: { registrations: AdminRegistration[]; adminPin: string; competitionSlug: string; onChanged: () => void }) {
     const [cleanupState, setCleanupState] = React.useState<"idle" | "saving">("idle")
     const [cleanupMessage, setCleanupMessage] = React.useState("")
     const duplicateGroups = React.useMemo(() => getDuplicateGroups(registrations), [registrations])
@@ -806,7 +850,7 @@ function StatsView({ registrations, adminPin, onChanged }: { registrations: Admi
         setCleanupState("saving")
         setCleanupMessage("")
         try {
-            const response = await fetch("/api/admin/entries/duplicates", {
+            const response = await fetch(scopedAdminPath(competitionSlug, "/entries/duplicates"), {
                 method: "POST",
                 headers: { "x-admin-pin": adminPin },
             })
@@ -939,12 +983,14 @@ function ResultsView({
     selectedCategories,
     onSelectedCategoriesChange,
     adminPin,
+    competitionSlug,
 }: {
     registrations: AdminRegistration[]
     categoryOptions: { code: string; label: string }[]
     selectedCategories: string[]
     onSelectedCategoriesChange: (categories: string[]) => void
     adminPin: string
+    competitionSlug: string
 }) {
     const [downloadState, setDownloadState] = React.useState<"idle" | "saving">("idle")
     const [message, setMessage] = React.useState("")
@@ -980,7 +1026,7 @@ function ResultsView({
         setDownloadState("saving")
         setMessage("")
         try {
-            const response = await fetch("/api/admin/results/export", { headers: { "x-admin-pin": adminPin } })
+            const response = await fetch(scopedAdminPath(competitionSlug, "/results/export"), { headers: { "x-admin-pin": adminPin } })
             if (!response.ok) {
                 const data = await readResponseJson(response)
                 throw new Error(typeof data.error === "string" ? data.error : "Category results export failed.")
@@ -990,7 +1036,7 @@ function ResultsView({
             const url = URL.createObjectURL(blob)
             const link = document.createElement("a")
             link.href = url
-            link.download = "36th-salvo-cup-category-results.xlsx"
+            link.download = `${competitionSlug}-category-results.xlsx`
             link.click()
             URL.revokeObjectURL(url)
         } catch (downloadError) {
@@ -1174,7 +1220,21 @@ function CombinedLeaderboardPanel({ leaderboard }: { leaderboard: CombinedLeader
     )
 }
 
-function RegistrationDetail({ registration, adminPin, onChanged }: { registration: AdminRegistration; adminPin: string; onChanged: () => void }) {
+function RegistrationDetail({
+    registration,
+    adminPin,
+    competitionSlug,
+    competitionTitle,
+    config,
+    onChanged,
+}: {
+    registration: AdminRegistration
+    adminPin: string
+    competitionSlug: string
+    competitionTitle: string
+    config: CompetitionConfig
+    onChanged: () => void
+}) {
     const [deleting, setDeleting] = React.useState(false)
     const [deleteError, setDeleteError] = React.useState("")
     const [editing, setEditing] = React.useState(false)
@@ -1193,7 +1253,7 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
         setDeleting(true)
         setDeleteError("")
         try {
-            const response = await fetch(`/api/admin/registrations/${registration.id}`, {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/registrations/${registration.id}`), {
                 method: "DELETE",
                 headers: { "x-admin-pin": adminPin },
             })
@@ -1240,6 +1300,8 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                 <RegistrationEditForm
                     registration={registration}
                     adminPin={adminPin}
+                    competitionSlug={competitionSlug}
+                    config={config}
                     onCancel={() => setEditing(false)}
                     onChanged={() => {
                         setEditing(false)
@@ -1266,7 +1328,7 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
             )}
 
             {registration.paymentStatus === "Pending" && (
-                <PaymentConfirmation registrationId={registration.id} adminPin={adminPin} onChanged={onChanged} />
+                <PaymentConfirmation registrationId={registration.id} adminPin={adminPin} competitionSlug={competitionSlug} onChanged={onChanged} />
             )}
 
             <div className="mb-6 rounded-md border border-red-400/20 bg-red-500/[0.06] p-4">
@@ -1288,7 +1350,7 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
 
             <div className="mb-8 space-y-4">
                 {registration.entries.map((entry) => (
-                    <ScoreRow key={entry.id} registration={registration} entry={entry} adminPin={adminPin} onChanged={onChanged} />
+                    <ScoreRow key={entry.id} registration={registration} entry={entry} adminPin={adminPin} competitionSlug={competitionSlug} onChanged={onChanged} />
                 ))}
             </div>
 
@@ -1297,7 +1359,7 @@ function RegistrationDetail({ registration, adminPin, onChanged }: { registratio
                     <div className="salvo-print-logo-frame">
                         <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={260} height={104} className="salvo-print-logo" />
                     </div>
-                    <h2>36th Salvo Cup Shooting Championship</h2>
+                    <h2>{competitionTitle} Shooting Championship</h2>
                     <h3>COMPETITOR CARD</h3>
                 </div>
                 <PrintableCard registration={registration} variant="competitor" />
@@ -1321,7 +1383,21 @@ type RegistrationEditFormState = {
     utrNumber: string
 }
 
-function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: { registration: AdminRegistration; adminPin: string; onCancel: () => void; onChanged: () => void }) {
+function RegistrationEditForm({
+    registration,
+    adminPin,
+    competitionSlug,
+    config,
+    onCancel,
+    onChanged,
+}: {
+    registration: AdminRegistration
+    adminPin: string
+    competitionSlug: string
+    config: CompetitionConfig
+    onCancel: () => void
+    onChanged: () => void
+}) {
     const [form, setForm] = React.useState<RegistrationEditFormState>(() => ({
         name: registration.name,
         academy: registration.academy,
@@ -1339,26 +1415,26 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
         categoryCode: entry.categoryCode,
     })))
     const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(() => {
-        const firstEvent = getEventById(registration.entries[0]?.eventId ?? "")
+        const firstEvent = getEventById(registration.entries[0]?.eventId ?? "", config)
         return firstEvent?.ruleSet ?? null
     })
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState("")
 
-    const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth) : null
-    const selectedEvents = entries.map((entry) => getEventById(entry.eventId)).filter(Boolean)
+    const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
+    const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
     const selectedDiscipline = selectedEvents[0]?.discipline
     const selectedSlots = React.useMemo(
-        () => slotOptions.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
-        [form.preferredDate]
+        () => config.slotOptions.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
+        [config.slotOptions, form.preferredDate]
     )
     const categoriesByEvent = React.useMemo(() => {
         const map = new Map<string, CategoryOption[]>()
-        for (const event of competitionEvents) {
+        for (const event of config.events) {
             map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender) : [])
         }
         return map
-    }, [age, form.gender])
+    }, [age, config.events, form.gender])
     const invalidEntries = entries.filter((entry) => {
         const categories = categoriesByEvent.get(entry.eventId) ?? []
         return !categories.some((category) => category.code === entry.categoryCode)
@@ -1369,7 +1445,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
     const amount = entries.reduce((sum, entry) => {
         const categories = categoriesByEvent.get(entry.eventId) ?? []
         const category = categories.find((item) => item.code === entry.categoryCode)
-        return sum + (category ? getEntryFee(category) : 0)
+        return sum + (category ? getEntryFee(category, config) : 0)
     }, 0)
     const isOnlinePaid = form.paymentMode === "upi" && form.paymentStatus === "Paid"
 
@@ -1383,7 +1459,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
         entries.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
 
     const canUseEvent = (eventId: string) => {
-        const event = getEventById(eventId)
+        const event = getEventById(eventId, config)
         if (!event) return false
         if (selectedDiscipline && event.discipline !== selectedDiscipline) return false
         if (selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
@@ -1392,7 +1468,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
 
     const toggleEntry = (eventId: string, categoryCode: string) => {
         setError("")
-        const event = getEventById(eventId)
+        const event = getEventById(eventId, config)
         if (!event || !canUseEvent(eventId)) return
 
         setEntries((current) => {
@@ -1435,7 +1511,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
 
         setSaving(true)
         try {
-            const response = await fetch(`/api/admin/registrations/${registration.id}`, {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/registrations/${registration.id}`), {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
                 body: JSON.stringify({ ...form, entries, allowScoredEntryRemoval }),
@@ -1493,7 +1569,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Competition Date</span>
                     <select value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
-                        {slotOptions.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
+                        {config.slotOptions.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
                     </select>
                 </label>
                 <label>
@@ -1531,7 +1607,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
             </div>
 
             <div className="mt-5 space-y-4">
-                {competitionEvents.map((event) => {
+                {config.events.map((event) => {
                     const categories = categoriesByEvent.get(event.id) ?? []
                     const disabled = !canUseEvent(event.id)
                     return (
@@ -1553,7 +1629,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
                                     >
                                         <span className="block font-bold">{category.code}</span>
                                         <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
-                                        <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category))}</span>
+                                        <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
                                     </button>
                                 )) : (
                                     <p className="text-sm text-white/45">No eligible categories for this event.</p>
@@ -1590,7 +1666,7 @@ function RegistrationEditForm({ registration, adminPin, onCancel, onChanged }: {
     )
 }
 
-function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registrationId: string; adminPin: string; onChanged: () => void }) {
+function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onChanged }: { registrationId: string; adminPin: string; competitionSlug: string; onChanged: () => void }) {
     const [coachName, setCoachName] = React.useState(coachNames[0])
     const [coachCode, setCoachCode] = React.useState("")
     const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("cash")
@@ -1604,7 +1680,7 @@ function PaymentConfirmation({ registrationId, adminPin, onChanged }: { registra
         setSavingStatus(paymentStatus)
         setError("")
         try {
-            const response = await fetch(`/api/admin/registrations/${registrationId}/payment`, {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/registrations/${registrationId}/payment`), {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
                 body: JSON.stringify({ coachName, coachCode, paymentStatus, paymentMode, utrNumber }),
@@ -1681,11 +1757,13 @@ function ScoreRow({
     registration,
     entry,
     adminPin,
+    competitionSlug,
     onChanged,
 }: {
     registration: Pick<AdminRegistration, "name" | "phone">
     entry: AdminEntry
     adminPin: string
+    competitionSlug: string
     onChanged: () => void
 }) {
     const ruleSet = getRuleSet(entry)
@@ -1710,7 +1788,8 @@ function ScoreRow({
     const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
     const liveInnerTens = validInnerTenCount ? Number(innerTenCount) : entry.innerTenCount
     const complete = validSeriesScores.length === seriesCount && validInnerTenCount
-    const whatsappUrl = buildWhatsAppScoreUrl(registration, entry)
+    const resultsUrl = typeof window === "undefined" ? `/competitions/${competitionSlug}/results` : `${window.location.origin}/competitions/${competitionSlug}/results`
+    const whatsappUrl = buildWhatsAppScoreUrl(registration, entry, resultsUrl)
 
     React.useEffect(() => {
         const currentSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
@@ -1743,7 +1822,7 @@ function ScoreRow({
         setSaving(true)
         setError("")
         try {
-            const response = await fetch(`/api/admin/entries/${entry.id}/score`, {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/entries/${entry.id}/score`), {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
                 body: JSON.stringify({ seriesScores, innerTenCount }),
@@ -1762,7 +1841,7 @@ function ScoreRow({
         setMarkingPara(true)
         setError("")
         try {
-            const response = await fetch(`/api/admin/entries/${entry.id}/para`, {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/entries/${entry.id}/para`), {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
                 body: JSON.stringify({ isPara: !entry.isPara }),
@@ -1784,7 +1863,7 @@ function ScoreRow({
         setDeleting(true)
         setError("")
         try {
-            const response = await fetch(`/api/admin/entries/${entry.id}/score`, {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/entries/${entry.id}/score`), {
                 method: "DELETE",
                 headers: { "x-admin-pin": adminPin },
             })

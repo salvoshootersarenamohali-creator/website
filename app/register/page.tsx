@@ -2,21 +2,22 @@
 
 import * as React from "react"
 import Image from "next/image"
+import { usePathname } from "next/navigation"
 import { CalendarDays, CheckCircle2, CreditCard, Download, IndianRupee, Loader2, Medal, Printer, Trophy } from "lucide-react"
 import {
     CategoryOption,
-    ENTRY_FEE,
-    LITTLE_CHAMP_ENTRY_FEE,
+    PublicCompetition,
     Gender,
     PaymentMode,
     SelectedEntry,
     buildCategoryLabel,
-    competitionEvents,
+    defaultCompetitionConfig,
     formatCurrency,
     getAgeFromDobYear,
     getEligibleCategories,
     getEntryFee,
     getEventById,
+    normalizeCompetitionConfig,
     slotOptions,
 } from "@/lib/competition"
 
@@ -53,12 +54,22 @@ const initialForm = {
     utrNumber: "",
 }
 
-function formatDateLabel(value: string) {
-    const option = slotOptions.find((slot) => slot.date === value)
+function getCompetitionSlugFromPath(pathname: string) {
+    const match = pathname.match(/^\/competitions\/([^/]+)\/register\/?$/)
+    return match ? decodeURIComponent(match[1]) : null
+}
+
+function formatDateLabel(value: string, competition: PublicCompetition | null) {
+    const option = (competition?.config.slotOptions ?? slotOptions).find((slot) => slot.date === value)
     return option?.label ?? value
 }
 
 export default function RegisterPage() {
+    const pathname = usePathname()
+    const competitionSlug = getCompetitionSlugFromPath(pathname)
+    const [competition, setCompetition] = React.useState<PublicCompetition | null>(null)
+    const [competitionError, setCompetitionError] = React.useState("")
+    const [isCompetitionLoading, setIsCompetitionLoading] = React.useState(true)
     const [form, setForm] = React.useState(initialForm)
     const [entries, setEntries] = React.useState<SelectedEntry[]>([])
     const [paymentScreenshot, setPaymentScreenshot] = React.useState<File | null>(null)
@@ -66,14 +77,51 @@ export default function RegisterPage() {
     const [isSubmitting, setIsSubmitting] = React.useState(false)
     const [registration, setRegistration] = React.useState<SavedRegistration | null>(null)
     const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(null)
+    const config = competition?.config ?? defaultCompetitionConfig
+    const events = config.events
+    const availableSlots = config.slotOptions
 
-    const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth) : null
-    const selectedEvents = entries.map((entry) => getEventById(entry.eventId)).filter(Boolean)
+    const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
+    const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
     const selectedDiscipline = selectedEvents[0]?.discipline
 
+    React.useEffect(() => {
+        let cancelled = false
+
+        async function loadCompetition() {
+            setIsCompetitionLoading(true)
+            setCompetitionError("")
+            try {
+                const response = await fetch(competitionSlug ? `/api/competitions/${competitionSlug}` : "/api/competitions/active", { cache: "no-store" })
+                const data = await response.json() as { competition?: PublicCompetition; error?: string }
+                if (!response.ok || !data.competition) throw new Error(data.error ?? "Competition not found.")
+                if (!cancelled) {
+                    const normalized = { ...data.competition, config: normalizeCompetitionConfig(data.competition.config) }
+                    setCompetition(normalized)
+                    const firstSlot = normalized.config.slotOptions[0]
+                    setForm((current) => ({
+                        ...current,
+                        preferredDate: firstSlot?.date ?? current.preferredDate,
+                        preferredSlot: firstSlot?.slots[0] ?? current.preferredSlot,
+                    }))
+                    if (!competitionSlug) window.location.replace(`/competitions/${normalized.slug}/register`)
+                }
+            } catch (loadError) {
+                if (!cancelled) setCompetitionError(loadError instanceof Error ? loadError.message : "Unable to load competition.")
+            } finally {
+                if (!cancelled) setIsCompetitionLoading(false)
+            }
+        }
+
+        loadCompetition()
+        return () => {
+            cancelled = true
+        }
+    }, [competitionSlug])
+
     const selectedSlots = React.useMemo(
-        () => slotOptions.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
-        [form.preferredDate]
+        () => availableSlots.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
+        [availableSlots, form.preferredDate]
     )
 
     React.useEffect(() => {
@@ -84,22 +132,22 @@ export default function RegisterPage() {
 
     const categoriesByEvent = React.useMemo(() => {
         const map = new Map<string, CategoryOption[]>()
-        for (const event of competitionEvents) {
+        for (const event of events) {
             map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender) : [])
         }
         return map
-    }, [age, form.gender])
+    }, [age, events, form.gender])
     const amount = entries.reduce((sum, entry) => {
         const eventCategories = categoriesByEvent.get(entry.eventId) ?? []
         const category = eventCategories.find((item) => item.code === entry.categoryCode)
-        return sum + (category ? getEntryFee(category) : ENTRY_FEE)
+        return sum + (category ? getEntryFee(category, config) : config.entryFee)
     }, 0)
 
     const isEntrySelected = (eventId: string, categoryCode: string) =>
         entries.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
 
     const canUseEvent = (eventId: string) => {
-        const event = getEventById(eventId)
+        const event = getEventById(eventId, config)
         if (!event) return false
         if (selectedDiscipline && event.discipline !== selectedDiscipline) return false
         if (selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
@@ -108,7 +156,7 @@ export default function RegisterPage() {
 
     const toggleEntry = (eventId: string, categoryCode: string) => {
         setError("")
-        const event = getEventById(eventId)
+        const event = getEventById(eventId, config)
         if (!event) return
 
         if (!canUseEvent(eventId)) {
@@ -152,7 +200,7 @@ export default function RegisterPage() {
 
         setIsSubmitting(true)
         try {
-            const response = await fetch("/api/registrations", { method: "POST", body })
+            const response = await fetch(competition ? `/api/competitions/${competition.slug}/registrations` : "/api/registrations", { method: "POST", body })
             const data = await response.json()
             if (!response.ok) throw new Error(data.error ?? "Registration failed.")
             setRegistration(data.registration)
@@ -164,6 +212,28 @@ export default function RegisterPage() {
         }
     }
 
+    if (isCompetitionLoading && !competition) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-black text-white">
+                <div className="text-center">
+                    <Loader2 className="mx-auto h-7 w-7 animate-spin text-[#D4AF37]" />
+                    <p className="mt-3 text-sm text-white/55">Loading competition registration...</p>
+                </div>
+            </div>
+        )
+    }
+
+    if (competitionError && !competition) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-black px-4 text-white">
+                <div className="max-w-md rounded-lg border border-red-400/25 bg-red-500/10 p-6 text-center">
+                    <p className="text-xl font-black text-red-100">Registration unavailable</p>
+                    <p className="mt-2 text-sm text-red-100/75">{competitionError}</p>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="min-h-screen bg-black text-white">
             <section className="relative overflow-hidden border-b border-white/10 px-4 py-16 md:py-20">
@@ -172,27 +242,27 @@ export default function RegisterPage() {
                     <div>
                         <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.24em] text-[#E5C558]">
                             <Trophy className="h-4 w-4" />
-                            36th Salvo Cup
+                            {competition?.shortTitle ?? "Competition"}
                         </p>
                         <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
-                            Register for the 36th Salvo Cup
+                            Register for {competition?.title ?? "Competition"}
                         </h1>
                         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/70">
-                            Three days of precision shooting at Salvo Shooters Arena. Select your event categories, choose a relay slot, complete payment, and generate your competitor card.
+                            Select your event categories, choose a relay slot, complete payment, and generate your competitor card.
                         </p>
                         <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                            {["5 June", "6 June", "7 June"].map((date) => (
-                                <div key={date} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                            {availableSlots.map((day) => (
+                                <div key={day.date} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
                                     <CalendarDays className="mb-3 h-5 w-5 text-[#D4AF37]" />
-                                    <p className="text-xl font-bold">{date}</p>
-                                    <p className="text-sm text-white/55">2026</p>
+                                    <p className="text-xl font-bold">{day.label.replace(`, ${config.competitionYear}`, "")}</p>
+                                    <p className="text-sm text-white/55">{config.competitionYear}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
                     <div className="rounded-lg border border-[#D4AF37]/30 bg-neutral-950/80 p-5 shadow-2xl shadow-[#D4AF37]/10">
                         <Image
-                            src="/competition-range.JPG"
+                            src={competition?.heroImagePath || "/competition-range.JPG"}
                             alt="Shooters at Salvo range"
                             width={760}
                             height={520}
@@ -205,7 +275,7 @@ export default function RegisterPage() {
 
             <main className="container mx-auto px-4 py-12">
                 {registration ? (
-                    <CompetitorCard registration={registration} onNew={() => {
+                    <CompetitorCard registration={registration} competition={competition} onNew={() => {
                         setRegistration(null)
                         setEntries([])
                         setSelectionStartedWith(null)
@@ -247,7 +317,7 @@ export default function RegisterPage() {
                             <Panel title="Preferred Relay">
                                 <Field label="Competition Date" required>
                                     <select required value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
-                                        {slotOptions.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
+                                        {availableSlots.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
                                     </select>
                                 </Field>
                                 <Field label="Time Slot" required>
@@ -276,7 +346,7 @@ export default function RegisterPage() {
                                 {form.paymentMode === "upi" && (
                                     <div className="mt-5 grid gap-5 sm:grid-cols-[180px_1fr]">
                                         <div className="rounded-md border border-white/10 bg-white p-3">
-                                            <Image src="/upi-scanner.png" alt="UPI payment QR scanner" width={180} height={220} className="h-auto w-full" />
+                                            <Image src={competition?.paymentQrPath || "/upi-scanner.png"} alt="UPI payment QR scanner" width={180} height={220} className="h-auto w-full" />
                                         </div>
                                         <div className="space-y-4">
                                             <Field label="12-digit UTR / UPI Reference" required>
@@ -294,10 +364,10 @@ export default function RegisterPage() {
                         <section className="space-y-6">
                             <Panel title="Select Event Categories">
                                 <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
-                                    Select every event-category you want to compete in. Little Champ categories are {formatCurrency(LITTLE_CHAMP_ENTRY_FEE)}; all other categories are {formatCurrency(ENTRY_FEE)}.
+                                    Select every event-category you want to compete in. Little Champ categories are {formatCurrency(config.littleChampEntryFee)}; all other categories are {formatCurrency(config.entryFee)}.
                                 </div>
                                 <div className="grid gap-5">
-                                    {competitionEvents.map((event) => {
+                                    {events.map((event) => {
                                         const categories = categoriesByEvent.get(event.id) ?? []
                                         const disabled = !canUseEvent(event.id)
                                         return (
@@ -329,7 +399,7 @@ export default function RegisterPage() {
                                                             >
                                                                 <span className="block font-bold">{category.code}</span>
                                                                 <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
-                                                                <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category))}</span>
+                                                                <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
                                                             </button>
                                                         ))
                                                     ) : (
@@ -352,7 +422,7 @@ export default function RegisterPage() {
                                 </div>
                                 <div className="space-y-2">
                                     {entries.length ? entries.map((entry) => {
-                                        const event = getEventById(entry.eventId)
+                                        const event = getEventById(entry.eventId, config)
                                         const category = event && form.gender && age !== null
                                             ? getEligibleCategories(event, age, form.gender).find((item) => item.code === entry.categoryCode)
                                             : null
@@ -400,7 +470,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
     )
 }
 
-function CompetitorCard({ registration, onNew }: { registration: SavedRegistration; onNew: () => void }) {
+function CompetitorCard({ registration, competition, onNew }: { registration: SavedRegistration; competition: PublicCompetition | null; onNew: () => void }) {
     return (
         <section className="mx-auto max-w-5xl">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -425,27 +495,27 @@ function CompetitorCard({ registration, onNew }: { registration: SavedRegistrati
                         <div className="flex items-center gap-4">
                             <Medal className="h-12 w-12 text-[#D4AF37]" />
                             <div>
-                                <p className="text-3xl font-black text-[#D4AF37]">36th SALVO CUP</p>
+                                <p className="text-3xl font-black text-[#D4AF37]">{(competition?.shortTitle ?? "Competition").toUpperCase()}</p>
                                 <p className="text-sm uppercase tracking-[0.24em] text-white/60">Competitor Card</p>
                             </div>
                         </div>
                         <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={180} height={72} className="h-12 w-auto" />
                     </div>
                 </div>
-                <CardBody registration={registration} title="COMPETITOR CARD" />
+                <CardBody registration={registration} competition={competition} title="COMPETITOR CARD" />
                 <div className="mx-8 border-t-2 border-black" />
-                <CardBody registration={registration} title="FOR OFFICE USE ONLY" />
+                <CardBody registration={registration} competition={competition} title="FOR OFFICE USE ONLY" />
             </div>
         </section>
     )
 }
 
-function CardBody({ registration, title }: { registration: SavedRegistration; title: string }) {
+function CardBody({ registration, competition, title }: { registration: SavedRegistration; competition: PublicCompetition | null; title: string }) {
     return (
         <div className="px-8 py-7 font-serif text-lg">
             <div className="mb-6 grid grid-cols-[1fr_auto] items-end gap-4 border-b-2 border-black pb-2">
                 <h3 className="text-center text-xl font-bold underline">{title}</h3>
-                <p><span className="font-bold">Date:</span> {formatDateLabel(registration.preferredDate.slice(0, 10))}</p>
+                <p><span className="font-bold">Date:</span> {formatDateLabel(registration.preferredDate.slice(0, 10), competition)}</p>
             </div>
             <div className="space-y-5">
                 <CardLine label="1. Name" value={registration.name} />

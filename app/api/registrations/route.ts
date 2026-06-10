@@ -1,5 +1,7 @@
 import { v2 as cloudinary, type UploadApiResponse } from "cloudinary"
 import { NextRequest } from "next/server"
+import { normalizeCompetitionConfig } from "@/lib/competition"
+import { getActiveCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import {
     IncomingRegistrationEntry,
@@ -53,6 +55,11 @@ async function saveScreenshot(file: File) {
 
 export async function POST(request: NextRequest) {
     try {
+        const competition = await getActiveCompetition()
+        if (!competition) return Response.json({ error: "No active competition is available." }, { status: 404 })
+        if (!competition.registrationOpen) return Response.json({ error: "Registration is not open for this competition." }, { status: 403 })
+        const config = normalizeCompetitionConfig(competition.config)
+
         const formData = await request.formData()
         const data = normalizeRegistrationData({
             name: String(formData.get("name") ?? ""),
@@ -69,13 +76,14 @@ export async function POST(request: NextRequest) {
         const screenshot = formData.get("paymentScreenshot")
 
         assertPublicPayment(data)
-        const resolvedEntries = resolveRegistrationEntries(data)
+        const resolvedEntries = resolveRegistrationEntries(data, config)
 
         const screenshotFile = screenshot instanceof File && screenshot.size > 0 ? await saveScreenshot(screenshot) : null
         const amount = getResolvedRegistrationAmount(resolvedEntries)
 
         const registration = await prisma.registration.create({
             data: {
+                competitionId: competition.id,
                 name: data.name,
                 academy: data.academy,
                 gender: data.gender,

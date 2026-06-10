@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest, isCoachName, isValidCoachCode } from "@/lib/admin"
+import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
 type RouteContext = {
@@ -36,8 +37,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         return Response.json({ error: "Invalid coach name or code." }, { status: 403 })
     }
 
+    const slug = getCompetitionSlugFromRequest(request)
+    const competition = await getCompetitionBySlugOrActive(slug)
+    if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+
     const registration = await prisma.registration.findUnique({ where: { id } })
     if (!registration) return Response.json({ error: "Registration not found." }, { status: 404 })
+    if (registration.competitionId !== competition.id) return Response.json({ error: "Registration not found for this competition." }, { status: 404 })
     if (registration.paymentStatus !== "Pending") {
         return Response.json({ error: "Only pending payments can be updated." }, { status: 400 })
     }

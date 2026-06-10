@@ -10,6 +10,7 @@ datasource db {
 
 model Registration {
   id             String              @id @default(cuid())
+  competitionId  String
   name           String
   academy        String
   gender         String
@@ -26,10 +27,40 @@ model Registration {
   screenshotPath String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  competition    Competition          @relation(fields: [competitionId], references: [id], onDelete: Restrict)
   entries        RegistrationEntry[]
 
+  @@index([competitionId])
   @@index([preferredDate])
   @@index([paymentStatus])
+}
+
+model Competition {
+  id                String         @id @default(cuid())
+  slug              String         @unique
+  title             String
+  shortTitle        String
+  description       String?
+  venue             String?
+  startDate         DateTime
+  endDate           DateTime
+  competitionYear   Int
+  status            String         @default("draft")
+  isPublished       Boolean        @default(false)
+  registrationOpen  Boolean        @default(false)
+  resultsPublished  Boolean        @default(false)
+  paymentQrPath     String?
+  heroImagePath     String?
+  config            Json
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  registrations     Registration[]
+
+  @@index([status])
+  @@index([isPublished])
+  @@index([registrationOpen])
+  @@index([resultsPublished])
+  @@index([startDate])
 }
 
 model RegistrationEntry {

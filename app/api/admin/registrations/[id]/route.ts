@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { normalizeCompetitionConfig } from "@/lib/competition"
+import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import {
     RegistrationValidationError,
@@ -28,6 +30,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     try {
         const { id } = await context.params
+        const slug = getCompetitionSlugFromRequest(request)
+        const competition = await getCompetitionBySlugOrActive(slug)
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+        const config = normalizeCompetitionConfig(competition.config)
         const body = await request.json()
         const paymentStatus = String(body.paymentStatus ?? "").trim()
         const allowScoredEntryRemoval = body.allowScoredEntryRemoval === true
@@ -49,7 +55,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             entries: body.entries,
         })
 
-        const resolvedEntries = resolveRegistrationEntries(data)
+        const resolvedEntries = resolveRegistrationEntries(data, config)
         if (paymentStatus === "Paid" && data.paymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
             return Response.json({ error: "Online paid registrations require a 12-digit UTR number." }, { status: 400 })
         }
@@ -62,6 +68,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             include: { entries: true },
         })
         if (!existing) return Response.json({ error: "Registration not found." }, { status: 404 })
+        if (existing.competitionId !== competition.id) return Response.json({ error: "Registration not found for this competition." }, { status: 404 })
 
         const nextKeys = new Set(resolvedEntries.map(entryKey))
         const removedEntries = existing.entries.filter((entry) => !nextKeys.has(entryKey(entry)))
@@ -157,6 +164,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
             where: { id },
             select: {
                 id: true,
+                competitionId: true,
                 name: true,
                 entries: {
                     select: { id: true },
@@ -165,6 +173,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         })
 
         if (!registration) return Response.json({ error: "Registration not found." }, { status: 404 })
+        const slug = getCompetitionSlugFromRequest(request)
+        const competition = await getCompetitionBySlugOrActive(slug)
+        if (!competition || registration.competitionId !== competition.id) return Response.json({ error: "Registration not found for this competition." }, { status: 404 })
 
         await prisma.registration.delete({ where: { id } })
 

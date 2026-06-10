@@ -1,12 +1,17 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
 export async function POST(request: NextRequest) {
     if (!isAdminRequest(request)) return adminUnauthorized()
 
     try {
+        const competition = await getCompetitionBySlugOrActive(getCompetitionSlugFromRequest(request))
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+
         const entries = await prisma.registrationEntry.findMany({
+            where: { registration: { competitionId: competition.id } },
             orderBy: { createdAt: "asc" },
             select: {
                 id: true,

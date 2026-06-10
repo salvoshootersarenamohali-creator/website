@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
 type RouteContext = {
@@ -13,12 +14,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const { id } = await context.params
         const body = await request.json()
         const isPara = body.isPara === true
+        const slug = getCompetitionSlugFromRequest(request)
+        const competition = await getCompetitionBySlugOrActive(slug)
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
 
         const existing = await prisma.registrationEntry.findUnique({
             where: { id },
-            select: { id: true },
+            select: { id: true, registration: { select: { competitionId: true } } },
         })
         if (!existing) return Response.json({ error: "Entry not found." }, { status: 404 })
+        if (existing.registration.competitionId !== competition.id) return Response.json({ error: "Entry not found for this competition." }, { status: 404 })
 
         const entry = await prisma.registrationEntry.update({
             where: { id },

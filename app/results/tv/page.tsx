@@ -2,7 +2,9 @@
 
 import * as React from "react"
 import Image from "next/image"
+import { usePathname } from "next/navigation"
 import { AlertTriangle, Clock3, Loader2, Trophy } from "lucide-react"
+import { PublicCompetition } from "@/lib/competition"
 
 type ResultRow = {
     id: string
@@ -22,12 +24,18 @@ type TopStudentGroup = {
 }
 
 type ResultsPayload = {
+    competition?: PublicCompetition
     generatedAt: string
     summary: {
         entries: number
         scored: number
     }
     topStudents: TopStudentGroup[]
+}
+
+function getCompetitionSlugFromPath(pathname: string) {
+    const match = pathname.match(/^\/competitions\/([^/]+)\/results\/tv\/?$/)
+    return match ? decodeURIComponent(match[1]) : null
 }
 
 async function readResponseJson(response: Response) {
@@ -59,6 +67,8 @@ function shortBoardTitle(title: string) {
 }
 
 export default function TvResultsPage() {
+    const pathname = usePathname()
+    const competitionSlug = getCompetitionSlugFromPath(pathname)
     const [payload, setPayload] = React.useState<ResultsPayload | null>(null)
     const [isLoading, setIsLoading] = React.useState(true)
     const [error, setError] = React.useState("")
@@ -66,7 +76,16 @@ export default function TvResultsPage() {
 
     const loadResults = React.useCallback(async () => {
         try {
-            const response = await fetch("/api/results", { cache: "no-store" })
+            if (!competitionSlug) {
+                const activeResponse = await fetch("/api/competitions/active", { cache: "no-store" })
+                const activeData = await readResponseJson(activeResponse)
+                const activeCompetition = (activeData as { competition?: PublicCompetition }).competition
+                if (activeResponse.ok && activeCompetition?.slug) {
+                    window.location.replace(`/competitions/${activeCompetition.slug}/results/tv`)
+                    return
+                }
+            }
+            const response = await fetch(competitionSlug ? `/api/competitions/${competitionSlug}/results` : "/api/results", { cache: "no-store" })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load results.")
             setPayload(data as unknown as ResultsPayload)
@@ -76,7 +95,7 @@ export default function TvResultsPage() {
         } finally {
             setIsLoading(false)
         }
-    }, [])
+    }, [competitionSlug])
 
     React.useEffect(() => {
         loadResults()
@@ -114,7 +133,7 @@ export default function TvResultsPage() {
                         <div className="min-w-0">
                             <div className="inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/12 px-[clamp(10px,0.9vw,16px)] py-1 text-[clamp(11px,0.82vw,15px)] font-black uppercase text-[#D4AF37]">
                                 <Trophy className="h-[clamp(13px,0.95vw,18px)] w-[clamp(13px,0.95vw,18px)]" />
-                                36th Salvo Cup
+                                {payload?.competition?.shortTitle ?? "Competition"}
                             </div>
                             <h1 className="mt-1 text-[clamp(30px,3vw,58px)] font-black leading-none tracking-normal">Top 10 Results</h1>
                         </div>
@@ -175,7 +194,7 @@ export default function TvResultsPage() {
 
                 <footer className="mt-[clamp(8px,1vh,14px)] flex shrink-0 items-center justify-between border-t border-white/10 pt-[clamp(8px,1vh,12px)] text-[clamp(12px,0.9vw,17px)] font-bold text-white/45">
                     <span>Auto-refreshes every 15 seconds | rotates every 10 seconds</span>
-                    <span className="inline-flex items-center gap-2"><Clock3 className="h-[clamp(13px,0.95vw,18px)] w-[clamp(13px,0.95vw,18px)]" /> salvoshootersarena.com/results/tv</span>
+                    <span className="inline-flex items-center gap-2"><Clock3 className="h-[clamp(13px,0.95vw,18px)] w-[clamp(13px,0.95vw,18px)]" /> salvoshootersarena.com/competitions/{payload?.competition?.slug ?? "competition"}/results/tv</span>
                 </footer>
             </div>
         </div>

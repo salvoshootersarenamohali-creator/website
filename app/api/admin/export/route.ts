@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
 import { formatCurrency } from "@/lib/competition"
+import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
 function formatDate(value: Date) {
@@ -25,7 +26,11 @@ export async function GET(request: NextRequest) {
     if (!isAdminRequest(request)) return adminUnauthorized()
 
     try {
+        const competition = await getCompetitionBySlugOrActive(getCompetitionSlugFromRequest(request))
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+
         const registrations = await prisma.registration.findMany({
+            where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
             include: { entries: { orderBy: { createdAt: "asc" } } },
         })
@@ -86,7 +91,7 @@ export async function GET(request: NextRequest) {
         return new Response(buffer, {
             headers: {
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "Content-Disposition": "attachment; filename=\"36th-salvo-cup-registrations.xlsx\"",
+                "Content-Disposition": `attachment; filename="${competitionFilePrefix(competition)}-registrations.xlsx"`,
             },
         })
     } catch (error) {

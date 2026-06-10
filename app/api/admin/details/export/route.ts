@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import {
     buildDetailSchedule,
     defaultDetailLanes,
@@ -61,7 +62,7 @@ function timeForSheet(value: string) {
     return `${value}:00`
 }
 
-function buildRuleSetSheet(schedule: ReturnType<typeof buildDetailSchedule>, ruleSet: RuleSet) {
+function buildRuleSetSheet(schedule: ReturnType<typeof buildDetailSchedule>, ruleSet: RuleSet, title: string) {
     const rows: (string | number | null)[][] = []
     const merges: XLSX.Range[] = []
     const details = schedule.details.filter((detail) => detail.ruleSet === ruleSet)
@@ -69,14 +70,14 @@ function buildRuleSetSheet(schedule: ReturnType<typeof buildDetailSchedule>, rul
 
     if (!details.length) {
         return XLSX.utils.aoa_to_sheet([
-            ["36th SALVO CUP"],
+            [title.toUpperCase()],
             [`No ${ruleSet} entries found for ${formatDisplayDate(schedule.date)}.`],
         ])
     }
 
     details.forEach((detail) => {
         const startRow = rows.length
-        rows.push(["36th SALVO CUP", null, null, null, null, null].slice(0, maxColumns))
+        rows.push([title.toUpperCase(), null, null, null, null, null].slice(0, maxColumns))
         rows.push(["DETAIL NO.", `${detail.detailNumber} (${ruleSet})`, null, "REPORTING TIME:", timeForSheet(detail.reportingTime), null].slice(0, maxColumns))
         rows.push([null, null, null, "SIGHTING TIME:", timeForSheet(detail.sightingTime), null].slice(0, maxColumns))
         rows.push(["DATE:", formatDisplayDate(detail.date), null, "MATCH TIME:", timeForSheet(detail.matchTime), null].slice(0, maxColumns))
@@ -111,9 +112,13 @@ export async function POST(request: NextRequest) {
     if (!isAdminRequest(request)) return adminUnauthorized()
 
     try {
+        const competition = await getCompetitionBySlugOrActive(getCompetitionSlugFromRequest(request))
+        if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+
         const body = await request.json() as Record<string, unknown>
         const config = parseBody(body)
         const registrations = await prisma.registration.findMany({
+            where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
             include: { entries: { orderBy: { createdAt: "asc" } } },
         })
@@ -122,14 +127,14 @@ export async function POST(request: NextRequest) {
 
         config.ruleSets.forEach((ruleSet) => {
             const sheetName = `${ruleSet} Details`
-            XLSX.utils.book_append_sheet(workbook, buildRuleSetSheet(schedule, ruleSet), sheetName)
+            XLSX.utils.book_append_sheet(workbook, buildRuleSetSheet(schedule, ruleSet, competition.title), sheetName)
         })
 
         const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" })
         return new Response(buffer, {
             headers: {
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "Content-Disposition": `attachment; filename="36th-salvo-cup-details-${config.date}.xlsx"`,
+                "Content-Disposition": `attachment; filename="${competitionFilePrefix(competition)}-details-${config.date}.xlsx"`,
             },
         })
     } catch (error) {

@@ -119,7 +119,7 @@ export function CompetitionNotice() {
 
                                 <div className="sticky bottom-0 -mx-4 mt-4 bg-black/95 px-4 py-3 md:static md:mx-0 md:mt-7 md:bg-transparent md:p-0">
                                     <Link
-                                        href="/register"
+                                        href="/competitions"
                                         className="inline-flex h-11 w-full animate-pulse items-center justify-center rounded-md bg-[#D4AF37] px-6 text-sm font-semibold uppercase tracking-[0.12em] text-black shadow-[0_0_26px_rgba(212,175,55,0.42)] transition hover:bg-[#E5C558] hover:shadow-[0_0_36px_rgba(229,197,88,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:w-fit md:h-12 md:px-7"
                                     >
                                         Register Now

@@ -4,12 +4,44 @@ export type Gender = "male" | "female"
 export type PaymentMode = "cash" | "upi"
 export type PaymentStatus = "Pending" | "Paid"
 
+export type SlotOption = {
+    date: string
+    label: string
+    slots: string[]
+}
+
 export type CompetitionEvent = {
     id: string
     discipline: Discipline
     ruleSet: RuleSet
     title: string
     prizes: [number, number, number]
+}
+
+export type CompetitionConfig = {
+    competitionYear: number
+    entryFee: number
+    littleChampEntryFee: number
+    events: CompetitionEvent[]
+    slotOptions: SlotOption[]
+}
+
+export type PublicCompetition = {
+    id: string
+    slug: string
+    title: string
+    shortTitle: string
+    description: string | null
+    venue: string | null
+    startDate: string
+    endDate: string
+    status: string
+    isPublished: boolean
+    registrationOpen: boolean
+    resultsPublished: boolean
+    paymentQrPath: string | null
+    heroImagePath: string | null
+    config: CompetitionConfig
 }
 
 export type CategoryOption = {
@@ -28,7 +60,7 @@ export type SelectedEntry = {
 
 export type AgeBracket = "little-standing" | "little-sitting" | "sub-youth" | "youth" | "junior" | "senior" | "master"
 
-const COMPETITION_YEAR = 2026
+export const DEFAULT_COMPETITION_YEAR = 2026
 
 export const ENTRY_FEE = 1000
 export const LITTLE_CHAMP_ENTRY_FEE = 800
@@ -76,16 +108,57 @@ const bracketLabels: Record<AgeBracket, string> = {
 
 const ladder: AgeBracket[] = ["sub-youth", "youth", "junior", "senior"]
 
-export const slotOptions = [
+export const slotOptions: SlotOption[] = [
     { date: "2026-06-05", label: "June 5, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
     { date: "2026-06-06", label: "June 6, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
     { date: "2026-06-07", label: "June 7, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 4:00 PM"] },
 ]
 
-export function getAgeFromDobYear(dob: string) {
+export const defaultCompetitionConfig: CompetitionConfig = {
+    competitionYear: DEFAULT_COMPETITION_YEAR,
+    entryFee: ENTRY_FEE,
+    littleChampEntryFee: LITTLE_CHAMP_ENTRY_FEE,
+    events: competitionEvents,
+    slotOptions,
+}
+
+export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
+    const raw = typeof value === "object" && value !== null ? value as Partial<CompetitionConfig> : {}
+    const events = Array.isArray(raw.events)
+        ? raw.events.filter((event): event is CompetitionEvent => {
+            const candidate = event as Partial<CompetitionEvent>
+            return typeof candidate.id === "string"
+                && (candidate.discipline === "pistol" || candidate.discipline === "rifle")
+                && (candidate.ruleSet === "NR" || candidate.ruleSet === "ISSF")
+                && typeof candidate.title === "string"
+                && Array.isArray(candidate.prizes)
+                && candidate.prizes.length === 3
+                && candidate.prizes.every((prize) => typeof prize === "number")
+        })
+        : []
+    const slots = Array.isArray(raw.slotOptions)
+        ? raw.slotOptions.filter((slot): slot is SlotOption => {
+            const candidate = slot as Partial<SlotOption>
+            return typeof candidate.date === "string"
+                && typeof candidate.label === "string"
+                && Array.isArray(candidate.slots)
+                && candidate.slots.every((item) => typeof item === "string")
+        })
+        : []
+
+    return {
+        competitionYear: Number.isInteger(raw.competitionYear) ? Number(raw.competitionYear) : DEFAULT_COMPETITION_YEAR,
+        entryFee: Number.isInteger(raw.entryFee) ? Number(raw.entryFee) : ENTRY_FEE,
+        littleChampEntryFee: Number.isInteger(raw.littleChampEntryFee) ? Number(raw.littleChampEntryFee) : LITTLE_CHAMP_ENTRY_FEE,
+        events: events.length ? events : competitionEvents,
+        slotOptions: slots.length ? slots : slotOptions,
+    }
+}
+
+export function getAgeFromDobYear(dob: string, competitionYear = DEFAULT_COMPETITION_YEAR) {
     const year = Number(dob.slice(0, 4))
     if (!year || Number.isNaN(year)) return null
-    return COMPETITION_YEAR - year - 1
+    return competitionYear - year - 1
 }
 
 export function getBaseBracket(age: number): AgeBracket | null {
@@ -144,8 +217,8 @@ export function getShotCount(ruleSet: RuleSet) {
     return getSeriesCount(ruleSet) * SHOTS_PER_SERIES
 }
 
-export function getEventById(eventId: string) {
-    return competitionEvents.find((event) => event.id === eventId)
+export function getEventById(eventId: string, config: CompetitionConfig = defaultCompetitionConfig) {
+    return config.events.find((event) => event.id === eventId)
 }
 
 export function buildCategoryCode(discipline: Discipline, ruleSet: RuleSet, bracket: AgeBracket, gender: Gender) {
@@ -199,23 +272,39 @@ export function getEligibleCategories(event: CompetitionEvent, age: number, gend
         .filter((category) => Boolean(category.code))
 }
 
-export function getEntryFee(category: Pick<CategoryOption, "bracket">) {
-    return category.bracket.startsWith("little") ? LITTLE_CHAMP_ENTRY_FEE : ENTRY_FEE
+export function getEntryFee(category: Pick<CategoryOption, "bracket">, config: CompetitionConfig = defaultCompetitionConfig) {
+    return category.bracket.startsWith("little") ? config.littleChampEntryFee : config.entryFee
 }
 
-export function validateSelection(entries: SelectedEntry[]) {
-    const events = entries.map((entry) => getEventById(entry.eventId)).filter(Boolean) as CompetitionEvent[]
+export function validateSelection(entries: SelectedEntry[], config: CompetitionConfig = defaultCompetitionConfig) {
+    const events = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean) as CompetitionEvent[]
     const disciplines = new Set(events.map((event) => event.discipline))
     if (disciplines.size > 1) return "Choose either pistol or rifle entries, not both."
 
     const hasIssf = events.some((event) => event.ruleSet === "ISSF")
     const hasNr = events.some((event) => event.ruleSet === "NR")
-    const onlyIssfEventIds = new Set(entries.filter((entry) => getEventById(entry.eventId)?.ruleSet === "ISSF").map((entry) => entry.eventId))
-    const onlyNrEventIds = new Set(entries.filter((entry) => getEventById(entry.eventId)?.ruleSet === "NR").map((entry) => entry.eventId))
+    const onlyIssfEventIds = new Set(entries.filter((entry) => getEventById(entry.eventId, config)?.ruleSet === "ISSF").map((entry) => entry.eventId))
+    const onlyNrEventIds = new Set(entries.filter((entry) => getEventById(entry.eventId, config)?.ruleSet === "NR").map((entry) => entry.eventId))
     if (hasIssf && hasNr && onlyIssfEventIds.size > 0 && onlyNrEventIds.size > 0) return null
     return null
 }
 
 export function formatCurrency(amount: number) {
     return `Rs. ${amount.toLocaleString("en-IN")}`
+}
+
+export function formatCompetitionDateRange(startDate: string | Date, endDate: string | Date) {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ""
+    const sameYear = start.getFullYear() === end.getFullYear()
+    const sameMonth = sameYear && start.getMonth() === end.getMonth()
+
+    if (sameMonth) {
+        const month = start.toLocaleString("en-IN", { month: "long" })
+        return `${start.getDate()}-${end.getDate()} ${month} ${start.getFullYear()}`
+    }
+
+    const formatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric" })
+    return `${formatter.format(start)} - ${formatter.format(end)}${sameYear ? ` ${start.getFullYear()}` : ""}`
 }
