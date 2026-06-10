@@ -2,7 +2,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import type { ReactNode } from "react"
-import { CalendarDays, Medal, Trophy, Users } from "lucide-react"
+import { ArrowRight, CalendarDays, ClipboardList, Medal, Trophy, Users } from "lucide-react"
 import { formatCompetitionDateRange, formatCurrency } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
@@ -59,8 +59,10 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
                         </p>
                         <div className="mt-8 flex flex-wrap gap-3">
                             {competition.registrationOpen && (
-                                <Link href={`/competitions/${competition.slug}/register`} className="inline-flex h-12 items-center justify-center rounded-md bg-[#D4AF37] px-6 font-bold text-black transition hover:bg-[#E5C558]">
-                                    Register
+                                <Link href={`/competitions/${competition.slug}/register`} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[#D4AF37] px-7 text-base font-black uppercase tracking-[0.12em] text-black shadow-[0_0_30px_rgba(212,175,55,0.38)] transition hover:bg-[#E5C558] hover:shadow-[0_0_40px_rgba(229,197,88,0.55)]">
+                                    <ClipboardList className="h-5 w-5" />
+                                    Register Now
+                                    <ArrowRight className="h-5 w-5" />
                                 </Link>
                             )}
                             {(competition.resultsPublished || competition.registrationOpen) && (
@@ -77,6 +79,30 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
             </section>
 
             <main className="container mx-auto px-4 py-10">
+                {competition.registrationOpen && (
+                    <section className="mb-6 rounded-lg border border-[#D4AF37]/35 bg-[linear-gradient(135deg,rgba(212,175,55,0.18),rgba(255,255,255,0.035))] p-5 shadow-2xl shadow-[#D4AF37]/10">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div className="max-w-2xl">
+                                <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-[#D4AF37]">
+                                    <ClipboardList className="h-4 w-4" />
+                                    Registration Form
+                                </p>
+                                <h2 className="mt-2 text-2xl font-black">Click the Register Now button to fill the competition form.</h2>
+                                <p className="mt-2 text-sm leading-relaxed text-white/60">
+                                    This opens the shooter details, event category selection, relay slot, and payment form for {competition.shortTitle}.
+                                </p>
+                            </div>
+                            <Link
+                                href={`/competitions/${competition.slug}/register`}
+                                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-md bg-[#D4AF37] px-6 font-black text-black transition hover:bg-[#E5C558]"
+                            >
+                                Register Now
+                                <ArrowRight className="h-5 w-5" />
+                            </Link>
+                        </div>
+                    </section>
+                )}
+
                 <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
                     <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
                         <h2 className="text-2xl font-black">Competition Details</h2>
