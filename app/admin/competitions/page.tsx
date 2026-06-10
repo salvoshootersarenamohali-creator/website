@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
-import { CalendarDays, Edit3, ExternalLink, Loader2, Lock, Plus, Save, Trophy } from "lucide-react"
+import { CalendarDays, Edit3, ExternalLink, Loader2, Lock, Plus, Save, Trophy, Upload } from "lucide-react"
 import {
     CompetitionConfig,
     PublicCompetition,
@@ -13,6 +14,8 @@ import {
 type AdminCompetition = PublicCompetition & {
     registrations: number
 }
+
+type CompetitionAssetType = "hero" | "paymentQr"
 
 const emptyCreateForm = {
     title: "",
@@ -193,10 +196,14 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
     const [form, setForm] = React.useState(() => competition)
     const [saving, setSaving] = React.useState(false)
     const [message, setMessage] = React.useState("")
+    const previousCompetitionId = React.useRef(competition.id)
 
     React.useEffect(() => {
-        setForm(competition)
-        setMessage("")
+        if (previousCompetitionId.current !== competition.id) {
+            previousCompetitionId.current = competition.id
+            setForm(competition)
+            setMessage("")
+        }
     }, [competition])
 
     const updateConfig = (config: CompetitionConfig) => {
@@ -222,6 +229,16 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
         } finally {
             setSaving(false)
         }
+    }
+
+    const updateUploadedAsset = (saved: AdminCompetition) => {
+        const normalized = { ...saved, config: normalizeCompetitionConfig(saved.config), registrations: form.registrations }
+        setForm((current) => ({
+            ...current,
+            heroImagePath: saved.heroImagePath,
+            paymentQrPath: saved.paymentQrPath,
+        }))
+        onSaved(normalized)
     }
 
     return (
@@ -263,8 +280,31 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
                 <Field label="End Date"><input type="date" value={form.endDate.slice(0, 10)} onChange={(event) => setForm({ ...form, endDate: `${event.target.value}T00:00:00.000Z` })} className="field" /></Field>
                 <Field label="Competition Year"><input type="number" value={form.config.competitionYear} onChange={(event) => updateConfig({ ...form.config, competitionYear: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Venue"><input value={form.venue ?? ""} onChange={(event) => setForm({ ...form, venue: event.target.value })} className="field" /></Field>
-                <Field label="Hero Image Path"><input value={form.heroImagePath ?? ""} onChange={(event) => setForm({ ...form, heroImagePath: event.target.value })} className="field" /></Field>
-                <Field label="Payment QR Path"><input value={form.paymentQrPath ?? ""} onChange={(event) => setForm({ ...form, paymentQrPath: event.target.value })} className="field" /></Field>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <CompetitionAssetField
+                    assetType="hero"
+                    adminPin={adminPin}
+                    competitionSlug={competition.slug}
+                    fallbackPath="/competition-range.JPG"
+                    label="Registration Hero Image"
+                    previewClassName="h-48"
+                    value={form.heroImagePath ?? ""}
+                    onPathChange={(value) => setForm({ ...form, heroImagePath: value })}
+                    onUploaded={updateUploadedAsset}
+                />
+                <CompetitionAssetField
+                    assetType="paymentQr"
+                    adminPin={adminPin}
+                    competitionSlug={competition.slug}
+                    fallbackPath="/upi-scanner.png"
+                    label="Payment Scanner Image"
+                    previewClassName="h-48 bg-white object-contain p-4"
+                    value={form.paymentQrPath ?? ""}
+                    onPathChange={(value) => setForm({ ...form, paymentQrPath: value })}
+                    onUploaded={updateUploadedAsset}
+                />
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -280,6 +320,118 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
             <ConfigEditor config={form.config} onChange={updateConfig} />
 
             {message && <p className="mt-4 rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm text-white/75">{message}</p>}
+        </section>
+    )
+}
+
+function CompetitionAssetField({
+    adminPin,
+    assetType,
+    competitionSlug,
+    fallbackPath,
+    label,
+    onPathChange,
+    onUploaded,
+    previewClassName,
+    value,
+}: {
+    adminPin: string
+    assetType: CompetitionAssetType
+    competitionSlug: string
+    fallbackPath: string
+    label: string
+    onPathChange: (value: string) => void
+    onUploaded: (competition: AdminCompetition) => void
+    previewClassName: string
+    value: string
+}) {
+    const inputId = React.useId()
+    const [file, setFile] = React.useState<File | null>(null)
+    const [fileInputKey, setFileInputKey] = React.useState(0)
+    const [isUploading, setIsUploading] = React.useState(false)
+    const [message, setMessage] = React.useState("")
+    const [isError, setIsError] = React.useState(false)
+    const previewPath = value || fallbackPath
+
+    const upload = async () => {
+        setMessage("")
+        setIsError(false)
+        if (!file) {
+            setIsError(true)
+            setMessage("Choose an image file first.")
+            return
+        }
+
+        const body = new FormData()
+        body.append("assetType", assetType)
+        body.append("file", file)
+
+        setIsUploading(true)
+        try {
+            const response = await fetch(`/api/admin/competitions/${competitionSlug}/assets`, {
+                method: "POST",
+                headers: { "x-admin-pin": adminPin },
+                body,
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to upload image.")
+            const saved = data.competition as AdminCompetition
+            onUploaded({ ...saved, config: normalizeCompetitionConfig(saved.config) })
+            setFile(null)
+            setFileInputKey((current) => current + 1)
+            setMessage("Uploaded.")
+        } catch (uploadError) {
+            setIsError(true)
+            setMessage(uploadError instanceof Error ? uploadError.message : "Unable to upload image.")
+        } finally {
+            setIsUploading(false)
+        }
+    }
+
+    return (
+        <section className="rounded-lg border border-white/10 bg-black/25 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-black uppercase tracking-[0.16em] text-white/55">{label}</h3>
+                <span className="text-xs font-bold text-white/35">{assetType === "hero" ? "Hero" : "QR"}</span>
+            </div>
+            <div className="overflow-hidden rounded-md border border-white/10 bg-neutral-950">
+                <Image
+                    src={previewPath}
+                    alt={label}
+                    width={640}
+                    height={360}
+                    className={`w-full object-cover ${previewClassName}`}
+                    unoptimized
+                />
+            </div>
+            <label className="mt-4 block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-white/40">Image URL / Path</span>
+                <input value={value} onChange={(event) => onPathChange(event.target.value)} className="field" placeholder={fallbackPath} />
+            </label>
+            <label htmlFor={inputId} className="mt-4 block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-white/40">Upload Image</span>
+                <input
+                    key={fileInputKey}
+                    id={inputId}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => {
+                        setFile(event.target.files?.[0] ?? null)
+                        setMessage("")
+                        setIsError(false)
+                    }}
+                    className="field file:text-white"
+                />
+            </label>
+            <button type="button" onClick={upload} disabled={isUploading} className="admin-button gold mt-4 disabled:opacity-60">
+                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Upload
+            </button>
+            {message && (
+                <p className={`mt-3 rounded-md border px-3 py-2 text-sm ${isError ? "border-red-500/30 bg-red-500/10 text-red-200" : "border-white/10 bg-white/[0.04] text-white/70"}`}>
+                    {message}
+                </p>
+            )}
         </section>
     )
 }

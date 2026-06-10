@@ -1,5 +1,5 @@
-import { v2 as cloudinary, type UploadApiResponse } from "cloudinary"
 import { NextRequest } from "next/server"
+import { uploadImageToCloudinary } from "@/lib/cloudinary-upload"
 import { normalizeCompetitionConfig } from "@/lib/competition"
 import { getActiveCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
@@ -12,46 +12,6 @@ import {
     resolveRegistrationEntries,
     RegistrationValidationError,
 } from "@/lib/registration-validation"
-
-async function saveScreenshot(file: File) {
-    if (!file.size) return null
-    const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"])
-    if (!allowedTypes.has(file.type)) {
-        throw new Error("Payment screenshot must be a PNG, JPG, or WEBP image.")
-    }
-    if (file.size > 5 * 1024 * 1024) {
-        throw new Error("Payment screenshot must be smaller than 5MB.")
-    }
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-        throw new Error("Cloudinary is not configured for payment screenshot uploads.")
-    }
-
-    cloudinary.config({
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-        api_key: process.env.CLOUDINARY_API_KEY,
-        api_secret: process.env.CLOUDINARY_API_SECRET,
-        secure: true,
-    })
-
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            {
-                folder: "salvo/payment-screenshots",
-                resource_type: "image",
-                public_id: `${Date.now()}-${crypto.randomUUID()}`,
-                overwrite: false,
-            },
-            (error, result) => {
-                if (error || !result) reject(error ?? new Error("Unable to upload payment screenshot."))
-                else resolve(result)
-            }
-        )
-        stream.end(buffer)
-    })
-
-    return uploadResult.secure_url
-}
 
 export async function POST(request: NextRequest) {
     try {
@@ -78,7 +38,12 @@ export async function POST(request: NextRequest) {
         assertPublicPayment(data)
         const resolvedEntries = resolveRegistrationEntries(data, config)
 
-        const screenshotFile = screenshot instanceof File && screenshot.size > 0 ? await saveScreenshot(screenshot) : null
+        const screenshotFile = screenshot instanceof File && screenshot.size > 0
+            ? await uploadImageToCloudinary(screenshot, {
+                folder: "salvo/payment-screenshots",
+                label: "Payment screenshot",
+            })
+            : null
         const amount = getResolvedRegistrationAmount(resolvedEntries)
 
         const registration = await prisma.registration.create({
