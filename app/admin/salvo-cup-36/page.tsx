@@ -137,8 +137,12 @@ function paymentBadgeClass(status: PaymentStatus) {
     return "bg-amber-500/15 text-amber-200"
 }
 
+function paymentModeLabel(mode: PaymentMode) {
+    return mode === "upi" ? "Online" : "Cash"
+}
+
 function formatPaymentAmount(registration: AdminRegistration) {
-    return `${formatCurrency(registration.amount)} (${registration.paymentStatus})`
+    return `${formatCurrency(registration.amount)} (${paymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`
 }
 
 async function readResponseJson(response: Response) {
