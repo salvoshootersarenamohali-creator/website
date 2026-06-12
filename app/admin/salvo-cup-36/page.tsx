@@ -99,7 +99,7 @@ type AdminTeamEntry = {
 }
 
 type AdminView = "stats" | "registrations" | "team-entries" | "results" | "top-students" | "details"
-type RegistrationSortMode = "default" | "selected-date"
+type RegistrationDateFilter = "all" | string
 
 type ResultRow = {
     registration: AdminRegistration
@@ -326,7 +326,7 @@ export default function SalvoCupAdminPage() {
     const [selectedId, setSelectedId] = React.useState("")
     const [query, setQuery] = React.useState("")
     const [filter, setFilter] = React.useState("all")
-    const [registrationSort, setRegistrationSort] = React.useState<RegistrationSortMode>("default")
+    const [registrationDateFilter, setRegistrationDateFilter] = React.useState<RegistrationDateFilter>("all")
     const [view, setView] = React.useState<AdminView>("stats")
     const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
     const [isLoading, setIsLoading] = React.useState(false)
@@ -361,23 +361,21 @@ export default function SalvoCupAdminPage() {
             const haystack = `${registration.name} ${registration.academy} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
             const matchesQuery = haystack.includes(query.toLowerCase())
             const matchesFilter = filter === "all" || registration.paymentStatus === filter || registration.entries.some((entry) => entry.ruleSet === filter || entry.discipline === filter)
-            return matchesQuery && matchesFilter
+            const matchesDate = registrationDateFilter === "all" || dateOnly(registration.preferredDate) === registrationDateFilter
+            return matchesQuery && matchesFilter && matchesDate
         })
 
-        if (registrationSort === "selected-date") {
-            return rows.toSorted((a, b) => {
-                const aSort = selectedDateSortValue(a, competitionConfig)
-                const bSort = selectedDateSortValue(b, competitionConfig)
-                return aSort.dayIndex - bSort.dayIndex
-                    || aSort.date.localeCompare(bSort.date)
-                    || aSort.slotIndex - bSort.slotIndex
-                    || a.preferredSlot.localeCompare(b.preferredSlot)
-                    || a.name.localeCompare(b.name)
-            })
-        }
-
-        return rows.toSorted((a, b) => (originalOrder.get(a.id) ?? 0) - (originalOrder.get(b.id) ?? 0))
-    }, [competitionConfig, filter, query, registrationSort, registrations])
+        return rows.toSorted((a, b) => {
+            const aSort = selectedDateSortValue(a, competitionConfig)
+            const bSort = selectedDateSortValue(b, competitionConfig)
+            return aSort.dayIndex - bSort.dayIndex
+                || aSort.date.localeCompare(bSort.date)
+                || aSort.slotIndex - bSort.slotIndex
+                || a.preferredSlot.localeCompare(b.preferredSlot)
+                || a.name.localeCompare(b.name)
+                || (originalOrder.get(a.id) ?? 0) - (originalOrder.get(b.id) ?? 0)
+        })
+    }, [competitionConfig, filter, query, registrationDateFilter, registrations])
 
     React.useEffect(() => {
         setSelectedCategories((current) => {
@@ -562,9 +560,11 @@ export default function SalvoCupAdminPage() {
                                             <option value="pistol">Pistol</option>
                                             <option value="rifle">Rifle</option>
                                         </select>
-                                        <select value={registrationSort} onChange={(event) => setRegistrationSort(event.target.value as RegistrationSortMode)} className="field">
-                                            <option value="default">Default Order</option>
-                                            <option value="selected-date">Selected Date</option>
+                                        <select value={registrationDateFilter} onChange={(event) => setRegistrationDateFilter(event.target.value)} className="field">
+                                            <option value="all">All Competition Dates</option>
+                                            {competitionConfig.slotOptions.map((slot) => (
+                                                <option key={slot.date} value={slot.date}>{slot.label}</option>
+                                            ))}
                                         </select>
                                     </div>
 
