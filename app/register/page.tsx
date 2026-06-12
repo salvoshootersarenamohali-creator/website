@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { CalendarDays, CheckCircle2, CreditCard, Download, IndianRupee, Loader2, Medal, Printer, Trophy } from "lucide-react"
+import { CalendarDays, CheckCircle2, CreditCard, Download, IndianRupee, Loader2, Medal, Printer, Trophy, Users } from "lucide-react"
 import {
     CategoryOption,
     PublicCompetition,
@@ -359,6 +359,24 @@ export default function RegisterPage() {
                                         </div>
                                     </div>
                                 )}
+                            </Panel>
+
+                            <Panel title="Team Entries">
+                                <div className="rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm leading-relaxed text-white/75">
+                                    <div className="mb-3 flex items-center gap-2 text-[#E5C558]">
+                                        <Users className="h-5 w-5" />
+                                        <p className="font-black uppercase tracking-[0.16em]">Submit through your coach</p>
+                                    </div>
+                                    <p>
+                                        Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(900)}</span> per team.
+                                    </p>
+                                    <ul className="mt-3 list-disc space-y-1 pl-5">
+                                        <li>Each team must have exactly 3 shooters.</li>
+                                        <li>All 3 shooters must be from the same shooting club.</li>
+                                        <li>Team members can be from different categories, but must be in the same discipline: pistol or rifle.</li>
+                                        <li>A shooter must first register for an individual event before being added to a team entry.</li>
+                                    </ul>
+                                </div>
                             </Panel>
                         </section>
 
