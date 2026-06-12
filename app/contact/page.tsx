@@ -1,7 +1,15 @@
+"use client"
+
+import type * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MapPin, Phone, Mail } from "lucide-react"
+import { toProperCase } from "@/lib/registration-validation"
+
+function properCaseField(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    event.currentTarget.value = toProperCase(event.currentTarget.value)
+}
 
 export default function ContactPage() {
     return (
@@ -42,7 +50,7 @@ export default function ContactPage() {
                         <form className="space-y-6">
                             <div className="space-y-2">
                                 <Label htmlFor="name" className="text-white">Name</Label>
-                                <Input id="name" placeholder="Your Name" className="bg-black border-white/10 text-white" />
+                                <Input id="name" placeholder="Your Name" onChange={properCaseField} className="bg-black border-white/10 text-white" />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="email" className="text-white">Email</Label>
@@ -53,6 +61,7 @@ export default function ContactPage() {
                                 <textarea
                                     id="message"
                                     rows={4}
+                                    onChange={properCaseField}
                                     className="flex w-full rounded-md border border-white/10 bg-black px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     placeholder="How can we help you?"
                                 />

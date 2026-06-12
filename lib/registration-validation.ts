@@ -52,6 +52,12 @@ export function cleanPhone(phone: string) {
     return phone.replace(/[^\d+]/g, "")
 }
 
+export function toProperCase(value: string) {
+    return value
+        .toLowerCase()
+        .replace(/(^|[\s(/&-])([a-z])([a-z']*)/g, (_, prefix: string, first: string, rest: string) => `${prefix}${first.toUpperCase()}${rest}`)
+}
+
 export function getErrorMessage(error: unknown, fallback: string) {
     if (error instanceof Error) return error.message
     if (
@@ -71,8 +77,8 @@ export function isValidDate(value: string) {
 
 export function normalizeRegistrationData(data: Partial<IncomingRegistrationData>): IncomingRegistrationData {
     return {
-        name: String(data.name ?? "").trim(),
-        academy: String(data.academy ?? "").trim(),
+        name: toProperCase(String(data.name ?? "").trim()),
+        academy: toProperCase(String(data.academy ?? "").trim()),
         gender: String(data.gender ?? "").trim(),
         dateOfBirth: String(data.dateOfBirth ?? "").trim(),
         phone: cleanPhone(String(data.phone ?? "").trim()),

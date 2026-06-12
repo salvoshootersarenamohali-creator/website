@@ -10,6 +10,7 @@ import {
     formatCompetitionDateRange,
     normalizeCompetitionConfig,
 } from "@/lib/competition"
+import { toProperCase } from "@/lib/registration-validation"
 
 type AdminCompetition = PublicCompetition & {
     registrations: number
@@ -132,8 +133,8 @@ export default function AdminCompetitionsPage() {
                                     <h2 className="text-xl font-black">Create from Template</h2>
                                 </div>
                                 <div className="space-y-3">
-                                    <input value={createForm.title} onChange={(event) => setCreateForm({ ...createForm, title: event.target.value })} className="field" placeholder="Competition title" />
-                                    <input value={createForm.shortTitle} onChange={(event) => setCreateForm({ ...createForm, shortTitle: event.target.value })} className="field" placeholder="Short title" />
+                                    <input value={createForm.title} onChange={(event) => setCreateForm({ ...createForm, title: toProperCase(event.target.value) })} className="field" placeholder="Competition title" />
+                                    <input value={createForm.shortTitle} onChange={(event) => setCreateForm({ ...createForm, shortTitle: toProperCase(event.target.value) })} className="field" placeholder="Short title" />
                                     <input value={createForm.slug} onChange={(event) => setCreateForm({ ...createForm, slug: event.target.value })} className="field" placeholder="optional-slug" />
                                     <div className="grid grid-cols-2 gap-3">
                                         <input type="date" value={createForm.startDate} onChange={(event) => setCreateForm({ ...createForm, startDate: event.target.value })} className="field" />
@@ -265,8 +266,8 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Title"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="field" /></Field>
-                <Field label="Short Title"><input value={form.shortTitle} onChange={(event) => setForm({ ...form, shortTitle: event.target.value })} className="field" /></Field>
+                <Field label="Title"><input value={form.title} onChange={(event) => setForm({ ...form, title: toProperCase(event.target.value) })} className="field" /></Field>
+                <Field label="Short Title"><input value={form.shortTitle} onChange={(event) => setForm({ ...form, shortTitle: toProperCase(event.target.value) })} className="field" /></Field>
                 <Field label="Slug"><input value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} className="field" /></Field>
                 <Field label="Status">
                     <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className="field">
@@ -279,7 +280,7 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
                 <Field label="Start Date"><input type="date" value={form.startDate.slice(0, 10)} onChange={(event) => setForm({ ...form, startDate: `${event.target.value}T00:00:00.000Z` })} className="field" /></Field>
                 <Field label="End Date"><input type="date" value={form.endDate.slice(0, 10)} onChange={(event) => setForm({ ...form, endDate: `${event.target.value}T00:00:00.000Z` })} className="field" /></Field>
                 <Field label="Competition Year"><input type="number" value={form.config.competitionYear} onChange={(event) => updateConfig({ ...form.config, competitionYear: Number(event.target.value) })} className="field" /></Field>
-                <Field label="Venue"><input value={form.venue ?? ""} onChange={(event) => setForm({ ...form, venue: event.target.value })} className="field" /></Field>
+                <Field label="Venue"><input value={form.venue ?? ""} onChange={(event) => setForm({ ...form, venue: toProperCase(event.target.value) })} className="field" /></Field>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -314,7 +315,7 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
             </div>
 
             <Field label="Description">
-                <textarea value={form.description ?? ""} onChange={(event) => setForm({ ...form, description: event.target.value })} className="field min-h-24" />
+                <textarea value={form.description ?? ""} onChange={(event) => setForm({ ...form, description: toProperCase(event.target.value) })} className="field min-h-24" />
             </Field>
 
             <ConfigEditor config={form.config} onChange={updateConfig} />
@@ -471,7 +472,7 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                     {config.events.map((event, eventIndex) => (
                         <div key={event.id} className="rounded-md border border-white/10 bg-black/25 p-4">
                             <div className="grid gap-3 md:grid-cols-[1fr_120px_120px]">
-                                <input value={event.title} onChange={(input) => updateEvent(eventIndex, { title: input.target.value })} className="field" />
+                                <input value={event.title} onChange={(input) => updateEvent(eventIndex, { title: toProperCase(input.target.value) })} className="field" />
                                 <select value={event.ruleSet} onChange={(input) => updateEvent(eventIndex, { ruleSet: input.target.value as "NR" | "ISSF" })} className="field">
                                     <option value="NR">NR</option>
                                     <option value="ISSF">ISSF</option>
@@ -498,7 +499,7 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                         <div key={slot.date} className="rounded-md border border-white/10 bg-black/25 p-4">
                             <div className="grid gap-3 md:grid-cols-[180px_1fr]">
                                 <input type="date" value={slot.date} onChange={(event) => updateSlotDay(index, { date: event.target.value })} className="field" />
-                                <input value={slot.label} onChange={(event) => updateSlotDay(index, { label: event.target.value })} className="field" />
+                                <input value={slot.label} onChange={(event) => updateSlotDay(index, { label: toProperCase(event.target.value) })} className="field" />
                             </div>
                             <textarea
                                 value={slot.slots.join("\n")}

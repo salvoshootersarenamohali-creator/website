@@ -20,6 +20,7 @@ import {
     normalizeCompetitionConfig,
     slotOptions,
 } from "@/lib/competition"
+import { toProperCase } from "@/lib/registration-validation"
 
 type SavedEntry = {
     id: string
@@ -287,10 +288,10 @@ export default function RegisterPage() {
                         <section className="space-y-6">
                             <Panel title="Shooter Details">
                                 <Field label="Full Name" required>
-                                    <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="field" />
+                                    <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                                 </Field>
                                 <Field label="Shooting Academy" required>
-                                    <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: event.target.value })} className="field" />
+                                    <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                                 </Field>
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <Field label="Gender" required>

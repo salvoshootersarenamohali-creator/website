@@ -38,6 +38,7 @@ import {
     isEntryScored,
     rankRows,
 } from "@/lib/results"
+import { toProperCase } from "@/lib/registration-validation"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 type PaymentMode = "cash" | "upi"
@@ -1544,11 +1545,11 @@ function RegistrationEditForm({
             <div className="grid gap-4 md:grid-cols-2">
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Full Name</span>
-                    <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="field" />
+                    <input value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                 </label>
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Academy</span>
-                    <input value={form.academy} onChange={(event) => setForm({ ...form, academy: event.target.value })} className="field" />
+                    <input value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                 </label>
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Gender</span>
