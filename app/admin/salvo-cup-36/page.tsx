@@ -81,6 +81,7 @@ type AdminRegistration = {
 }
 
 type AdminView = "stats" | "registrations" | "results" | "top-students" | "details"
+type RegistrationSortMode = "default" | "selected-date"
 
 type ResultRow = {
     registration: AdminRegistration
@@ -116,6 +117,18 @@ function scopedAdminPath(competitionSlug: string, path: string) {
 
 function dateOnly(value: string) {
     return value.slice(0, 10)
+}
+
+function selectedDateSortValue(registration: AdminRegistration, config: CompetitionConfig) {
+    const date = dateOnly(registration.preferredDate)
+    const dayIndex = config.slotOptions.findIndex((slot) => slot.date === date)
+    const slotIndex = config.slotOptions[dayIndex]?.slots.findIndex((slot) => slot === registration.preferredSlot) ?? -1
+
+    return {
+        date,
+        dayIndex: dayIndex === -1 ? Number.MAX_SAFE_INTEGER : dayIndex,
+        slotIndex: slotIndex === -1 ? Number.MAX_SAFE_INTEGER : slotIndex,
+    }
 }
 
 function paymentBadgeClass(status: PaymentStatus) {
@@ -290,6 +303,7 @@ export default function SalvoCupAdminPage() {
     const [selectedId, setSelectedId] = React.useState("")
     const [query, setQuery] = React.useState("")
     const [filter, setFilter] = React.useState("all")
+    const [registrationSort, setRegistrationSort] = React.useState<RegistrationSortMode>("default")
     const [view, setView] = React.useState<AdminView>("stats")
     const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
     const [isLoading, setIsLoading] = React.useState(false)
@@ -318,12 +332,29 @@ export default function SalvoCupAdminPage() {
             .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
     }, [registrations])
 
-    const filtered = registrations.filter((registration) => {
-        const haystack = `${registration.name} ${registration.academy} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
-        const matchesQuery = haystack.includes(query.toLowerCase())
-        const matchesFilter = filter === "all" || registration.paymentStatus === filter || registration.entries.some((entry) => entry.ruleSet === filter || entry.discipline === filter)
-        return matchesQuery && matchesFilter
-    })
+    const filtered = React.useMemo(() => {
+        const originalOrder = new Map(registrations.map((registration, index) => [registration.id, index]))
+        const rows = registrations.filter((registration) => {
+            const haystack = `${registration.name} ${registration.academy} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
+            const matchesQuery = haystack.includes(query.toLowerCase())
+            const matchesFilter = filter === "all" || registration.paymentStatus === filter || registration.entries.some((entry) => entry.ruleSet === filter || entry.discipline === filter)
+            return matchesQuery && matchesFilter
+        })
+
+        if (registrationSort === "selected-date") {
+            return rows.toSorted((a, b) => {
+                const aSort = selectedDateSortValue(a, competitionConfig)
+                const bSort = selectedDateSortValue(b, competitionConfig)
+                return aSort.dayIndex - bSort.dayIndex
+                    || aSort.date.localeCompare(bSort.date)
+                    || aSort.slotIndex - bSort.slotIndex
+                    || a.preferredSlot.localeCompare(b.preferredSlot)
+                    || a.name.localeCompare(b.name)
+            })
+        }
+
+        return rows.toSorted((a, b) => (originalOrder.get(a.id) ?? 0) - (originalOrder.get(b.id) ?? 0))
+    }, [competitionConfig, filter, query, registrationSort, registrations])
 
     React.useEffect(() => {
         setSelectedCategories((current) => {
@@ -465,7 +496,7 @@ export default function SalvoCupAdminPage() {
                         ) : (
                             <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
                                 <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
-                                    <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px]">
+                                    <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px_220px]">
                                         <label className="relative">
                                             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                                             <input value={query} onChange={(event) => setQuery(event.target.value)} className="field pl-10" placeholder="Search name, range, phone..." />
@@ -479,6 +510,10 @@ export default function SalvoCupAdminPage() {
                                             <option value="NR">NR</option>
                                             <option value="pistol">Pistol</option>
                                             <option value="rifle">Rifle</option>
+                                        </select>
+                                        <select value={registrationSort} onChange={(event) => setRegistrationSort(event.target.value as RegistrationSortMode)} className="field">
+                                            <option value="default">Default Order</option>
+                                            <option value="selected-date">Selected Date</option>
                                         </select>
                                     </div>
 
