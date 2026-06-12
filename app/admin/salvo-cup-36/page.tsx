@@ -7,6 +7,7 @@ import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Load
 import {
     CategoryOption,
     CompetitionConfig,
+    Discipline,
     Gender,
     PublicCompetition,
     SelectedEntry,
@@ -39,6 +40,7 @@ import {
     rankRows,
 } from "@/lib/results"
 import { toProperCase } from "@/lib/registration-validation"
+import { TEAM_ENTRY_FEE, getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 type PaymentMode = "cash" | "upi"
@@ -80,7 +82,23 @@ type AdminRegistration = {
     entries: AdminEntry[]
 }
 
-type AdminView = "stats" | "registrations" | "results" | "top-students" | "details"
+type AdminTeamEntry = {
+    id: string
+    name: string
+    academy: string
+    discipline: Discipline
+    amount: number
+    paymentMode: PaymentMode
+    paymentStatus: PaymentStatus
+    createdAt: string
+    members: {
+        id: string
+        registration: AdminRegistration
+        registrationEntry: AdminEntry
+    }[]
+}
+
+type AdminView = "stats" | "registrations" | "team-entries" | "results" | "top-students" | "details"
 type RegistrationSortMode = "default" | "selected-date"
 
 type ResultRow = {
@@ -304,6 +322,7 @@ export default function SalvoCupAdminPage() {
     const [pin, setPin] = React.useState("")
     const [activePin, setActivePin] = React.useState("")
     const [registrations, setRegistrations] = React.useState<AdminRegistration[]>([])
+    const [teamEntries, setTeamEntries] = React.useState<AdminTeamEntry[]>([])
     const [selectedId, setSelectedId] = React.useState("")
     const [query, setQuery] = React.useState("")
     const [filter, setFilter] = React.useState("all")
@@ -398,10 +417,26 @@ export default function SalvoCupAdminPage() {
         }
     }, [activePin, competitionSlug])
 
+    const loadTeamEntries = React.useCallback(async (adminPin = activePin) => {
+        if (!adminPin) return
+        try {
+            const response = await fetch(scopedAdminPath(competitionSlug, "/team-entries"), { headers: { "x-admin-pin": adminPin }, cache: "no-store" })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load team entries.")
+            setTeamEntries(Array.isArray(data.teamEntries) ? data.teamEntries as AdminTeamEntry[] : [])
+        } catch (loadError) {
+            setError(loadError instanceof Error ? loadError.message : "Unable to load team entries.")
+        }
+    }, [activePin, competitionSlug])
+
+    const refreshAdminData = React.useCallback(async (adminPin = activePin) => {
+        await Promise.all([loadRegistrations(adminPin), loadTeamEntries(adminPin)])
+    }, [activePin, loadRegistrations, loadTeamEntries])
+
     const login = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         setActivePin(pin)
-        await loadRegistrations(pin)
+        await refreshAdminData(pin)
     }
 
     const exportWorkbook = async () => {
@@ -434,7 +469,7 @@ export default function SalvoCupAdminPage() {
                     </div>
                     {activePin && (
                         <div className="flex gap-3">
-                            <button onClick={() => loadRegistrations()} className="admin-button">
+                            <button onClick={() => refreshAdminData()} className="admin-button">
                                 <RefreshCw className="h-4 w-4" />
                                 Refresh
                             </button>
@@ -466,6 +501,10 @@ export default function SalvoCupAdminPage() {
                                 <Users className="h-4 w-4" />
                                 Registrations
                             </button>
+                            <button onClick={() => setView("team-entries")} className={`admin-button ${view === "team-entries" ? "gold" : ""}`}>
+                                <Users className="h-4 w-4" />
+                                Team Entries
+                            </button>
                             <button onClick={() => setView("results")} className={`admin-button ${view === "results" ? "gold" : ""}`}>
                                 <Medal className="h-4 w-4" />
                                 Results
@@ -484,6 +523,14 @@ export default function SalvoCupAdminPage() {
 
                         {view === "stats" ? (
                             <StatsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} onChanged={() => loadRegistrations()} />
+                        ) : view === "team-entries" ? (
+                            <TeamEntriesView
+                                registrations={registrations}
+                                teamEntries={teamEntries}
+                                adminPin={activePin}
+                                competitionSlug={competitionSlug}
+                                onChanged={() => loadTeamEntries()}
+                            />
                         ) : view === "results" ? (
                             <ResultsView
                                 registrations={registrations}
@@ -562,6 +609,263 @@ export default function SalvoCupAdminPage() {
                     </div>
                 )}
             </div>
+        </div>
+    )
+}
+
+function TeamEntriesView({
+    registrations,
+    teamEntries,
+    adminPin,
+    competitionSlug,
+    onChanged,
+}: {
+    registrations: AdminRegistration[]
+    teamEntries: AdminTeamEntry[]
+    adminPin: string
+    competitionSlug: string
+    onChanged: () => void
+}) {
+    const [teamName, setTeamName] = React.useState("")
+    const [discipline, setDiscipline] = React.useState<Discipline>("pistol")
+    const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("cash")
+    const [paymentStatus, setPaymentStatus] = React.useState<PaymentStatus>("Pending")
+    const [memberEntryIds, setMemberEntryIds] = React.useState(["", "", ""])
+    const [saving, setSaving] = React.useState(false)
+    const [deletingId, setDeletingId] = React.useState("")
+    const [error, setError] = React.useState("")
+    const [message, setMessage] = React.useState("")
+
+    React.useEffect(() => {
+        setMemberEntryIds(["", "", ""])
+    }, [discipline])
+
+    React.useEffect(() => {
+        if (paymentMode === "upi" && paymentStatus === "Sponsored") {
+            setPaymentStatus("Pending")
+        }
+    }, [paymentMode, paymentStatus])
+
+    const eligibleOptions = React.useMemo(() => {
+        return registrations
+            .flatMap((registration) =>
+                registration.entries
+                    .filter((entry) => entry.discipline === discipline)
+                    .map((entry) => ({ registration, entry }))
+            )
+            .sort((a, b) =>
+                a.registration.academy.localeCompare(b.registration.academy)
+                || a.registration.name.localeCompare(b.registration.name)
+                || categorySortValue(a.entry.categoryCode).localeCompare(categorySortValue(b.entry.categoryCode))
+            )
+    }, [discipline, registrations])
+
+    const selectedOptions = memberEntryIds.map((entryId) => eligibleOptions.find((option) => option.entry.id === entryId) ?? null)
+    const selectedRegistrations = selectedOptions.flatMap((option) => option ? [option.registration.id] : [])
+    const selectedAcademyKeys = selectedOptions.flatMap((option) => option ? [normalizeAcademyKey(option.registration.academy)] : [])
+    const hasThreeMembers = selectedOptions.every(Boolean)
+    const hasUniqueStudents = new Set(selectedRegistrations).size === selectedRegistrations.length
+    const hasSameClub = new Set(selectedAcademyKeys).size <= 1
+    const canSubmit = hasThreeMembers && hasUniqueStudents && hasSameClub && !saving
+
+    const updateMember = (index: number, value: string) => {
+        setMemberEntryIds((current) => current.map((entryId, memberIndex) => memberIndex === index ? value : entryId))
+        setError("")
+        setMessage("")
+    }
+
+    const createTeamEntry = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        setError("")
+        setMessage("")
+        if (!hasThreeMembers) {
+            setError("Select exactly 3 students for the team.")
+            return
+        }
+        if (!hasUniqueStudents) {
+            setError("Choose 3 different students for a team entry.")
+            return
+        }
+        if (!hasSameClub) {
+            setError("All 3 students must be from the same shooting club.")
+            return
+        }
+
+        setSaving(true)
+        try {
+            const members = selectedOptions.map((option) => ({
+                registrationId: option?.registration.id,
+                registrationEntryId: option?.entry.id,
+            }))
+            const response = await fetch(scopedAdminPath(competitionSlug, "/team-entries"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                body: JSON.stringify({ name: teamName, discipline, paymentMode, paymentStatus, members }),
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to create team entry.")
+            setTeamName("")
+            setMemberEntryIds(["", "", ""])
+            setPaymentMode("cash")
+            setPaymentStatus("Pending")
+            setMessage("Team entry created.")
+            onChanged()
+        } catch (createError) {
+            setError(createError instanceof Error ? createError.message : "Unable to create team entry.")
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const deleteTeamEntry = async (teamEntry: AdminTeamEntry) => {
+        const confirmed = window.confirm(`Delete ${teamEntry.name}?`)
+        if (!confirmed) return
+
+        setDeletingId(teamEntry.id)
+        setError("")
+        setMessage("")
+        try {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/team-entries/${teamEntry.id}`), {
+                method: "DELETE",
+                headers: { "x-admin-pin": adminPin },
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete team entry.")
+            setMessage("Team entry deleted.")
+            onChanged()
+        } catch (deleteError) {
+            setError(deleteError instanceof Error ? deleteError.message : "Unable to delete team entry.")
+        } finally {
+            setDeletingId("")
+        }
+    }
+
+    return (
+        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+            <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 className="text-2xl font-black">Create Team Entry</h2>
+                        <p className="mt-1 text-sm text-white/50">Select 3 students from the same club and same discipline.</p>
+                    </div>
+                    <p className="rounded-md border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-2 text-sm font-bold text-[#E5C558]">
+                        {formatCurrency(TEAM_ENTRY_FEE)}
+                    </p>
+                </div>
+
+                <form onSubmit={createTeamEntry} className="space-y-4">
+                    <label className="block">
+                        <span className="mb-2 block text-sm font-semibold text-white/70">Team Name</span>
+                        <input value={teamName} onChange={(event) => setTeamName(toProperCase(event.target.value))} className="field" placeholder="Optional" />
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <label>
+                            <span className="mb-2 block text-sm font-semibold text-white/70">Discipline</span>
+                            <select value={discipline} onChange={(event) => setDiscipline(event.target.value as Discipline)} className="field">
+                                <option value="pistol">Pistol</option>
+                                <option value="rifle">Rifle</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span className="mb-2 block text-sm font-semibold text-white/70">Payment Mode</span>
+                            <select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="field">
+                                <option value="cash">Cash</option>
+                                <option value="upi">Online</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span className="mb-2 block text-sm font-semibold text-white/70">Payment Status</span>
+                            <select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)} className="field">
+                                <option value="Pending">Pending</option>
+                                <option value="Paid">Paid</option>
+                                {paymentMode === "cash" && <option value="Sponsored">Sponsored</option>}
+                            </select>
+                        </label>
+                    </div>
+
+                    <div className="space-y-3">
+                        {[0, 1, 2].map((index) => (
+                            <label key={index} className="block">
+                                <span className="mb-2 block text-sm font-semibold text-white/70">Student {index + 1}</span>
+                                <select value={memberEntryIds[index]} onChange={(event) => updateMember(index, event.target.value)} className="field">
+                                    <option value="">Select registered student</option>
+                                    {eligibleOptions.map(({ registration, entry }) => (
+                                        <option key={`${index}-${entry.id}`} value={entry.id}>
+                                            {registration.academy} - {registration.name} - {entry.categoryCode} ({entry.eventTitle})
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        ))}
+                    </div>
+
+                    {eligibleOptions.length === 0 && (
+                        <p className="rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">
+                            No registered students with individual {getDisciplineLabel(discipline)} entries yet.
+                        </p>
+                    )}
+                    {!hasUniqueStudents && selectedRegistrations.length > 0 && (
+                        <p className="rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
+                            The same student cannot be selected twice in one team.
+                        </p>
+                    )}
+                    {!hasSameClub && selectedAcademyKeys.length > 1 && (
+                        <p className="rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
+                            Selected students must be from the same shooting club.
+                        </p>
+                    )}
+                    {error && <p className="text-sm text-red-300">{error}</p>}
+                    {message && <p className="text-sm text-emerald-200">{message}</p>}
+
+                    <button disabled={!canSubmit} className="admin-button gold disabled:opacity-50">
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        {saving ? "Creating..." : "Create Team Entry"}
+                    </button>
+                </form>
+            </section>
+
+            <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 className="text-2xl font-black">Team Entries</h2>
+                        <p className="mt-1 text-sm text-white/50">{teamEntries.length} team{teamEntries.length === 1 ? "" : "s"} entered.</p>
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    {teamEntries.length ? teamEntries.map((teamEntry) => (
+                        <div key={teamEntry.id} className="rounded-md border border-white/10 bg-black/25 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-lg font-black">{teamEntry.name}</p>
+                                    <p className="mt-1 text-sm text-white/55">{teamEntry.academy} | {getDisciplineLabel(teamEntry.discipline)}</p>
+                                    <p className="mt-1 text-sm text-[#D4AF37]">{formatCurrency(teamEntry.amount)} ({paymentModeLabel(teamEntry.paymentMode)} - {teamEntry.paymentStatus})</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => deleteTeamEntry(teamEntry)}
+                                    disabled={deletingId === teamEntry.id}
+                                    className="inline-flex h-10 items-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-3 text-sm font-bold text-red-200 disabled:opacity-60"
+                                >
+                                    {deletingId === teamEntry.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                    Delete
+                                </button>
+                            </div>
+                            <div className="mt-4 grid gap-2">
+                                {teamEntry.members.map((member, index) => (
+                                    <div key={member.id} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
+                                        <p className="font-bold">{index + 1}. {member.registration.name}</p>
+                                        <p className="text-sm text-white/55">{member.registrationEntry.categoryCode} - {member.registrationEntry.categoryLabel}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )) : (
+                        <p className="rounded-md border border-white/10 bg-white/[0.03] p-6 text-white/50">No team entries yet.</p>
+                    )}
+                </div>
+            </section>
         </div>
     )
 }

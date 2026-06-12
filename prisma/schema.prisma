@@ -29,6 +29,7 @@ model Registration {
   updatedAt      DateTime            @updatedAt
   competition    Competition          @relation(fields: [competitionId], references: [id], onDelete: Restrict)
   entries        RegistrationEntry[]
+  teamMemberships TeamEntryMember[]
 
   @@index([competitionId])
   @@index([preferredDate])
@@ -55,6 +56,7 @@ model Competition {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   registrations     Registration[]
+  teamEntries       TeamEntry[]
 
   @@index([status])
   @@index([isPublished])
@@ -82,8 +84,43 @@ model RegistrationEntry {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  teamMemberships TeamEntryMember[]
 
   @@index([eventId])
   @@index([categoryCode])
   @@index([ruleSet])
+}
+
+model TeamEntry {
+  id             String            @id @default(cuid())
+  competitionId  String
+  name           String
+  academy        String
+  discipline     String
+  amount         Int               @default(900)
+  paymentMode    String            @default("cash")
+  paymentStatus  String            @default("Pending")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  competition    Competition       @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  members        TeamEntryMember[]
+
+  @@index([competitionId])
+  @@index([discipline])
+  @@index([paymentStatus])
+}
+
+model TeamEntryMember {
+  id                  String             @id @default(cuid())
+  teamEntryId         String
+  registrationId      String
+  registrationEntryId String
+  createdAt           DateTime           @default(now())
+  teamEntry           TeamEntry          @relation(fields: [teamEntryId], references: [id], onDelete: Cascade)
+  registration        Registration       @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  registrationEntry   RegistrationEntry  @relation(fields: [registrationEntryId], references: [id], onDelete: Restrict)
+
+  @@index([teamEntryId])
+  @@index([registrationId])
+  @@index([registrationEntryId])
 }

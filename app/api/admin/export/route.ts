@@ -4,6 +4,7 @@ import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
 import { formatCurrency } from "@/lib/competition"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
+import { getDisciplineLabel } from "@/lib/team-entries"
 
 function formatDate(value: Date) {
     return value.toISOString().slice(0, 10)
@@ -13,8 +14,13 @@ function formatOptionalDate(value: Date | null) {
     return value ? formatDate(value) : ""
 }
 
-function formatPaymentAmount(registration: { amount: number; paymentStatus: string }) {
-    return `${formatCurrency(registration.amount)} (${registration.paymentStatus})`
+function formatPaymentMode(mode: string) {
+    return mode === "upi" ? "Online" : "Cash"
+}
+
+function formatPaymentAmount(record: { amount: number; paymentStatus: string; paymentMode?: string }) {
+    const paymentLabel = record.paymentMode ? `${formatPaymentMode(record.paymentMode)} - ${record.paymentStatus}` : record.paymentStatus
+    return `${formatCurrency(record.amount)} (${paymentLabel})`
 }
 
 function formatScore(score: unknown, ruleSet: "NR" | "ISSF") {
@@ -33,6 +39,19 @@ export async function GET(request: NextRequest) {
             where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
             include: { entries: { orderBy: { createdAt: "asc" } } },
+        })
+        const teamEntries = await prisma.teamEntry.findMany({
+            where: { competitionId: competition.id },
+            orderBy: { createdAt: "asc" },
+            include: {
+                members: {
+                    orderBy: { createdAt: "asc" },
+                    include: {
+                        registration: true,
+                        registrationEntry: true,
+                    },
+                },
+            },
         })
 
         const registrationRows = registrations.flatMap((registration, index) =>
@@ -83,9 +102,30 @@ export async function GET(request: NextRequest) {
             "Amount Paid": formatPaymentAmount(registration),
         }))
 
+        const teamRows = teamEntries.map((teamEntry, index) => {
+            const members = teamEntry.members
+            return {
+                "Team No.": index + 1,
+                "Team Name": teamEntry.name,
+                "Club Name": teamEntry.academy,
+                Discipline: teamEntry.discipline === "pistol" || teamEntry.discipline === "rifle" ? getDisciplineLabel(teamEntry.discipline) : teamEntry.discipline,
+                "Payment Mode": formatPaymentMode(teamEntry.paymentMode),
+                "Payment Status": teamEntry.paymentStatus,
+                Amount: formatPaymentAmount(teamEntry),
+                "Member 1": members[0]?.registration.name ?? "",
+                "Member 1 Category": members[0] ? `${members[0].registrationEntry.categoryCode} - ${members[0].registrationEntry.categoryLabel}` : "",
+                "Member 2": members[1]?.registration.name ?? "",
+                "Member 2 Category": members[1] ? `${members[1].registrationEntry.categoryCode} - ${members[1].registrationEntry.categoryLabel}` : "",
+                "Member 3": members[2]?.registration.name ?? "",
+                "Member 3 Category": members[2] ? `${members[2].registrationEntry.categoryCode} - ${members[2].registrationEntry.categoryLabel}` : "",
+                "Created At": formatDate(teamEntry.createdAt),
+            }
+        })
+
         const workbook = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(registrationRows), "Registrations")
         XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cardRows), "Competitor Cards")
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(teamRows), "Team Entries")
 
         const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" })
         return new Response(buffer, {
