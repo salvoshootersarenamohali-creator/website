@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { AlertCircle, BarChart3, CheckCircle2, Clock3, Loader2, Medal, RefreshCw, Search, Trophy } from "lucide-react"
 import { PublicCompetition } from "@/lib/competition"
@@ -13,6 +14,7 @@ type ResultRow = {
     rank: number | null
     shooterName: string
     academy: string
+    studentPhotoPath: string | null
     eventId: string
     eventTitle: string
     categoryCode: string
@@ -92,6 +94,45 @@ function rankLabel(rank: number | null) {
 function topRankIcon(rank: number | null) {
     if (!rank || rank > 3) return null
     return <Medal className="h-4 w-4" />
+}
+
+function isTopThree(rank: number | null) {
+    return typeof rank === "number" && rank >= 1 && rank <= 3
+}
+
+function initials(name: string) {
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    return (parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")
+}
+
+function TopRankPhoto({ row, size = "md" }: { row: ResultRow; size?: "sm" | "md" | "lg" }) {
+    if (!isTopThree(row.rank)) return null
+
+    const sizeClass = size === "lg" ? "h-16 w-16 text-lg" : size === "sm" ? "h-10 w-10 text-xs" : "h-12 w-12 text-sm"
+    const className = `${sizeClass} inline-flex shrink-0 overflow-hidden rounded-md border border-[#D4AF37]/45 bg-[#D4AF37]/12`
+
+    if (row.studentPhotoPath) {
+        return (
+            <span className={className}>
+                <Image src={row.studentPhotoPath} alt={`${row.shooterName} photo`} width={80} height={80} className="h-full w-full object-cover" />
+            </span>
+        )
+    }
+
+    return (
+        <span className={`${className} inline-flex items-center justify-center font-black uppercase text-[#F4D76A]`}>
+            {initials(row.shooterName)}
+        </span>
+    )
+}
+
+function StudentNameCell({ row, photoSize = "md" }: { row: ResultRow; photoSize?: "sm" | "md" | "lg" }) {
+    return (
+        <div className="flex min-w-0 items-center gap-3">
+            <TopRankPhoto row={row} size={photoSize} />
+            <span className="min-w-0 break-words font-bold">{row.shooterName}</span>
+        </div>
+    )
 }
 
 function seriesLabel(row: ResultRow, index: number) {
@@ -413,7 +454,7 @@ function TopStudentsPanel({ group }: { group: TopStudentGroup }) {
                                 {topRows.map((row) => (
                                     <tr key={row.id} className="border-b border-white/5 last:border-0">
                                         <td className="px-4 py-3"><RankPill rank={row.rank} /></td>
-                                        <td className="px-4 py-3 font-bold">{row.shooterName}</td>
+                                        <td className="px-4 py-3"><StudentNameCell row={row} photoSize="sm" /></td>
                                         <td className="px-4 py-3 text-white/65">{row.academy}</td>
                                         <td className="px-4 py-3 text-white/65">
                                             <span className="font-bold text-white/85">{row.categoryCode}</span>
@@ -484,7 +525,7 @@ function CategoryResults({ category }: { category: ResultCategory }) {
                                 <td className="px-4 py-3">
                                     <RankPill rank={row.rank} />
                                 </td>
-                                <td className="px-4 py-3 font-bold">{row.shooterName}</td>
+                                <td className="px-4 py-3"><StudentNameCell row={row} photoSize="sm" /></td>
                                 <td className="px-4 py-3 text-white/65">{row.academy}</td>
                                 <td className="px-4 py-3 text-white/65">{row.eventTitle}</td>
                                 <td className="px-4 py-3">
@@ -505,9 +546,12 @@ function MobileResultCard({ row }: { row: ResultRow }) {
     return (
         <article className="rounded-md border border-white/10 bg-white/[0.035] p-4">
             <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <p className="break-words font-black">{row.shooterName}</p>
-                    <p className="mt-1 break-words text-sm text-white/55">{row.academy}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                    <TopRankPhoto row={row} />
+                    <div className="min-w-0">
+                        <p className="break-words font-black">{row.shooterName}</p>
+                        <p className="mt-1 break-words text-sm text-white/55">{row.academy}</p>
+                    </div>
                 </div>
                 <RankPill rank={row.rank} />
             </div>

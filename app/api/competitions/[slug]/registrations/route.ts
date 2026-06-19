@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { uploadImageToCloudinary } from "@/lib/cloudinary-upload"
+import { ImageUploadError, uploadImageToCloudinary } from "@/lib/cloudinary-upload"
 import { prisma } from "@/lib/prisma"
 import {
     IncomingRegistrationEntry,
@@ -41,11 +41,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
             utrNumber: String(formData.get("utrNumber") ?? ""),
             entries: JSON.parse(String(formData.get("entries") ?? "[]")) as IncomingRegistrationEntry[],
         })
+        const studentPhoto = formData.get("studentPhoto")
         const screenshot = formData.get("paymentScreenshot")
 
+        if (!(studentPhoto instanceof File) || studentPhoto.size <= 0) {
+            return Response.json({ error: "Please upload the shooter photo." }, { status: 400 })
+        }
         assertPublicPayment(data)
         const resolvedEntries = resolveRegistrationEntries(data, config)
 
+        const studentPhotoFile = await uploadImageToCloudinary(studentPhoto, {
+            folder: `salvo/${competition.slug}/student-photos`,
+            label: "Student photo",
+        })
         const screenshotFile = screenshot instanceof File && screenshot.size > 0
             ? await uploadImageToCloudinary(screenshot, {
                 folder: `salvo/${competition.slug}/payment-screenshots`,
@@ -69,6 +77,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 amount,
                 utrNumber: data.paymentMode === "upi" ? data.utrNumber : null,
                 screenshotPath: screenshotFile,
+                studentPhotoPath: studentPhotoFile,
                 entries: {
                     create: resolvedEntries.map((entry) => ({
                         eventId: entry.eventId,
@@ -87,6 +96,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return Response.json({ registration })
     } catch (error) {
         const message = getErrorMessage(error, "Unable to save registration.")
-        return Response.json({ error: message }, { status: error instanceof RegistrationValidationError ? 400 : 500 })
+        const status = error instanceof RegistrationValidationError ? 400 : error instanceof ImageUploadError ? error.status : 500
+        return Response.json({ error: message }, { status })
     }
 }

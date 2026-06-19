@@ -73,6 +73,7 @@ export default function RegisterPage() {
     const [isCompetitionLoading, setIsCompetitionLoading] = React.useState(true)
     const [form, setForm] = React.useState(initialForm)
     const [entries, setEntries] = React.useState<SelectedEntry[]>([])
+    const [studentPhoto, setStudentPhoto] = React.useState<File | null>(null)
     const [paymentScreenshot, setPaymentScreenshot] = React.useState<File | null>(null)
     const [error, setError] = React.useState("")
     const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -189,6 +190,10 @@ export default function RegisterPage() {
             setError("Please select at least one event category.")
             return
         }
+        if (!studentPhoto) {
+            setError("Please upload the shooter photo.")
+            return
+        }
         if (form.paymentMode === "upi" && !/^\d{12}$/.test(form.utrNumber)) {
             setError("Please enter a 12-digit UTR/UPI reference number.")
             return
@@ -197,6 +202,7 @@ export default function RegisterPage() {
         const body = new FormData()
         Object.entries(form).forEach(([key, value]) => body.append(key, value))
         body.append("entries", JSON.stringify(entries))
+        body.append("studentPhoto", studentPhoto)
         if (paymentScreenshot) body.append("paymentScreenshot", paymentScreenshot)
 
         setIsSubmitting(true)
@@ -281,6 +287,7 @@ export default function RegisterPage() {
                         setEntries([])
                         setSelectionStartedWith(null)
                         setForm(initialForm)
+                        setStudentPhoto(null)
                         setPaymentScreenshot(null)
                     }} />
                 ) : (
@@ -307,6 +314,9 @@ export default function RegisterPage() {
                                 </div>
                                 <Field label="Phone Number" required>
                                     <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
+                                </Field>
+                                <Field label="Student Photo" required>
+                                    <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setStudentPhoto(event.target.files?.[0] ?? null)} className="field file:text-white" />
                                 </Field>
                                 {age !== null && (
                                     <p className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">

@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
-import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Users, X } from "lucide-react"
+import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Upload, Users, X } from "lucide-react"
 import {
     CategoryOption,
     CompetitionConfig,
@@ -78,6 +78,7 @@ type AdminRegistration = {
     amount: number
     utrNumber: string | null
     screenshotPath: string | null
+    studentPhotoPath: string | null
     createdAt: string
     entries: AdminEntry[]
 }
@@ -308,6 +309,7 @@ function buildDemoRegistrations(): AdminRegistration[] {
             amount: entries.reduce((sum, entry) => sum + entry.fee, 0),
             utrNumber: index % 2 === 0 ? `1234567890${String(index).padStart(2, "0")}` : null,
             screenshotPath: null,
+            studentPhotoPath: null,
             createdAt: `2026-06-03T10:${String(index).padStart(2, "0")}:00.000Z`,
             entries,
         }
@@ -590,7 +592,14 @@ export default function SalvoCupAdminPage() {
                                                         </span>
                                                     </div>
                                                     <p className="mt-2 text-xs text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
-                                                    <p className="mt-2 text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entries.length} entries</p>
+                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                        <p className="text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entries.length} entries</p>
+                                                        {!registration.studentPhotoPath && (
+                                                            <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-xs font-bold text-amber-100">
+                                                                Photo missing
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </button>
                                             ))}
                                         </div>
@@ -1665,6 +1674,8 @@ function RegistrationDetail({
                 <p className="mb-6 text-sm text-white/45">Payment confirmed on {dateOnly(registration.paymentConfirmedAt)}.</p>
             )}
 
+            <StudentPhotoUpload registration={registration} adminPin={adminPin} competitionSlug={competitionSlug} onChanged={onChanged} />
+
             {registration.screenshotPath && (
                 <a href={registration.screenshotPath} target="_blank" rel="noreferrer" className="mb-6 inline-block text-sm font-bold text-[#D4AF37] underline">
                     View payment screenshot
@@ -1709,6 +1720,89 @@ function RegistrationDetail({
                 <PrintableCard registration={registration} variant="competitor" />
                 <div className="salvo-section-divider" />
                 <PrintableCard registration={registration} variant="office" />
+            </div>
+        </div>
+    )
+}
+
+function StudentPhotoUpload({
+    registration,
+    adminPin,
+    competitionSlug,
+    onChanged,
+}: {
+    registration: Pick<AdminRegistration, "id" | "name" | "studentPhotoPath">
+    adminPin: string
+    competitionSlug: string
+    onChanged: () => void
+}) {
+    const [file, setFile] = React.useState<File | null>(null)
+    const [isUploading, setIsUploading] = React.useState(false)
+    const [message, setMessage] = React.useState("")
+
+    React.useEffect(() => {
+        setFile(null)
+        setMessage("")
+        setIsUploading(false)
+    }, [registration.id])
+
+    const upload = async () => {
+        setMessage("")
+        if (!file) {
+            setMessage("Choose a student photo first.")
+            return
+        }
+
+        const body = new FormData()
+        body.append("studentPhoto", file)
+        setIsUploading(true)
+        try {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/registrations/${registration.id}/photo`), {
+                method: "PATCH",
+                headers: { "x-admin-pin": adminPin },
+                body,
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to upload student photo.")
+            setFile(null)
+            setMessage("Photo uploaded.")
+            onChanged()
+        } catch (uploadError) {
+            setMessage(uploadError instanceof Error ? uploadError.message : "Unable to upload student photo.")
+        } finally {
+            setIsUploading(false)
+        }
+    }
+
+    return (
+        <div className="mb-6 rounded-lg border border-white/10 bg-white/[0.035] p-4">
+            <div className="flex flex-wrap items-start gap-4">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-black/35">
+                    {registration.studentPhotoPath ? (
+                        <Image src={registration.studentPhotoPath} alt={`${registration.name} photo`} width={120} height={120} className="h-full w-full object-cover" />
+                    ) : (
+                        <span className="px-2 text-center text-xs font-bold uppercase tracking-[0.14em] text-white/35">Photo missing</span>
+                    )}
+                </div>
+                <div className="min-w-[240px] flex-1">
+                    <div className="mb-3">
+                        <p className="font-bold text-white">{registration.studentPhotoPath ? "Student Photo" : "Student Photo Missing"}</p>
+                        <p className="mt-1 text-sm text-white/50">Upload or replace the photo shown for top-3 public results.</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                            className="field file:text-white"
+                        />
+                        <button type="button" onClick={upload} disabled={isUploading} className="admin-button gold disabled:opacity-60">
+                            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                            {isUploading ? "Uploading..." : registration.studentPhotoPath ? "Replace Photo" : "Upload Photo"}
+                        </button>
+                    </div>
+                    {message && <p className="mt-3 text-sm text-white/60">{message}</p>}
+                </div>
             </div>
         </div>
     )

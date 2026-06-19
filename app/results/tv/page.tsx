@@ -11,6 +11,7 @@ type ResultRow = {
     rank: number | null
     shooterName: string
     academy: string
+    studentPhotoPath: string | null
     eventTitle: string
     categoryCode: string
     innerTenCount: number
@@ -64,6 +65,34 @@ function rankStyle(rank: number | null) {
 
 function shortBoardTitle(title: string) {
     return title.replace(" Top Students", "")
+}
+
+function isTopThree(rank: number | null) {
+    return typeof rank === "number" && rank >= 1 && rank <= 3
+}
+
+function initials(name: string) {
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    return (parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")
+}
+
+function TvTopRankPhoto({ row }: { row: ResultRow }) {
+    if (!isTopThree(row.rank)) return null
+
+    const className = "inline-flex h-[clamp(36px,5.2vh,58px)] w-[clamp(36px,5.2vh,58px)] shrink-0 overflow-hidden rounded-md border border-[#D4AF37]/55 bg-[#D4AF37]/14"
+    if (row.studentPhotoPath) {
+        return (
+            <span className={className}>
+                <Image src={row.studentPhotoPath} alt={`${row.shooterName} photo`} width={96} height={96} className="h-full w-full object-cover" />
+            </span>
+        )
+    }
+
+    return (
+        <span className={`${className} items-center justify-center text-[clamp(14px,1.2vw,22px)] font-black uppercase text-[#FFE27A]`}>
+            {initials(row.shooterName)}
+        </span>
+    )
 }
 
 export default function TvResultsPage() {
@@ -233,11 +262,14 @@ function TvLeaderboard({ group }: { group: TopStudentGroup }) {
                                 {row.rank ? `#${row.rank}` : "-"}
                             </span>
                         </div>
-                        <div className="min-w-0 pr-4">
-                            <p className="truncate text-[clamp(18px,1.75vw,34px)] font-black leading-tight text-white">{row.shooterName}</p>
-                            <p className="mt-0.5 truncate text-[clamp(11px,0.9vw,17px)] font-semibold text-white/42">
-                                {row.categoryCode} | {row.eventTitle} | {row.academy}
-                            </p>
+                        <div className="flex min-w-0 items-center gap-[clamp(10px,1vw,18px)] pr-4">
+                            <TvTopRankPhoto row={row} />
+                            <div className="min-w-0">
+                                <p className="truncate text-[clamp(18px,1.75vw,34px)] font-black leading-tight text-white">{row.shooterName}</p>
+                                <p className="mt-0.5 truncate text-[clamp(11px,0.9vw,17px)] font-semibold text-white/42">
+                                    {row.categoryCode} | {row.eventTitle} | {row.academy}
+                                </p>
+                            </div>
                         </div>
                         <p className="text-right text-[clamp(18px,1.65vw,32px)] font-black text-white/82">{row.innerTenCount}</p>
                         <p className="text-right text-[clamp(24px,2.2vw,42px)] font-black leading-none text-[#D4AF37]">{row.displayTotal}</p>

@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
             select: {
                 name: true,
                 academy: true,
+                studentPhotoPath: true,
                 entries: {
                     orderBy: { createdAt: "asc" },
                     select: {
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
             registration: {
                 name: string
                 academy: string
+                studentPhotoPath: string | null
             }
             entry: typeof registrations[number]["entries"][number]
         }) => {
@@ -59,6 +61,7 @@ export async function GET(request: NextRequest) {
                 rank: row.rank,
                 shooterName: row.registration.name,
                 academy: row.registration.academy,
+                studentPhotoPath: row.registration.studentPhotoPath,
                 eventId: row.entry.eventId,
                 eventTitle: row.entry.eventTitle,
                 categoryCode: row.entry.categoryCode,
@@ -81,6 +84,7 @@ export async function GET(request: NextRequest) {
                     registration: {
                         name: string
                         academy: string
+                        studentPhotoPath: string | null
                     }
                     entry: typeof registrations[number]["entries"][number]
                 }[]
@@ -99,6 +103,7 @@ export async function GET(request: NextRequest) {
                             registration: {
                                 name: registration.name,
                                 academy: registration.academy,
+                                studentPhotoPath: registration.studentPhotoPath,
                             },
                             entry,
                         })
@@ -134,6 +139,7 @@ export async function GET(request: NextRequest) {
                         registration: {
                             name: registration.name,
                             academy: registration.academy,
+                            studentPhotoPath: registration.studentPhotoPath,
                         },
                         entry,
                     }))
