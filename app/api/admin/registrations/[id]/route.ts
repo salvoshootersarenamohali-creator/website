@@ -45,9 +45,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const data = normalizeRegistrationData({
             name: body.name,
             academy: body.academy,
+            motherName: body.motherName,
+            fatherName: body.fatherName,
             gender: body.gender,
             dateOfBirth: body.dateOfBirth,
             phone: body.phone,
+            address: body.address,
             preferredDate: body.preferredDate,
             preferredSlot: body.preferredSlot,
             paymentMode: body.paymentMode,
@@ -55,7 +58,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             entries: body.entries,
         })
 
-        const resolvedEntries = resolveRegistrationEntries(data, config)
+        const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi"] })
         if (paymentStatus === "Paid" && data.paymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
             return Response.json({ error: "Online paid registrations require a 12-digit UTR number." }, { status: 400 })
         }
@@ -131,9 +134,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                 data: {
                     name: data.name,
                     academy: data.academy,
+                    motherName: data.motherName || null,
+                    fatherName: data.fatherName || null,
                     gender: data.gender,
                     dateOfBirth: new Date(`${data.dateOfBirth}T00:00:00`),
                     phone: data.phone,
+                    address: data.address || null,
                     preferredDate: new Date(`${data.preferredDate}T00:00:00`),
                     preferredSlot: data.preferredSlot,
                     paymentMode: data.paymentMode,

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { ImageUploadError, uploadImageToCloudinary } from "@/lib/cloudinary-upload"
-import { normalizeCompetitionConfig } from "@/lib/competition"
+import { isCompetitionRegistrationAvailable, normalizeCompetitionConfig } from "@/lib/competition"
 import { getActiveCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import {
@@ -17,16 +17,19 @@ export async function POST(request: NextRequest) {
     try {
         const competition = await getActiveCompetition()
         if (!competition) return Response.json({ error: "No active competition is available." }, { status: 404 })
-        if (!competition.registrationOpen) return Response.json({ error: "Registration is not open for this competition." }, { status: 403 })
+        if (!isCompetitionRegistrationAvailable(competition)) return Response.json({ error: "Registration is not open for this competition." }, { status: 403 })
         const config = normalizeCompetitionConfig(competition.config)
 
         const formData = await request.formData()
         const data = normalizeRegistrationData({
             name: String(formData.get("name") ?? ""),
             academy: String(formData.get("academy") ?? ""),
+            motherName: String(formData.get("motherName") ?? ""),
+            fatherName: String(formData.get("fatherName") ?? ""),
             gender: String(formData.get("gender") ?? ""),
             dateOfBirth: String(formData.get("dateOfBirth") ?? ""),
             phone: String(formData.get("phone") ?? ""),
+            address: String(formData.get("address") ?? ""),
             preferredDate: String(formData.get("preferredDate") ?? ""),
             preferredSlot: String(formData.get("preferredSlot") ?? ""),
             paymentMode: String(formData.get("paymentMode") ?? ""),
@@ -35,21 +38,41 @@ export async function POST(request: NextRequest) {
         })
         const studentPhoto = formData.get("studentPhoto")
         const screenshot = formData.get("paymentScreenshot")
+        const birthCertificate = formData.get("birthCertificate")
+        const aadhaarCard = formData.get("aadhaarCard")
 
         if (!(studentPhoto instanceof File) || studentPhoto.size <= 0) {
             return Response.json({ error: "Please upload the shooter photo." }, { status: 400 })
         }
-        assertPublicPayment(data)
+        if (config.requiredDocuments.birthCertificate && (!(birthCertificate instanceof File) || birthCertificate.size <= 0)) {
+            return Response.json({ error: "Please upload the date of birth certificate." }, { status: 400 })
+        }
+        if (config.requiredDocuments.aadhaarCard && (!(aadhaarCard instanceof File) || aadhaarCard.size <= 0)) {
+            return Response.json({ error: "Please upload the Aadhaar card copy." }, { status: 400 })
+        }
+        assertPublicPayment(data, config)
         const resolvedEntries = resolveRegistrationEntries(data, config)
 
         const studentPhotoFile = await uploadImageToCloudinary(studentPhoto, {
             folder: "salvo/student-photos",
             label: "Student photo",
         })
-        const screenshotFile = screenshot instanceof File && screenshot.size > 0
+        const screenshotFile = data.paymentMode === "upi" && screenshot instanceof File && screenshot.size > 0
             ? await uploadImageToCloudinary(screenshot, {
                 folder: "salvo/payment-screenshots",
                 label: "Payment screenshot",
+            })
+            : null
+        const birthCertificatePath = birthCertificate instanceof File && birthCertificate.size > 0
+            ? await uploadImageToCloudinary(birthCertificate, {
+                folder: `salvo/${competition.slug}/birth-certificates`,
+                label: "Date of birth certificate",
+            })
+            : null
+        const aadhaarCardPath = aadhaarCard instanceof File && aadhaarCard.size > 0
+            ? await uploadImageToCloudinary(aadhaarCard, {
+                folder: `salvo/${competition.slug}/aadhaar-cards`,
+                label: "Aadhaar card copy",
             })
             : null
         const amount = getResolvedRegistrationAmount(resolvedEntries)
@@ -59,9 +82,12 @@ export async function POST(request: NextRequest) {
                 competitionId: competition.id,
                 name: data.name,
                 academy: data.academy,
+                motherName: data.motherName || null,
+                fatherName: data.fatherName || null,
                 gender: data.gender,
                 dateOfBirth: new Date(`${data.dateOfBirth}T00:00:00`),
                 phone: data.phone,
+                address: data.address || null,
                 preferredDate: new Date(`${data.preferredDate}T00:00:00`),
                 preferredSlot: data.preferredSlot,
                 paymentMode: data.paymentMode,
@@ -70,6 +96,8 @@ export async function POST(request: NextRequest) {
                 utrNumber: data.paymentMode === "upi" ? data.utrNumber : null,
                 screenshotPath: screenshotFile,
                 studentPhotoPath: studentPhotoFile,
+                birthCertificatePath,
+                aadhaarCardPath,
                 entries: {
                     create: resolvedEntries.map((entry) => ({
                         eventId: entry.eventId,

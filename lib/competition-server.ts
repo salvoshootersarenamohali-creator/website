@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 import {
     PublicCompetition,
     defaultCompetitionConfig,
+    hasCompetitionEnded,
     normalizeCompetitionConfig,
 } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
@@ -77,7 +78,7 @@ export function getCompetitionSlugFromRequest(request: NextRequest) {
 }
 
 export async function getActiveCompetition() {
-    const active = await prisma.competition.findFirst({
+    const activeCompetitions = await prisma.competition.findMany({
         where: {
             isPublished: true,
             registrationOpen: true,
@@ -86,7 +87,9 @@ export async function getActiveCompetition() {
             { startDate: "desc" },
             { createdAt: "desc" },
         ],
+        take: 20,
     })
+    const active = activeCompetitions.find((competition) => !hasCompetitionEnded(competition.endDate))
     if (active) return active
 
     return prisma.competition.findFirst({

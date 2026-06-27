@@ -17,9 +17,12 @@ export type IncomingRegistrationEntry = {
 export type IncomingRegistrationData = {
     name: string
     academy: string
+    motherName: string
+    fatherName: string
     gender: string
     dateOfBirth: string
     phone: string
+    address: string
     preferredDate: string
     preferredSlot: string
     paymentMode: string
@@ -79,9 +82,12 @@ export function normalizeRegistrationData(data: Partial<IncomingRegistrationData
     return {
         name: toProperCase(String(data.name ?? "").trim()),
         academy: toProperCase(String(data.academy ?? "").trim()),
+        motherName: toProperCase(String(data.motherName ?? "").trim()),
+        fatherName: toProperCase(String(data.fatherName ?? "").trim()),
         gender: String(data.gender ?? "").trim(),
         dateOfBirth: String(data.dateOfBirth ?? "").trim(),
         phone: cleanPhone(String(data.phone ?? "").trim()),
+        address: toProperCase(String(data.address ?? "").trim()),
         preferredDate: String(data.preferredDate ?? "").trim(),
         preferredSlot: String(data.preferredSlot ?? "").trim(),
         paymentMode: String(data.paymentMode ?? "").trim(),
@@ -94,14 +100,22 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
     if (!data.name || !data.academy || !data.gender || !data.dateOfBirth || !data.phone || !data.preferredDate || !data.preferredSlot || !data.paymentMode) {
         validationError("Please complete all required fields.")
     }
+    if (config.requiresGuardianDetails && (!data.motherName || !data.fatherName)) {
+        validationError("Please enter both mother and father names.")
+    }
+    if (config.requiresAddress && !data.address) {
+        validationError("Please enter the shooter address.")
+    }
     if (data.gender !== "male" && data.gender !== "female") {
         validationError("Please select a valid gender.")
     }
     if (!isValidDate(data.dateOfBirth) || !isValidDate(data.preferredDate)) {
         validationError("Please enter valid dates.")
     }
-    if (data.paymentMode !== "cash" && data.paymentMode !== "upi") {
-        validationError("Please select a valid payment mode.")
+    if (!isPaymentMode(data.paymentMode) || !config.allowedPaymentModes.includes(data.paymentMode)) {
+        validationError(config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
+            ? "Only cash payments are accepted for this competition."
+            : "Please select a valid payment mode.")
     }
     const selectedDay = config.slotOptions.find((slot) => slot.date === data.preferredDate)
     if (!selectedDay || !selectedDay.slots.includes(data.preferredSlot)) {
@@ -115,6 +129,9 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
     if (age === null) {
         validationError("Date of birth is invalid.")
     }
+    if (config.minAge !== null && age < config.minAge) {
+        validationError(`Shooters below ${config.minAge} years are not allowed for this competition.`)
+    }
 
     const seenEntries = new Set<string>()
     const resolvedEntries = data.entries.map((entry) => {
@@ -126,7 +143,7 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
 
         const event = getEventById(eventId, config)
         if (!event) validationError("Selected event is invalid.")
-        const category = getEligibleCategories(event, age, data.gender as Gender).find((item) => item.code === categoryCode)
+        const category = getEligibleCategories(event, age, data.gender as Gender, config).find((item) => item.code === categoryCode)
         if (!category) validationError("One or more selected categories are not eligible for this shooter.")
 
         return {
@@ -152,7 +169,12 @@ export function getResolvedRegistrationAmount(entries: ResolvedRegistrationEntry
     return entries.reduce((sum, entry) => sum + entry.fee, 0)
 }
 
-export function assertPublicPayment(data: Pick<IncomingRegistrationData, "paymentMode" | "utrNumber">) {
+export function assertPublicPayment(data: Pick<IncomingRegistrationData, "paymentMode" | "utrNumber">, config: CompetitionConfig = defaultCompetitionConfig) {
+    if (!isPaymentMode(data.paymentMode) || !config.allowedPaymentModes.includes(data.paymentMode)) {
+        validationError(config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
+            ? "Only cash payments are accepted for this competition."
+            : "Please select a valid payment mode.")
+    }
     if (data.paymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
         validationError("UPI payments require a 12-digit UTR/UPI reference number.")
     }

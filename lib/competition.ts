@@ -2,6 +2,7 @@ export type Discipline = "pistol" | "rifle"
 export type RuleSet = "NR" | "ISSF"
 export type Gender = "male" | "female"
 export type PaymentMode = "cash" | "upi"
+export type CategoryGender = Gender | "open"
 export type PaymentStatus = "Pending" | "Paid"
 
 export type SlotOption = {
@@ -16,6 +17,25 @@ export type CompetitionEvent = {
     ruleSet: RuleSet
     title: string
     prizes: [number, number, number]
+    categories?: CompetitionCategoryConfig[]
+}
+
+export type CompetitionCategoryConfig = {
+    code: string
+    label: string
+    bracket: AgeBracket
+    gender: CategoryGender
+    minAge?: number
+    appliesToAllEligible?: boolean
+}
+
+export type RequiredDocumentConfig = {
+    birthCertificate: boolean
+    aadhaarCard: boolean
+}
+
+export type DetailDefaultsConfig = {
+    firstSightingTimes: Record<RuleSet, string>
 }
 
 export type CompetitionConfig = {
@@ -24,6 +44,21 @@ export type CompetitionConfig = {
     littleChampEntryFee: number
     events: CompetitionEvent[]
     slotOptions: SlotOption[]
+    feesByRuleSet: Record<RuleSet, number | null>
+    allowedPaymentModes: PaymentMode[]
+    noCashPrizes: boolean
+    awardsNote: string
+    matchStartTime: string
+    minAge: number | null
+    requiredDocuments: RequiredDocumentConfig
+    requiresGuardianDetails: boolean
+    requiresAddress: boolean
+    teamEntriesEnabled: boolean
+    rules: string[]
+    registrationNotes: string[]
+    contactName: string | null
+    contactPhone: string | null
+    detailDefaults: DetailDefaultsConfig
 }
 
 export type PublicCompetition = {
@@ -106,6 +141,10 @@ const bracketLabels: Record<AgeBracket, string> = {
     master: "Master",
 }
 
+function isAgeBracket(value: unknown): value is AgeBracket {
+    return typeof value === "string" && value in bracketLabels
+}
+
 const ladder: AgeBracket[] = ["sub-youth", "youth", "junior", "senior"]
 
 export const slotOptions: SlotOption[] = [
@@ -120,31 +159,162 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     littleChampEntryFee: LITTLE_CHAMP_ENTRY_FEE,
     events: competitionEvents,
     slotOptions,
+    feesByRuleSet: { NR: null, ISSF: null },
+    allowedPaymentModes: ["upi", "cash"],
+    noCashPrizes: false,
+    awardsNote: "Cash prizes for the top 3 shooters in each event.",
+    matchStartTime: "8:00 AM",
+    minAge: null,
+    requiredDocuments: {
+        birthCertificate: false,
+        aadhaarCard: false,
+    },
+    requiresGuardianDetails: false,
+    requiresAddress: false,
+    teamEntriesEnabled: true,
+    rules: [],
+    registrationNotes: [],
+    contactName: null,
+    contactPhone: null,
+    detailDefaults: {
+        firstSightingTimes: {
+            NR: "08:30",
+            ISSF: "08:30",
+        },
+    },
+}
+
+function readStringArray(value: unknown) {
+    if (!Array.isArray(value)) return []
+    return value.map((item) => String(item ?? "").trim()).filter(Boolean)
+}
+
+function readOptionalString(value: unknown) {
+    const text = String(value ?? "").trim()
+    return text || null
+}
+
+function readPositiveInteger(value: unknown, fallback: number | null) {
+    const number = Number(value)
+    return Number.isInteger(number) && number >= 0 ? number : fallback
+}
+
+function readRequiredDocuments(value: unknown): RequiredDocumentConfig {
+    const raw = typeof value === "object" && value !== null ? value as Partial<RequiredDocumentConfig> : {}
+    return {
+        birthCertificate: raw.birthCertificate === true,
+        aadhaarCard: raw.aadhaarCard === true,
+    }
+}
+
+function readDetailDefaults(value: unknown): DetailDefaultsConfig {
+    const raw = typeof value === "object" && value !== null ? value as Partial<DetailDefaultsConfig> : {}
+    const times = typeof raw.firstSightingTimes === "object" && raw.firstSightingTimes !== null
+        ? raw.firstSightingTimes as Partial<Record<RuleSet, unknown>>
+        : {}
+
+    return {
+        firstSightingTimes: {
+            NR: typeof times.NR === "string" && /^\d{2}:\d{2}$/.test(times.NR) ? times.NR : defaultCompetitionConfig.detailDefaults.firstSightingTimes.NR,
+            ISSF: typeof times.ISSF === "string" && /^\d{2}:\d{2}$/.test(times.ISSF) ? times.ISSF : defaultCompetitionConfig.detailDefaults.firstSightingTimes.ISSF,
+        },
+    }
+}
+
+function readCategories(value: unknown): CompetitionCategoryConfig[] {
+    if (!Array.isArray(value)) return []
+
+    return value.flatMap((category) => {
+        const candidate = category as Partial<CompetitionCategoryConfig>
+        if (
+            typeof candidate.code !== "string"
+            || typeof candidate.label !== "string"
+            || !candidate.code.trim()
+            || !candidate.label.trim()
+        ) {
+            return []
+        }
+
+        const gender = candidate.gender === "female" || candidate.gender === "male" || candidate.gender === "open"
+            ? candidate.gender
+            : "open"
+        const bracket = isAgeBracket(candidate.bracket) ? candidate.bracket : "senior"
+        const minAge = readPositiveInteger(candidate.minAge, null)
+
+        return [{
+            code: candidate.code.trim(),
+            label: candidate.label.trim(),
+            bracket,
+            gender,
+            minAge: minAge ?? undefined,
+            appliesToAllEligible: candidate.appliesToAllEligible === true,
+        }]
+    })
+}
+
+function readEvents(value: unknown) {
+    if (!Array.isArray(value)) return []
+
+    return value.flatMap((event) => {
+        const candidate = event as Partial<CompetitionEvent>
+        if (
+            typeof candidate.id !== "string"
+            || !candidate.id.trim()
+            || (candidate.discipline !== "pistol" && candidate.discipline !== "rifle")
+            || (candidate.ruleSet !== "NR" && candidate.ruleSet !== "ISSF")
+            || typeof candidate.title !== "string"
+            || !candidate.title.trim()
+            || !Array.isArray(candidate.prizes)
+            || candidate.prizes.length !== 3
+            || !candidate.prizes.every((prize) => typeof prize === "number")
+        ) {
+            return []
+        }
+
+        const categories = readCategories(candidate.categories)
+        return [{
+            id: candidate.id.trim(),
+            discipline: candidate.discipline,
+            ruleSet: candidate.ruleSet,
+            title: candidate.title.trim(),
+            prizes: [...candidate.prizes] as [number, number, number],
+            ...(categories.length ? { categories } : {}),
+        }]
+    })
+}
+
+function readSlots(value: unknown) {
+    if (!Array.isArray(value)) return []
+
+    return value.filter((slot): slot is SlotOption => {
+        const candidate = slot as Partial<SlotOption>
+        return typeof candidate.date === "string"
+            && typeof candidate.label === "string"
+            && Array.isArray(candidate.slots)
+            && candidate.slots.every((item) => typeof item === "string")
+    })
+}
+
+function readPaymentModes(value: unknown) {
+    const modes = Array.isArray(value)
+        ? value.filter((mode): mode is PaymentMode => mode === "cash" || mode === "upi")
+        : []
+    const unique = Array.from(new Set(modes))
+    return unique.length ? unique : defaultCompetitionConfig.allowedPaymentModes
+}
+
+function readFeesByRuleSet(value: unknown): Record<RuleSet, number | null> {
+    const raw = typeof value === "object" && value !== null ? value as Partial<Record<RuleSet, unknown>> : {}
+    return {
+        NR: readPositiveInteger(raw.NR, null),
+        ISSF: readPositiveInteger(raw.ISSF, null),
+    }
 }
 
 export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
     const raw = typeof value === "object" && value !== null ? value as Partial<CompetitionConfig> : {}
-    const events = Array.isArray(raw.events)
-        ? raw.events.filter((event): event is CompetitionEvent => {
-            const candidate = event as Partial<CompetitionEvent>
-            return typeof candidate.id === "string"
-                && (candidate.discipline === "pistol" || candidate.discipline === "rifle")
-                && (candidate.ruleSet === "NR" || candidate.ruleSet === "ISSF")
-                && typeof candidate.title === "string"
-                && Array.isArray(candidate.prizes)
-                && candidate.prizes.length === 3
-                && candidate.prizes.every((prize) => typeof prize === "number")
-        })
-        : []
-    const slots = Array.isArray(raw.slotOptions)
-        ? raw.slotOptions.filter((slot): slot is SlotOption => {
-            const candidate = slot as Partial<SlotOption>
-            return typeof candidate.date === "string"
-                && typeof candidate.label === "string"
-                && Array.isArray(candidate.slots)
-                && candidate.slots.every((item) => typeof item === "string")
-        })
-        : []
+    const events = readEvents(raw.events)
+    const slots = readSlots(raw.slotOptions)
 
     return {
         competitionYear: Number.isInteger(raw.competitionYear) ? Number(raw.competitionYear) : DEFAULT_COMPETITION_YEAR,
@@ -152,6 +322,21 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
         littleChampEntryFee: Number.isInteger(raw.littleChampEntryFee) ? Number(raw.littleChampEntryFee) : LITTLE_CHAMP_ENTRY_FEE,
         events: events.length ? events : competitionEvents,
         slotOptions: slots.length ? slots : slotOptions,
+        feesByRuleSet: readFeesByRuleSet(raw.feesByRuleSet),
+        allowedPaymentModes: readPaymentModes(raw.allowedPaymentModes),
+        noCashPrizes: raw.noCashPrizes === true,
+        awardsNote: String(raw.awardsNote ?? defaultCompetitionConfig.awardsNote).trim() || defaultCompetitionConfig.awardsNote,
+        matchStartTime: String(raw.matchStartTime ?? defaultCompetitionConfig.matchStartTime).trim() || defaultCompetitionConfig.matchStartTime,
+        minAge: readPositiveInteger(raw.minAge, null),
+        requiredDocuments: readRequiredDocuments(raw.requiredDocuments),
+        requiresGuardianDetails: raw.requiresGuardianDetails === true,
+        requiresAddress: raw.requiresAddress === true,
+        teamEntriesEnabled: raw.teamEntriesEnabled !== false,
+        rules: readStringArray(raw.rules),
+        registrationNotes: readStringArray(raw.registrationNotes),
+        contactName: readOptionalString(raw.contactName),
+        contactPhone: readOptionalString(raw.contactPhone),
+        detailDefaults: readDetailDefaults(raw.detailDefaults),
     }
 }
 
@@ -171,14 +356,16 @@ export function getBaseBracket(age: number): AgeBracket | null {
     return null
 }
 
-export function getEligibleBrackets(age: number): AgeBracket[] {
+export function getEligibleBrackets(age: number, config: Pick<CompetitionConfig, "minAge"> = defaultCompetitionConfig): AgeBracket[] {
+    if (config.minAge !== null && age < config.minAge) return []
+
     const base = getBaseBracket(age)
     if (!base) return []
 
     if (base === "master") return ["senior", "master"]
     if (base === "senior") return ["senior"]
     if (base === "little-standing") {
-        return ["little-standing", "little-sitting", "sub-youth", "youth", "junior", "senior"]
+            return ["little-standing", "little-sitting", "sub-youth", "youth", "junior", "senior"]
     }
 
     const index = ladder.indexOf(base)
@@ -259,8 +446,30 @@ export function buildCategoryLabel(event: CompetitionEvent, bracket: AgeBracket,
     return `${event.title} ${bracketLabels[bracket]} ${personLabel}`
 }
 
-export function getEligibleCategories(event: CompetitionEvent, age: number, gender: Gender): CategoryOption[] {
-    return getEligibleBrackets(age)
+export function getEligibleCategories(event: CompetitionEvent, age: number, gender: Gender, config: CompetitionConfig = defaultCompetitionConfig): CategoryOption[] {
+    const eligibleBrackets = getEligibleBrackets(age, config)
+    if (!eligibleBrackets.length) return []
+
+    if (event.categories?.length) {
+        return event.categories
+            .filter((category) => {
+                const minimumAge = category.minAge ?? config.minAge ?? 0
+                if (age < minimumAge) return false
+                if (category.gender !== "open" && category.gender !== gender) return false
+                return category.appliesToAllEligible || eligibleBrackets.includes(category.bracket)
+            })
+            .map((category) => ({
+                code: category.code,
+                label: category.label,
+                bracket: category.bracket,
+                gender,
+                ruleSet: event.ruleSet,
+                discipline: event.discipline,
+            }))
+            .filter((category) => Boolean(category.code))
+    }
+
+    return eligibleBrackets
         .map((bracket) => ({
             code: buildCategoryCode(event.discipline, event.ruleSet, bracket, gender),
             label: buildCategoryLabel(event, bracket, gender),
@@ -273,6 +482,11 @@ export function getEligibleCategories(event: CompetitionEvent, age: number, gend
 }
 
 export function getEntryFee(category: Pick<CategoryOption, "bracket">, config: CompetitionConfig = defaultCompetitionConfig) {
+    if ("ruleSet" in category) {
+        const fee = config.feesByRuleSet[category.ruleSet as RuleSet]
+        if (typeof fee === "number") return fee
+    }
+
     return category.bracket.startsWith("little") ? config.littleChampEntryFee : config.entryFee
 }
 
@@ -291,6 +505,47 @@ export function validateSelection(entries: SelectedEntry[], config: CompetitionC
 
 export function formatCurrency(amount: number) {
     return `Rs. ${amount.toLocaleString("en-IN")}`
+}
+
+type CompetitionStatusLike = {
+    endDate: string | Date
+    status: string
+    isPublished?: boolean
+    registrationOpen: boolean
+    resultsPublished?: boolean
+}
+
+function dateOnlyText(value: string | Date) {
+    if (value instanceof Date) return value.toISOString().slice(0, 10)
+    return String(value).slice(0, 10)
+}
+
+export function getCompetitionEndBoundary(endDate: string | Date) {
+    const [year, month, day] = dateOnlyText(endDate).split("-").map(Number)
+    if (!year || !month || !day) return null
+    return new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0, 0))
+}
+
+export function hasCompetitionEnded(endDate: string | Date, now = new Date()) {
+    const boundary = getCompetitionEndBoundary(endDate)
+    return boundary ? now.getTime() >= boundary.getTime() : false
+}
+
+export function isCompetitionClosed(competition: CompetitionStatusLike, now = new Date()) {
+    return competition.status === "closed" || hasCompetitionEnded(competition.endDate, now)
+}
+
+export function isCompetitionRegistrationAvailable(competition: CompetitionStatusLike, now = new Date()) {
+    return competition.isPublished !== false
+        && competition.registrationOpen
+        && !isCompetitionClosed(competition, now)
+}
+
+export function getCompetitionStatusLabel(competition: CompetitionStatusLike, now = new Date()) {
+    if (isCompetitionClosed(competition, now)) return "Closed"
+    if (competition.registrationOpen) return "Registration Open"
+    if (competition.resultsPublished) return "Results"
+    return competition.status || "Draft"
 }
 
 export function formatCompetitionDateRange(startDate: string | Date, endDate: string | Date) {

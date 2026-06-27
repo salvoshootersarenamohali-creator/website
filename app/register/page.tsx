@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { CalendarDays, CheckCircle2, CreditCard, Download, IndianRupee, Loader2, Medal, Printer, Trophy, Users } from "lucide-react"
+import { CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
 import {
     CategoryOption,
     PublicCompetition,
@@ -17,6 +17,8 @@ import {
     getEligibleCategories,
     getEntryFee,
     getEventById,
+    getCompetitionStatusLabel,
+    isCompetitionRegistrationAvailable,
     normalizeCompetitionConfig,
     slotOptions,
 } from "@/lib/competition"
@@ -34,21 +36,32 @@ type SavedRegistration = {
     id: string
     name: string
     academy: string
+    motherName: string | null
+    fatherName: string | null
+    address: string | null
     phone: string
+    gender: string
+    dateOfBirth: string
     preferredDate: string
     preferredSlot: string
     paymentMode: string
     paymentStatus: string
     amount: number
+    studentPhotoPath: string | null
+    birthCertificatePath: string | null
+    aadhaarCardPath: string | null
     entries: SavedEntry[]
 }
 
 const initialForm = {
     name: "",
     academy: "",
+    motherName: "",
+    fatherName: "",
     gender: "" as "" | Gender,
     dateOfBirth: "",
     phone: "",
+    address: "",
     preferredDate: "2026-06-05",
     preferredSlot: "8:00 AM - 11:00 AM",
     paymentMode: "upi" as PaymentMode,
@@ -74,6 +87,8 @@ export default function RegisterPage() {
     const [form, setForm] = React.useState(initialForm)
     const [entries, setEntries] = React.useState<SelectedEntry[]>([])
     const [studentPhoto, setStudentPhoto] = React.useState<File | null>(null)
+    const [birthCertificate, setBirthCertificate] = React.useState<File | null>(null)
+    const [aadhaarCard, setAadhaarCard] = React.useState<File | null>(null)
     const [paymentScreenshot, setPaymentScreenshot] = React.useState<File | null>(null)
     const [error, setError] = React.useState("")
     const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -82,6 +97,9 @@ export default function RegisterPage() {
     const config = competition?.config ?? defaultCompetitionConfig
     const events = config.events
     const availableSlots = config.slotOptions
+    const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
+    const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
+    const requiredDocuments = config.requiredDocuments
 
     const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
     const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
@@ -101,10 +119,13 @@ export default function RegisterPage() {
                     const normalized = { ...data.competition, config: normalizeCompetitionConfig(data.competition.config) }
                     setCompetition(normalized)
                     const firstSlot = normalized.config.slotOptions[0]
+                    const firstPaymentMode = normalized.config.allowedPaymentModes[0] ?? "cash"
                     setForm((current) => ({
                         ...current,
                         preferredDate: firstSlot?.date ?? current.preferredDate,
                         preferredSlot: firstSlot?.slots[0] ?? current.preferredSlot,
+                        paymentMode: firstPaymentMode,
+                        utrNumber: firstPaymentMode === "upi" ? current.utrNumber : "",
                     }))
                     if (!competitionSlug) window.location.replace(`/competitions/${normalized.slug}/register`)
                 }
@@ -132,13 +153,20 @@ export default function RegisterPage() {
         }
     }, [form.preferredDate, form.preferredSlot, selectedSlots])
 
+    React.useEffect(() => {
+        if (!config.allowedPaymentModes.includes(form.paymentMode)) {
+            const nextMode = config.allowedPaymentModes[0] ?? "cash"
+            setForm((current) => ({ ...current, paymentMode: nextMode, utrNumber: nextMode === "upi" ? current.utrNumber : "" }))
+        }
+    }, [config.allowedPaymentModes, form.paymentMode])
+
     const categoriesByEvent = React.useMemo(() => {
         const map = new Map<string, CategoryOption[]>()
         for (const event of events) {
-            map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender) : [])
+            map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender, config) : [])
         }
         return map
-    }, [age, events, form.gender])
+    }, [age, config, events, form.gender])
     const amount = entries.reduce((sum, entry) => {
         const eventCategories = categoriesByEvent.get(entry.eventId) ?? []
         const category = eventCategories.find((item) => item.code === entry.categoryCode)
@@ -182,6 +210,10 @@ export default function RegisterPage() {
         event.preventDefault()
         setError("")
 
+        if (!competition || !registrationAvailable) {
+            setError("Registration is closed for this competition.")
+            return
+        }
         if (!form.gender) {
             setError("Please select gender so the match category can be assigned correctly.")
             return
@@ -194,6 +226,14 @@ export default function RegisterPage() {
             setError("Please upload the shooter photo.")
             return
         }
+        if (requiredDocuments.birthCertificate && !birthCertificate) {
+            setError("Please upload the date of birth certificate.")
+            return
+        }
+        if (requiredDocuments.aadhaarCard && !aadhaarCard) {
+            setError("Please upload the Aadhaar card copy.")
+            return
+        }
         if (form.paymentMode === "upi" && !/^\d{12}$/.test(form.utrNumber)) {
             setError("Please enter a 12-digit UTR/UPI reference number.")
             return
@@ -203,6 +243,8 @@ export default function RegisterPage() {
         Object.entries(form).forEach(([key, value]) => body.append(key, value))
         body.append("entries", JSON.stringify(entries))
         body.append("studentPhoto", studentPhoto)
+        if (birthCertificate) body.append("birthCertificate", birthCertificate)
+        if (aadhaarCard) body.append("aadhaarCard", aadhaarCard)
         if (paymentScreenshot) body.append("paymentScreenshot", paymentScreenshot)
 
         setIsSubmitting(true)
@@ -244,13 +286,21 @@ export default function RegisterPage() {
     return (
         <div className="min-h-screen bg-black text-white">
             <section className="relative overflow-hidden border-b border-white/10 px-4 py-16 md:py-20">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,175,55,0.2),transparent_28rem),radial-gradient(circle_at_85%_10%,rgba(31,143,118,0.18),transparent_26rem)]" />
+                <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(212,175,55,0.18),rgba(16,117,98,0.18),rgba(139,41,58,0.15),transparent)]" />
                 <div className="container relative z-10 mx-auto grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
                     <div>
-                        <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.24em] text-[#E5C558]">
-                            <Trophy className="h-4 w-4" />
-                            {competition?.shortTitle ?? "Competition"}
-                        </p>
+                        <div className="mb-4 flex flex-wrap gap-2">
+                            <p className="inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold text-[#E5C558]">
+                                <Trophy className="h-4 w-4" />
+                                {competition?.shortTitle ?? "Competition"}
+                            </p>
+                            {competition && (
+                                <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white">
+                                    <ShieldCheck className="h-4 w-4" />
+                                    {getCompetitionStatusLabel(competition)}
+                                </p>
+                            )}
+                        </div>
                         <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
                             Register for {competition?.title ?? "Competition"}
                         </h1>
@@ -265,6 +315,11 @@ export default function RegisterPage() {
                                     <p className="text-sm text-white/55">{config.competitionYear}</p>
                                 </div>
                             ))}
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={isCashOnly ? "Cash only" : "Cash or UPI"} />
+                            <TopNote icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition?.venue ?? "Competition venue"} />
+                            <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={requiredDocuments.birthCertificate || requiredDocuments.aadhaarCard ? "Uploads required" : "Photo required"} />
                         </div>
                     </div>
                     <div className="rounded-lg border border-[#D4AF37]/30 bg-neutral-950/80 p-5 shadow-2xl shadow-[#D4AF37]/10">
@@ -288,8 +343,12 @@ export default function RegisterPage() {
                         setSelectionStartedWith(null)
                         setForm(initialForm)
                         setStudentPhoto(null)
+                        setBirthCertificate(null)
+                        setAadhaarCard(null)
                         setPaymentScreenshot(null)
                     }} />
+                ) : !registrationAvailable ? (
+                    <ClosedRegistration competition={competition} />
                 ) : (
                     <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[0.95fr_1.4fr]">
                         <section className="space-y-6">
@@ -300,6 +359,16 @@ export default function RegisterPage() {
                                 <Field label="Shooting Academy" required>
                                     <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                                 </Field>
+                                {config.requiresGuardianDetails && (
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <Field label="Mother's Name" required>
+                                            <input required value={form.motherName} onChange={(event) => setForm({ ...form, motherName: toProperCase(event.target.value) })} className="field" />
+                                        </Field>
+                                        <Field label="Father's Name" required>
+                                            <input required value={form.fatherName} onChange={(event) => setForm({ ...form, fatherName: toProperCase(event.target.value) })} className="field" />
+                                        </Field>
+                                    </div>
+                                )}
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <Field label="Gender" required>
                                         <select required value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as Gender })} className="field">
@@ -315,12 +384,32 @@ export default function RegisterPage() {
                                 <Field label="Phone Number" required>
                                     <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
                                 </Field>
+                                {config.requiresAddress && (
+                                    <Field label="Address" required>
+                                        <textarea required value={form.address} onChange={(event) => setForm({ ...form, address: toProperCase(event.target.value) })} className="field min-h-24" />
+                                    </Field>
+                                )}
                                 <Field label="Student Photo" required>
                                     <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setStudentPhoto(event.target.files?.[0] ?? null)} className="field file:text-white" />
                                 </Field>
+                                {requiredDocuments.birthCertificate && (
+                                    <Field label="Date of Birth Certificate" required>
+                                        <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setBirthCertificate(event.target.files?.[0] ?? null)} className="field file:text-white" />
+                                    </Field>
+                                )}
+                                {requiredDocuments.aadhaarCard && (
+                                    <Field label="Aadhaar Card Copy" required>
+                                        <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setAadhaarCard(event.target.files?.[0] ?? null)} className="field file:text-white" />
+                                    </Field>
+                                )}
                                 {age !== null && (
                                     <p className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
                                         Category age for this competition: <span className="font-bold text-[#D4AF37]">{age}</span>
+                                    </p>
+                                )}
+                                {config.minAge !== null && (
+                                    <p className="rounded-md border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                                        Minimum eligible age is {config.minAge}. Shooters below this age cannot participate in this competition.
                                     </p>
                                 )}
                             </Panel>
@@ -340,7 +429,7 @@ export default function RegisterPage() {
 
                             <Panel title="Payment">
                                 <div className="grid gap-3 sm:grid-cols-2">
-                                    {(["upi", "cash"] as PaymentMode[]).map((mode) => (
+                                    {config.allowedPaymentModes.map((mode) => (
                                         <button
                                             type="button"
                                             key={mode}
@@ -353,6 +442,11 @@ export default function RegisterPage() {
                                         </button>
                                     ))}
                                 </div>
+                                {isCashOnly && (
+                                    <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+                                        Only cash payments are accepted for this public registration. Admins can reconcile payment later from the competition dashboard.
+                                    </div>
+                                )}
 
                                 {form.paymentMode === "upi" && (
                                     <div className="mt-5 grid gap-5 sm:grid-cols-[180px_1fr]">
@@ -371,29 +465,46 @@ export default function RegisterPage() {
                                 )}
                             </Panel>
 
-                            <Panel title="Team Entries">
-                                <div className="rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm leading-relaxed text-white/75">
-                                    <div className="mb-3 flex items-center gap-2 text-[#E5C558]">
-                                        <Users className="h-5 w-5" />
-                                        <p className="font-black uppercase tracking-[0.16em]">Submit through your coach</p>
+                            {config.teamEntriesEnabled ? (
+                                <Panel title="Team Entries">
+                                    <div className="rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm leading-relaxed text-white/75">
+                                        <div className="mb-3 flex items-center gap-2 text-[#E5C558]">
+                                            <Users className="h-5 w-5" />
+                                            <p className="font-black uppercase tracking-[0.16em]">Submit through your coach</p>
+                                        </div>
+                                        <p>
+                                            Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(900)}</span> per team.
+                                        </p>
+                                        <ul className="mt-3 list-disc space-y-1 pl-5">
+                                            <li>Each team must have exactly 3 shooters.</li>
+                                            <li>All 3 shooters must be from the same shooting club.</li>
+                                            <li>Team members can be from different categories, but must be in the same discipline: pistol or rifle.</li>
+                                            <li>A shooter must first register for an individual event before being added to a team entry.</li>
+                                        </ul>
                                     </div>
-                                    <p>
-                                        Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(900)}</span> per team.
-                                    </p>
-                                    <ul className="mt-3 list-disc space-y-1 pl-5">
-                                        <li>Each team must have exactly 3 shooters.</li>
-                                        <li>All 3 shooters must be from the same shooting club.</li>
-                                        <li>Team members can be from different categories, but must be in the same discipline: pistol or rifle.</li>
-                                        <li>A shooter must first register for an individual event before being added to a team entry.</li>
-                                    </ul>
-                                </div>
-                            </Panel>
+                                </Panel>
+                            ) : (
+                                <Panel title="Competition Notes">
+                                    <div className="rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm leading-relaxed text-white/75">
+                                        <div className="mb-3 flex items-center gap-2 text-[#E5C558]">
+                                            <FileText className="h-5 w-5" />
+                                            <p className="font-black uppercase tracking-[0.16em]">Important Information</p>
+                                        </div>
+                                        <ul className="list-disc space-y-2 pl-5">
+                                            {config.registrationNotes.map((note) => <li key={note}>{note}</li>)}
+                                            {config.rules.slice(0, 4).map((rule) => <li key={rule}>{rule}</li>)}
+                                        </ul>
+                                    </div>
+                                </Panel>
+                            )}
                         </section>
 
                         <section className="space-y-6">
                             <Panel title="Select Event Categories">
                                 <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
-                                    Select every event-category you want to compete in. Little Champ categories are {formatCurrency(config.littleChampEntryFee)}; all other categories are {formatCurrency(config.entryFee)}.
+                                    {config.feesByRuleSet.NR || config.feesByRuleSet.ISSF
+                                        ? `Select every event-category you want to compete in. NR categories are ${formatCurrency(config.feesByRuleSet.NR ?? config.entryFee)} and ISSF categories are ${formatCurrency(config.feesByRuleSet.ISSF ?? config.entryFee)}.`
+                                        : `Select every event-category you want to compete in. Little Champ categories are ${formatCurrency(config.littleChampEntryFee)}; all other categories are ${formatCurrency(config.entryFee)}.`}
                                 </div>
                                 <div className="grid gap-5">
                                     {events.map((event) => {
@@ -406,8 +517,15 @@ export default function RegisterPage() {
                                                         <p className="text-xl font-black">{event.title}</p>
                                                         <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-[#D4AF37]">{event.ruleSet} {event.discipline}</p>
                                                     </div>
-                                                    <div className="flex gap-2">
-                                                        {event.prizes.map((prize, index) => (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100">
+                                                            Fee {formatCurrency(config.feesByRuleSet[event.ruleSet] ?? config.entryFee)}
+                                                        </span>
+                                                        {config.noCashPrizes ? (
+                                                            <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
+                                                                Medals for top 3
+                                                            </span>
+                                                        ) : event.prizes.map((prize, index) => (
                                                             <span key={prize} className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
                                                                 {index + 1}: Rs. {prize.toLocaleString("en-IN")}
                                                             </span>
@@ -453,12 +571,12 @@ export default function RegisterPage() {
                                     {entries.length ? entries.map((entry) => {
                                         const event = getEventById(entry.eventId, config)
                                         const category = event && form.gender && age !== null
-                                            ? getEligibleCategories(event, age, form.gender).find((item) => item.code === entry.categoryCode)
+                                            ? getEligibleCategories(event, age, form.gender, config).find((item) => item.code === entry.categoryCode)
                                             : null
                                         return (
                                             <div key={`${entry.eventId}-${entry.categoryCode}`} className="rounded-md bg-white/[0.04] px-3 py-2 text-sm">
                                                 <span className="font-bold text-white">{category?.code}</span>
-                                                <span className="ml-2 text-white/60">{event ? buildCategoryLabel(event, category?.bracket ?? "senior", form.gender || "male") : ""}</span>
+                                                <span className="ml-2 text-white/60">{category?.label ?? (event ? buildCategoryLabel(event, category?.bracket ?? "senior", form.gender || "male") : "")}</span>
                                             </div>
                                         )
                                     }) : <p className="text-sm text-white/45">No categories selected yet.</p>}
@@ -499,13 +617,51 @@ function Field({ label, required, children }: { label: string; required?: boolea
     )
 }
 
+function TopNote({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+    return (
+        <div className="rounded-md border border-white/10 bg-white/[0.05] p-4">
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/40">
+                {icon}
+                {label}
+            </p>
+            <p className="mt-2 text-sm font-black text-white">{value}</p>
+        </div>
+    )
+}
+
+function ClosedRegistration({ competition }: { competition: PublicCompetition | null }) {
+    return (
+        <section className="mx-auto max-w-2xl rounded-lg border border-rose-300/25 bg-rose-400/[0.08] p-8 text-center shadow-2xl shadow-rose-950/20">
+            <ShieldCheck className="mx-auto h-10 w-10 text-rose-100" />
+            <h2 className="mt-4 text-3xl font-black">Registration Closed</h2>
+            <p className="mt-3 text-white/65">
+                {competition ? `${competition.shortTitle} is no longer accepting public registrations.` : "This competition is no longer accepting public registrations."}
+            </p>
+            {competition && (
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    <a href={`/competitions/${competition.slug}`} className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 font-bold text-white hover:border-[#D4AF37]">
+                        Competition Details
+                    </a>
+                    {(competition.resultsPublished || competition.registrationOpen) && (
+                        <a href={`/competitions/${competition.slug}/results`} className="inline-flex h-11 items-center justify-center rounded-md bg-[#D4AF37] px-4 font-bold text-black">
+                            View Results
+                        </a>
+                    )}
+                </div>
+            )}
+        </section>
+    )
+}
+
 function CompetitorCard({ registration, competition, onNew }: { registration: SavedRegistration; competition: PublicCompetition | null; onNew: () => void }) {
+    const isProvisionalForm = Boolean(competition?.config.requiresGuardianDetails)
+
     return (
         <section className="mx-auto max-w-5xl">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <p className="text-sm uppercase tracking-[0.25em] text-[#D4AF37]">Registration Complete</p>
-                    <h2 className="text-3xl font-black">Competitor Card Generated</h2>
+                    <h2 className="text-3xl font-black">{isProvisionalForm ? "Provisional Form Generated" : "Competitor Card Generated"}</h2>
                 </div>
                 <div className="flex gap-3">
                     <button onClick={() => window.print()} className="inline-flex h-11 items-center gap-2 rounded-md border border-white/15 px-4 font-bold text-white hover:border-[#D4AF37]">
@@ -518,24 +674,99 @@ function CompetitorCard({ registration, competition, onNew }: { registration: Sa
                     </button>
                 </div>
             </div>
-            <div className="print-card overflow-hidden rounded-lg bg-white text-black shadow-2xl">
-                <div className="bg-neutral-950 px-8 py-6 text-white">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <Medal className="h-12 w-12 text-[#D4AF37]" />
-                            <div>
-                                <p className="text-3xl font-black text-[#D4AF37]">{(competition?.shortTitle ?? "Competition").toUpperCase()}</p>
-                                <p className="text-sm uppercase tracking-[0.24em] text-white/60">Competitor Card</p>
+            {isProvisionalForm ? (
+                <FaridkotProvisionalForm registration={registration} competition={competition} />
+            ) : (
+                <div className="print-card overflow-hidden rounded-lg bg-white text-black shadow-2xl">
+                    <div className="bg-neutral-950 px-8 py-6 text-white">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <Medal className="h-12 w-12 text-[#D4AF37]" />
+                                <div>
+                                    <p className="text-3xl font-black text-[#D4AF37]">{(competition?.shortTitle ?? "Competition").toUpperCase()}</p>
+                                    <p className="text-sm uppercase tracking-[0.24em] text-white/60">Competitor Card</p>
+                                </div>
                             </div>
+                            <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={180} height={72} className="h-12 w-auto" />
                         </div>
-                        <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={180} height={72} className="h-12 w-auto" />
+                    </div>
+                    <CardBody registration={registration} competition={competition} title="COMPETITOR CARD" />
+                    <div className="mx-8 border-t-2 border-black" />
+                    <CardBody registration={registration} competition={competition} title="FOR OFFICE USE ONLY" />
+                </div>
+            )}
+        </section>
+    )
+}
+
+function FaridkotProvisionalForm({ registration, competition }: { registration: SavedRegistration; competition: PublicCompetition | null }) {
+    const firstEntry = registration.entries[0]
+    const matchNumbers = registration.entries.map((entry) => entry.categoryCode).join(", ")
+    const matchFees = registration.entries.map((entry) => `${entry.categoryCode}: ${formatCurrency(entry.fee)}`).join(", ")
+    const discipline = registration.entries.some((entry) => /pistol/i.test(entry.eventTitle)) ? "Pistol" : "Rifle"
+
+    return (
+        <div className="print-card overflow-hidden rounded-lg bg-white p-8 text-black shadow-2xl">
+            <div className="border-4 border-double border-black p-8 font-serif">
+                <div className="text-center">
+                    <p className="text-lg font-bold">(USE CAPITAL LETTER ONLY)</p>
+                    <h2 className="text-2xl font-bold">PROVISIONAL SHOOTER&apos;S REGISTRATION & ENTRY FORM</h2>
+                    <h3 className="text-xl font-bold">{competition?.shortTitle ?? "DRSA Faridkot 2026-27"}</h3>
+                </div>
+                <div className="mt-7 grid grid-cols-[1fr_150px] gap-8">
+                    <div className="space-y-4 text-lg">
+                        <FormLine label="Name of Competition/Event" value={competition?.title ?? firstEntry?.eventTitle ?? ""} />
+                        <FormLine label="Shooter Name" value={registration.name} />
+                        <FormLine label="Mother's Name" value={registration.motherName ?? ""} />
+                        <FormLine label="Father's Name" value={registration.fatherName ?? ""} />
+                        <FormLine label="Date of Birth" value={registration.dateOfBirth.slice(0, 10)} />
+                    </div>
+                    <div className="flex flex-col items-center gap-3">
+                        <p className="self-start text-lg">Category: {firstEntry?.categoryCode ?? ""}</p>
+                        <div className="flex h-40 w-32 items-center justify-center border-2 border-black text-center text-xs">
+                            {registration.studentPhotoPath ? "Photo Uploaded" : "Photo"}
+                        </div>
                     </div>
                 </div>
-                <CardBody registration={registration} competition={competition} title="COMPETITOR CARD" />
-                <div className="mx-8 border-t-2 border-black" />
-                <CardBody registration={registration} competition={competition} title="FOR OFFICE USE ONLY" />
+                <div className="mt-4 grid gap-4 text-lg">
+                    <p>Sex: <span className="ml-4">Male {registration.gender === "male" ? "[x]" : "[ ]"}</span><span className="ml-8">Female {registration.gender === "female" ? "[x]" : "[ ]"}</span></p>
+                    <FormLine label="Match No." value={matchNumbers} />
+                    <FormLine label="Match Fee" value={matchFees} />
+                    <p>Event: <span className="ml-4">Rifle {discipline === "Rifle" ? "[x]" : "[ ]"}</span><span className="ml-8">Pistol {discipline === "Pistol" ? "[x]" : "[ ]"}</span></p>
+                    <FormLine label="Address" value={registration.address ?? ""} />
+                    <FormLine label="Contact No." value={registration.phone} />
+                </div>
+                <div className="mt-8 rounded-md border border-black p-4 text-base leading-relaxed">
+                    <p className="font-bold">Declaration:</p>
+                    <p>I hereby declare and confirm that all the entries provided in this registration form are correct. I understand that false or incomplete information may lead to cancellation of registration.</p>
+                </div>
+                <div className="mt-6 grid gap-2 text-sm">
+                    <p>Documents uploaded: Shooter photo{registration.birthCertificatePath ? ", date of birth certificate" : ""}{registration.aadhaarCardPath ? ", Aadhaar card copy" : ""}.</p>
+                    <p>Payment mode: {registration.paymentMode === "cash" ? "Cash" : "Online"} | Amount: {formatCurrency(registration.amount)} | Status: {registration.paymentStatus}</p>
+                    <p>Match starts at {competition?.config.matchStartTime ?? "8:00 AM"}.</p>
+                </div>
+                <div className="mt-16 flex justify-between text-lg">
+                    <div>
+                        <p>(Signature of Shooter)</p>
+                        <div className="mt-12 w-56 border-b-2 border-black" />
+                    </div>
+                    <div>
+                        <p>(Signature of Parents/Guardian)</p>
+                        <div className="mt-12 w-72 border-b-2 border-black" />
+                    </div>
+                </div>
+                <p className="mt-8 text-lg">Date: {new Date().toISOString().slice(0, 10)}</p>
             </div>
-        </section>
+        </div>
+    )
+}
+
+function FormLine({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="grid grid-cols-[220px_1fr] items-end gap-3">
+            <p>{label}:</p>
+            <p className="min-h-8 border-b border-dotted border-black px-2">{value}</p>
+        </div>
     )
 }
 

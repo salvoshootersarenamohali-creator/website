@@ -1,7 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { CalendarDays, Medal, Trophy } from "lucide-react"
-import { formatCompetitionDateRange } from "@/lib/competition"
+import { formatCompetitionDateRange, getCompetitionStatusLabel, isCompetitionClosed } from "@/lib/competition"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -98,15 +98,18 @@ export default async function CompetitionsPage() {
     )
 }
 
-function StatusPill({ competition }: { competition: { registrationOpen: boolean; resultsPublished: boolean; status: string } }) {
-    const label = competition.registrationOpen ? "Registration Open" : competition.resultsPublished ? "Results" : competition.status
-    const classes = competition.registrationOpen
+function StatusPill({ competition }: { competition: { endDate: string; registrationOpen: boolean; resultsPublished: boolean; status: string } }) {
+    const label = getCompetitionStatusLabel(competition)
+    const closed = isCompetitionClosed(competition)
+    const classes = closed
+        ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
+        : competition.registrationOpen
         ? "border-emerald-300/35 bg-emerald-400/10 text-emerald-100"
         : competition.resultsPublished
             ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#D4AF37]"
             : "border-white/10 bg-white/[0.04] text-white/60"
 
-    return <span className={`rounded-full border px-3 py-1 text-xs font-bold capitalize ${classes}`}>{label}</span>
+    return <span className={`rounded-full border px-3 py-1 text-xs font-bold ${classes}`}>{label}</span>
 }
 
 function Mini({ label, value }: { label: string; value: string | number }) {

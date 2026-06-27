@@ -24,7 +24,6 @@ import {
 import {
     buildDetailSchedule,
     defaultDetailLanes,
-    defaultFirstSightingTimes,
     DetailLaneConfig,
     DetailScheduleConfig,
     formatClockLabel,
@@ -66,9 +65,12 @@ type AdminRegistration = {
     id: string
     name: string
     academy: string
+    motherName: string | null
+    fatherName: string | null
     gender: string
     dateOfBirth: string
     phone: string
+    address: string | null
     preferredDate: string
     preferredSlot: string
     paymentMode: PaymentMode
@@ -79,6 +81,8 @@ type AdminRegistration = {
     utrNumber: string | null
     screenshotPath: string | null
     studentPhotoPath: string | null
+    birthCertificatePath: string | null
+    aadhaarCardPath: string | null
     createdAt: string
     entries: AdminEntry[]
 }
@@ -122,6 +126,7 @@ type CombinedLeaderboard = {
 const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
 const canUseDemoData = process.env.NODE_ENV !== "production"
 const FALLBACK_COMPETITION_SLUG = "36th-salvo-cup"
+const ADMIN_SESSION_PIN_KEY = "salvo-admin-pin"
 
 function getAdminCompetitionSlug(pathname: string) {
     const match = pathname.match(/^\/admin\/competitions\/([^/]+)\/?$/)
@@ -297,9 +302,12 @@ function buildDemoRegistrations(): AdminRegistration[] {
             id: `demo-registration-${index}`,
             name,
             academy: academies[index % academies.length],
+            motherName: null,
+            fatherName: null,
             gender,
             dateOfBirth: `${dateOfBirth}T00:00:00.000Z`,
             phone: `90000000${String(index).padStart(2, "0")}`,
+            address: null,
             preferredDate: `2026-06-0${(index % 3) + 5}T00:00:00.000Z`,
             preferredSlot: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM"][index % 3],
             paymentMode: index % 2 === 0 ? "upi" : "cash",
@@ -310,6 +318,8 @@ function buildDemoRegistrations(): AdminRegistration[] {
             utrNumber: index % 2 === 0 ? `1234567890${String(index).padStart(2, "0")}` : null,
             screenshotPath: null,
             studentPhotoPath: null,
+            birthCertificatePath: null,
+            aadhaarCardPath: null,
             createdAt: `2026-06-03T10:${String(index).padStart(2, "0")}:00.000Z`,
             entries,
         }
@@ -433,8 +443,18 @@ export default function SalvoCupAdminPage() {
         await Promise.all([loadRegistrations(adminPin), loadTeamEntries(adminPin)])
     }, [activePin, loadRegistrations, loadTeamEntries])
 
+    React.useEffect(() => {
+        if (activePin) return
+        const storedPin = window.sessionStorage.getItem(ADMIN_SESSION_PIN_KEY)
+        if (!storedPin) return
+        setPin(storedPin)
+        setActivePin(storedPin)
+        refreshAdminData(storedPin)
+    }, [activePin, refreshAdminData])
+
     const login = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
+        window.sessionStorage.setItem(ADMIN_SESSION_PIN_KEY, pin)
         setActivePin(pin)
         await refreshAdminData(pin)
     }
@@ -501,10 +521,12 @@ export default function SalvoCupAdminPage() {
                                 <Users className="h-4 w-4" />
                                 Registrations
                             </button>
-                            <button onClick={() => setView("team-entries")} className={`admin-button ${view === "team-entries" ? "gold" : ""}`}>
-                                <Users className="h-4 w-4" />
-                                Team Entries
-                            </button>
+                            {competitionConfig.teamEntriesEnabled && (
+                                <button onClick={() => setView("team-entries")} className={`admin-button ${view === "team-entries" ? "gold" : ""}`}>
+                                    <Users className="h-4 w-4" />
+                                    Team Entries
+                                </button>
+                            )}
                             <button onClick={() => setView("results")} className={`admin-button ${view === "results" ? "gold" : ""}`}>
                                 <Medal className="h-4 w-4" />
                                 Results
@@ -523,7 +545,7 @@ export default function SalvoCupAdminPage() {
 
                         {view === "stats" ? (
                             <StatsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} onChanged={() => loadRegistrations()} />
-                        ) : view === "team-entries" ? (
+                        ) : view === "team-entries" && competitionConfig.teamEntriesEnabled ? (
                             <TeamEntriesView
                                 registrations={registrations}
                                 teamEntries={teamEntries}
@@ -893,15 +915,16 @@ function DetailsView({
     config: CompetitionConfig
 }) {
     const firstDate = config.slotOptions[0]?.date ?? new Date().toISOString().slice(0, 10)
+    const configuredFirstSightingTimes = config.detailDefaults.firstSightingTimes
     const [selectedDate, setSelectedDate] = React.useState(firstDate)
     const [ruleSetMode, setRuleSetMode] = React.useState<"both" | RuleSet>("both")
     const [lanes, setLanes] = React.useState<DetailLaneConfig>(defaultDetailLanes)
-    const [firstSightingTimes, setFirstSightingTimes] = React.useState<Record<RuleSet, string>>(defaultFirstSightingTimes)
+    const [firstSightingTimes, setFirstSightingTimes] = React.useState<Record<RuleSet, string>>(configuredFirstSightingTimes)
     const [generatedConfig, setGeneratedConfig] = React.useState<DetailScheduleConfig>(() => ({
         date: firstDate,
         ruleSets: ["NR", "ISSF"],
         lanes: defaultDetailLanes,
-        firstSightingTimes: defaultFirstSightingTimes,
+        firstSightingTimes: configuredFirstSightingTimes,
     }))
     const [downloadState, setDownloadState] = React.useState<"idle" | "saving">("idle")
     const [message, setMessage] = React.useState("")
@@ -913,6 +936,16 @@ function DetailsView({
     const schedule = React.useMemo(() => buildDetailSchedule(registrations, generatedConfig), [registrations, generatedConfig])
     const totalDetails = schedule.details.length
     const totalRows = schedule.details.reduce((sum, detail) => sum + detail.rows.length, 0)
+
+    React.useEffect(() => {
+        setSelectedDate(firstDate)
+        setFirstSightingTimes(configuredFirstSightingTimes)
+        setGeneratedConfig((current) => ({
+            ...current,
+            date: firstDate,
+            firstSightingTimes: configuredFirstSightingTimes,
+        }))
+    }, [firstDate, configuredFirstSightingTimes])
 
     const updateLane = (laneType: keyof DetailLaneConfig, index: number, value: string) => {
         setLanes((current) => ({
@@ -1669,6 +1702,13 @@ function RegistrationDetail({
                 <Stat label="UTR" value={registration.utrNumber ?? "-"} />
                 <Stat label="Confirmed By" value={registration.paymentConfirmedBy ?? "-"} />
             </div>
+            {(config.requiresGuardianDetails || config.requiresAddress) && (
+                <div className="mb-6 grid gap-3 md:grid-cols-3">
+                    {config.requiresGuardianDetails && <Stat label="Mother" value={registration.motherName ?? "-"} />}
+                    {config.requiresGuardianDetails && <Stat label="Father" value={registration.fatherName ?? "-"} />}
+                    {config.requiresAddress && <Stat label="Address" value={registration.address ?? "-"} />}
+                </div>
+            )}
 
             {registration.paymentConfirmedAt && (
                 <p className="mb-6 text-sm text-white/45">Payment confirmed on {dateOnly(registration.paymentConfirmedAt)}.</p>
@@ -1680,6 +1720,20 @@ function RegistrationDetail({
                 <a href={registration.screenshotPath} target="_blank" rel="noreferrer" className="mb-6 inline-block text-sm font-bold text-[#D4AF37] underline">
                     View payment screenshot
                 </a>
+            )}
+            {(registration.birthCertificatePath || registration.aadhaarCardPath) && (
+                <div className="mb-6 flex flex-wrap gap-3">
+                    {registration.birthCertificatePath && (
+                        <a href={registration.birthCertificatePath} target="_blank" rel="noreferrer" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#D4AF37] underline">
+                            View DOB Certificate
+                        </a>
+                    )}
+                    {registration.aadhaarCardPath && (
+                        <a href={registration.aadhaarCardPath} target="_blank" rel="noreferrer" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#D4AF37] underline">
+                            View Aadhaar Copy
+                        </a>
+                    )}
+                </div>
             )}
 
             {registration.paymentStatus === "Pending" && (
@@ -1811,9 +1865,12 @@ function StudentPhotoUpload({
 type RegistrationEditFormState = {
     name: string
     academy: string
+    motherName: string
+    fatherName: string
     gender: "" | Gender
     dateOfBirth: string
     phone: string
+    address: string
     preferredDate: string
     preferredSlot: string
     paymentMode: PaymentMode
@@ -1839,9 +1896,12 @@ function RegistrationEditForm({
     const [form, setForm] = React.useState<RegistrationEditFormState>(() => ({
         name: registration.name,
         academy: registration.academy,
+        motherName: registration.motherName ?? "",
+        fatherName: registration.fatherName ?? "",
         gender: registration.gender === "male" || registration.gender === "female" ? registration.gender : "",
         dateOfBirth: dateOnly(registration.dateOfBirth),
         phone: registration.phone,
+        address: registration.address ?? "",
         preferredDate: dateOnly(registration.preferredDate),
         preferredSlot: registration.preferredSlot,
         paymentMode: registration.paymentMode,
@@ -1869,10 +1929,10 @@ function RegistrationEditForm({
     const categoriesByEvent = React.useMemo(() => {
         const map = new Map<string, CategoryOption[]>()
         for (const event of config.events) {
-            map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender) : [])
+            map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender, config) : [])
         }
         return map
-    }, [age, config.events, form.gender])
+    }, [age, config, form.gender])
     const invalidEntries = entries.filter((entry) => {
         const categories = categoriesByEvent.get(entry.eventId) ?? []
         return !categories.some((category) => category.code === entry.categoryCode)
@@ -1988,6 +2048,18 @@ function RegistrationEditForm({
                     <span className="mb-2 block text-sm font-semibold text-white/70">Academy</span>
                     <input value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                 </label>
+                {config.requiresGuardianDetails && (
+                    <>
+                        <label>
+                            <span className="mb-2 block text-sm font-semibold text-white/70">Mother&apos;s Name</span>
+                            <input value={form.motherName} onChange={(event) => setForm({ ...form, motherName: toProperCase(event.target.value) })} className="field" />
+                        </label>
+                        <label>
+                            <span className="mb-2 block text-sm font-semibold text-white/70">Father&apos;s Name</span>
+                            <input value={form.fatherName} onChange={(event) => setForm({ ...form, fatherName: toProperCase(event.target.value) })} className="field" />
+                        </label>
+                    </>
+                )}
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Gender</span>
                     <select value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as "" | Gender })} className="field">
@@ -2004,6 +2076,12 @@ function RegistrationEditForm({
                     <span className="mb-2 block text-sm font-semibold text-white/70">Phone</span>
                     <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
                 </label>
+                {config.requiresAddress && (
+                    <label className="md:col-span-2">
+                        <span className="mb-2 block text-sm font-semibold text-white/70">Address</span>
+                        <textarea value={form.address} onChange={(event) => setForm({ ...form, address: toProperCase(event.target.value) })} className="field min-h-24" />
+                    </label>
+                )}
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Competition Date</span>
                     <select value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">

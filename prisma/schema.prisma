@@ -13,9 +13,12 @@ model Registration {
   competitionId  String
   name           String
   academy        String
+  motherName     String?
+  fatherName     String?
   gender         String
   dateOfBirth    DateTime
   phone          String
+  address        String?
   preferredDate  DateTime
   preferredSlot  String
   paymentMode    String
@@ -26,6 +29,8 @@ model Registration {
   utrNumber      String?
   screenshotPath String?
   studentPhotoPath String?
+  birthCertificatePath String?
+  aadhaarCardPath String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   competition    Competition          @relation(fields: [competitionId], references: [id], onDelete: Restrict)

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { normalizeCompetitionConfig } from "@/lib/competition"
 import { getCompetitionBySlugOrActive } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import {
@@ -51,6 +52,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const { slug } = await context.params
         const competition = await getCompetitionBySlugOrActive(slug)
         if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
+        const config = normalizeCompetitionConfig(competition.config)
+        if (!config.teamEntriesEnabled) {
+            return Response.json({ error: "Team entries are disabled for this competition." }, { status: 400 })
+        }
 
         const body = await request.json()
         const data = normalizeTeamEntryData({
