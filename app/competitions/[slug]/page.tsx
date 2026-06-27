@@ -36,6 +36,7 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
     const dateRange = formatCompetitionDateRange(competition.startDate, competition.endDate)
     const registrationAvailable = isCompetitionRegistrationAvailable(competition)
     const statusLabel = getCompetitionStatusLabel(competition)
+    const adminHref = competition.slug === "faridkot-2026-27" ? "/admin/faridkot" : null
     const paymentLabel = competition.config.allowedPaymentModes.length === 1 && competition.config.allowedPaymentModes[0] === "cash"
         ? "Cash only"
         : "Cash / UPI"
@@ -93,6 +94,12 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
                             {(competition.resultsPublished || registrationAvailable) && (
                                 <Link href={`/competitions/${competition.slug}/results`} className="inline-flex h-12 items-center justify-center rounded-md border border-white/15 px-6 font-bold text-white transition hover:border-[#D4AF37] hover:text-[#D4AF37]">
                                     View Results
+                                </Link>
+                            )}
+                            {adminHref && (
+                                <Link href={adminHref} className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-cyan-300/30 bg-cyan-400/10 px-6 font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/15">
+                                    <ShieldCheck className="h-4 w-4" />
+                                    Coach Admin
                                 </Link>
                             )}
                             <Link href="/competitions" className="inline-flex h-12 items-center justify-center rounded-md border border-white/10 px-6 font-bold text-white/70 transition hover:border-white/30 hover:text-white">
