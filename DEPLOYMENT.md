@@ -24,6 +24,12 @@ Set these Vercel production environment variables:
 DATABASE_URL="postgres://USER:PASSWORD@HOST:PORT/defaultdb?sslmode=require"
 ADMIN_PIN="choose-a-private-pin"
 NEXT_TURBOPACK_EXPERIMENTAL_USE_SYSTEM_TLS_CERTS="1"
+SMTP_HOST="smtp.example.com"
+SMTP_PORT="587"
+SMTP_USER="your-smtp-username"
+SMTP_PASS="your-smtp-password"
+SMTP_FROM_EMAIL="Salvo Shooters Arena <no-reply@example.com>"
+CONTACT_TO_EMAIL="salvoshootersarenamohali@gmail.com"
 ```
 
 If Vercel's Git integration is enabled, disable automatic production deployments so this GitHub Actions workflow is the single deployment path.
@@ -44,5 +50,6 @@ The workflow in `.github/workflows/deploy.yml` runs on pushes to `main`. It inst
 ## Notes
 
 - Coach admin is at `/admin/salvo-cup-36` and uses `ADMIN_PIN`.
+- Contact form submissions are sent through SMTP from `/api/contact`. Configure the SMTP variables above before testing email delivery in production.
 - Payment screenshots currently write to `public/uploads/payments`. This is enough to test the form, but on Vercel those files should later move to object storage such as Cloudflare R2, S3, UploadThing, or Vercel Blob.
 - Replace `public/upi-scanner.png` with the real UPI QR scanner before opening registrations.

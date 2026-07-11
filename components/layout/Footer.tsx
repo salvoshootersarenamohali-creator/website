@@ -2,7 +2,20 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Crosshair, Facebook, Instagram, Twitter, Mail, MapPin, Phone } from "lucide-react"
+import { Crosshair, Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react"
+
+const socialLinks = [
+    {
+        name: "Instagram",
+        href: "https://www.instagram.com/salvo_shooters_arena",
+        icon: Instagram,
+    },
+    {
+        name: "Facebook",
+        href: "https://www.facebook.com/salvoshooting/",
+        icon: Facebook,
+    },
+]
 
 export function Footer() {
     const pathname = usePathname()
@@ -28,15 +41,18 @@ export function Footer() {
                             Premier shooting academy in Mohali. Dedicated to forging champions through precision, discipline, and advanced technique training.
                         </p>
                         <div className="flex gap-4">
-                            <Link href="#" className="p-2 rounded-full bg-white/5 hover:bg-primary/20 text-white/60 hover:text-primary transition-colors">
-                                <Instagram className="h-4 w-4" />
-                            </Link>
-                            <Link href="#" className="p-2 rounded-full bg-white/5 hover:bg-primary/20 text-white/60 hover:text-primary transition-colors">
-                                <Facebook className="h-4 w-4" />
-                            </Link>
-                            <Link href="#" className="p-2 rounded-full bg-white/5 hover:bg-primary/20 text-white/60 hover:text-primary transition-colors">
-                                <Twitter className="h-4 w-4" />
-                            </Link>
+                            {socialLinks.map((social) => (
+                                <Link
+                                    key={social.name}
+                                    href={social.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    aria-label={`Open Salvo Shooters Arena on ${social.name}`}
+                                    className="p-2 rounded-full bg-white/5 hover:bg-primary/20 text-white/60 hover:text-primary transition-colors"
+                                >
+                                    <social.icon className="h-4 w-4" />
+                                </Link>
+                            ))}
                         </div>
                     </div>
 

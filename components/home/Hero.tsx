@@ -2,20 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
-import { Facebook, Instagram } from "lucide-react"
-
-const socialLinks = [
-    {
-        name: "Instagram",
-        href: "https://www.instagram.com/salvo_shooters_arena",
-        icon: Instagram,
-    },
-    {
-        name: "Facebook",
-        href: "https://www.facebook.com/salvoshooting/",
-        icon: Facebook,
-    },
-]
+import Link from "next/link"
 
 export function Hero() {
     return (
@@ -64,35 +51,12 @@ export function Hero() {
                     transition={{ duration: 0.8, delay: 0.6 }}
                     className="flex flex-col sm:flex-row items-center justify-center gap-4"
                 >
-                    <Button size="lg" className="h-14 px-8 text-lg rounded-full bg-[#F7D886] text-black font-bold shadow-[0_0_28px_rgba(247,216,134,0.45)] hover:bg-primary hover:text-white hover:shadow-[0_0_36px_rgba(247,216,134,0.65)]">
-                        Start Your Journey
+                    <Button asChild size="lg" className="h-14 px-8 text-lg rounded-full bg-[#F7D886] text-black font-bold shadow-[0_0_28px_rgba(247,216,134,0.45)] hover:bg-primary hover:text-white hover:shadow-[0_0_36px_rgba(247,216,134,0.65)]">
+                        <Link href="/contact">Start Your Journey</Link>
                     </Button>
-                    <Button size="lg" variant="outline" className="h-14 px-8 text-lg rounded-full border-white/20 text-white hover:bg-white/10">
-                        Explore Facilities
+                    <Button asChild size="lg" variant="outline" className="h-14 px-8 text-lg rounded-full border-white/20 text-white hover:bg-white/10">
+                        <Link href="/facilities">Explore Facilities</Link>
                     </Button>
-                </motion.div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, delay: 0.8 }}
-                    className="mt-8 flex flex-wrap items-center justify-center gap-3"
-                >
-                    {socialLinks.map((social) => (
-                        <a
-                            key={social.name}
-                            href={social.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="group inline-flex h-12 items-center gap-3 rounded-full border border-primary/25 bg-black/35 px-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur transition hover:border-primary/70 hover:bg-primary/10 hover:text-primary"
-                            aria-label={`Open Salvo Shooters Arena on ${social.name}`}
-                        >
-                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary transition group-hover:bg-primary group-hover:text-black">
-                                <social.icon className="h-4 w-4" />
-                            </span>
-                            {social.name}
-                        </a>
-                    ))}
                 </motion.div>
             </div>
 

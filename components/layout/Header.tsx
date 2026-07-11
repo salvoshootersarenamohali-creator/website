@@ -67,8 +67,8 @@ export function Header() {
                             {item.name}
                         </Link>
                     ))}
-                    <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-black transition-all">
-                        Book a Session
+                    <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary hover:text-black transition-all">
+                        <Link href="/contact">Book Your Free Session</Link>
                     </Button>
                 </nav>
 
@@ -100,8 +100,8 @@ export function Header() {
                             </nav>
 
                             <div className="mt-auto">
-                                <Button className="w-full bg-primary text-black hover:bg-primary/90 text-lg py-6">
-                                    Book a Session
+                                <Button asChild className="w-full bg-primary text-black hover:bg-primary/90 text-lg py-6">
+                                    <Link href="/contact">Book Your Free Session</Link>
                                 </Button>
                             </div>
                         </div>
