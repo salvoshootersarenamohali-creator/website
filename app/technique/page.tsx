@@ -1,9 +1,9 @@
 import Link from "next/link"
 import { techniques } from "@/data/techniques"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { ArrowRight, Crosshair } from "lucide-react"
+import { TechniqueAnimation } from "@/components/technique/animations/TechniqueAnimation"
+import { ArrowRight } from "lucide-react"
 
 export default function TechniquePage() {
     return (
@@ -22,10 +22,18 @@ export default function TechniquePage() {
                     {techniques.map((tech) => (
                         <Link key={tech.id} href={`/technique/${tech.slug}`} className="group">
                             <Card className="bg-neutral-900 border-white/10 h-full hover:border-primary/50 transition-all duration-300">
-                                <div className="aspect-[4/3] bg-neutral-800 relative overflow-hidden flex items-center justify-center">
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10" />
-                                    {/* Placeholder Graphic */}
-                                    <Crosshair className="w-24 h-24 text-white/10 group-hover:text-primary/20 transition-colors z-0" />
+                                <div className="aspect-[4/3] bg-neutral-950 relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(212,175,55,0.12),transparent_58%)]" />
+                                    <div
+                                        className="absolute inset-x-4 -top-6 bottom-10 opacity-75 transition-all duration-500 group-hover:scale-[1.04] group-hover:opacity-100 sm:inset-x-8"
+                                        aria-hidden="true"
+                                    >
+                                        <TechniqueAnimation
+                                            slug={tech.slug}
+                                            stepId={tech.discipline === "Pistol" ? "grip" : "stance"}
+                                        />
+                                    </div>
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent z-10" />
 
                                     <div className="absolute bottom-6 left-6 z-20">
                                         <Badge className="bg-primary text-black hover:bg-primary mb-2">{tech.discipline}</Badge>
