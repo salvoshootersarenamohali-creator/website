@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { StepNavigator } from "./StepNavigator"
 import { Technique, Step } from "@/data/techniques"
-import Image from "next/image"
+import { TechniqueAnimation } from "./animations/TechniqueAnimation"
 
 interface TechniqueViewerProps {
     technique: Technique
@@ -85,14 +85,11 @@ export function TechniqueViewer({ technique }: TechniqueViewerProps) {
                             {step.description}
                         </p>
 
-                        {/* Mobile-only Image display since sticky panel is hidden */}
-                        <div className="lg:hidden mt-8 aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-white/10 relative">
-                            <div className="absolute inset-0 flex items-center justify-center text-neutral-700">
-                                {/* Placeholder for animation */}
-                                <span className="text-xs uppercase tracking-widest">Animation: {step.title}</span>
+                        {/* Mobile-only animation display since sticky panel is hidden */}
+                        <div className="lg:hidden mt-8 aspect-[4/5] max-h-[420px] bg-neutral-900 rounded-lg overflow-hidden border border-white/10 relative">
+                            <div className="absolute inset-0 p-4">
+                                <TechniqueAnimation slug={technique.slug} stepId={step.id} />
                             </div>
-                            {/* Use the mock image path */}
-                            {/* <Image src={step.image} alt={step.title} fill className="object-cover opacity-50" /> */}
                         </div>
                     </section>
                 ))}
@@ -108,19 +105,15 @@ export function TechniqueViewer({ technique }: TechniqueViewerProps) {
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.4 }}
-                            className="absolute inset-0 flex items-center justify-center p-8"
+                            className="absolute inset-0 flex flex-col p-6"
                         >
-                            {/* This is where the Rive/Lottie animation would live. 
-                   For now, a placeholder system. */}
-                            <div className="w-full h-full border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center bg-black/50">
-                                <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mb-4 animate-pulse">
-                                    <span className="text-3xl">🎯</span>
-                                </div>
-                                <h3 className="text-primary font-bold text-lg mb-2">{activeStepData.title}</h3>
-                                <p className="text-sm text-neutral-500 text-center px-8">
-                                    Animation Placeholder<br />
-                                    ({activeStepData.image})
-                                </p>
+                            <div className="flex-1 min-h-0">
+                                <TechniqueAnimation slug={technique.slug} stepId={activeStepData.id} />
+                            </div>
+                            <div className="pt-4 text-center">
+                                <span className="text-primary text-xs font-mono tracking-widest uppercase">
+                                    {activeStepData.title.replace(/^\d+\.\s*/, '')}
+                                </span>
                             </div>
                         </motion.div>
                     </AnimatePresence>
