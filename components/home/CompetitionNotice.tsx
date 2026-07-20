@@ -3,131 +3,171 @@
 import * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Bell, CalendarClock, Crosshair, Trophy, X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import {
+    ArrowRight,
+    CalendarDays,
+    Crosshair,
+    MapPin,
+    Trophy,
+    X,
+} from "lucide-react"
+import { AnimatePresence, motion } from "framer-motion"
+
+const competitionHref = "/competitions/37th-salvo-cup"
 
 export function CompetitionNotice() {
     const [isVisible, setIsVisible] = React.useState(false)
-    const [isDismissed, setIsDismissed] = React.useState(false)
+    const closeButtonRef = React.useRef<HTMLButtonElement>(null)
 
     React.useEffect(() => {
-        const handleScroll = () => {
-            if (!isDismissed && window.scrollY > 180) {
-                setIsVisible(true)
-            }
-        }
-
-        window.addEventListener("scroll", handleScroll, { passive: true })
-        handleScroll()
-
-        return () => window.removeEventListener("scroll", handleScroll)
-    }, [isDismissed])
+        const timer = window.setTimeout(() => setIsVisible(true), 650)
+        return () => window.clearTimeout(timer)
+    }, [])
 
     React.useEffect(() => {
         if (!isVisible) return
 
+        const previouslyFocused = document.activeElement as HTMLElement | null
         const scrollY = window.scrollY
         const previousOverflow = document.body.style.overflow
         const previousPosition = document.body.style.position
         const previousTop = document.body.style.top
         const previousWidth = document.body.style.width
+
         document.body.style.overflow = "hidden"
         document.body.style.position = "fixed"
         document.body.style.top = `-${scrollY}px`
         document.body.style.width = "100%"
+        closeButtonRef.current?.focus()
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setIsVisible(false)
+        }
+        window.addEventListener("keydown", handleKeyDown)
 
         return () => {
+            window.removeEventListener("keydown", handleKeyDown)
             document.body.style.overflow = previousOverflow
             document.body.style.position = previousPosition
             document.body.style.top = previousTop
             document.body.style.width = previousWidth
             window.scrollTo(0, scrollY)
+            previouslyFocused?.focus()
         }
     }, [isVisible])
-
-    const closeNotice = () => {
-        setIsVisible(false)
-        setIsDismissed(true)
-    }
 
     return (
         <AnimatePresence>
             {isVisible && (
                 <motion.div
-                    className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-3 py-3 sm:items-center sm:px-4 sm:py-8"
-                    initial={{ opacity: 0, y: 40, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    role="dialog"
-                    aria-modal="false"
-                    aria-labelledby="competition-notice-title"
+                    className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/85 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-5 sm:py-8"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.22 }}
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) setIsVisible(false)
+                    }}
                 >
-                    <div className="relative max-h-[calc(100svh-1.5rem)] w-full max-w-6xl overflow-y-auto rounded-lg border border-primary/35 bg-black shadow-2xl shadow-primary/10 sm:max-h-[calc(100svh-4rem)]">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_25%,rgba(212,175,55,0.22),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_36%)]" />
-                        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
+                    <motion.section
+                        className="relative grid w-full max-w-5xl overflow-hidden rounded-xl border border-[#D4AF37]/45 bg-[#05080b] shadow-[0_30px_100px_rgba(0,0,0,0.75),0_0_50px_rgba(212,175,55,0.08)] md:grid-cols-[minmax(300px,0.82fr)_minmax(360px,1fr)]"
+                        initial={{ opacity: 0, y: 28, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                        transition={{ duration: 0.32, ease: "easeOut" }}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="competition-notice-title"
+                        aria-describedby="competition-notice-description"
+                    >
+                        <div className="absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-[#E5C558] to-transparent" />
 
                         <button
+                            ref={closeButtonRef}
                             type="button"
-                            onClick={closeNotice}
-                            className="sticky left-full top-3 z-20 mr-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/80 text-white/70 transition hover:border-primary/50 hover:text-primary"
-                            aria-label="Close competition announcement"
+                            onClick={() => setIsVisible(false)}
+                            className="absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/80 text-white shadow-lg backdrop-blur transition hover:border-[#D4AF37] hover:text-[#E5C558] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                            aria-label="Close 37th Salvo Cup announcement"
                         >
-                            <X className="h-4 w-4" />
+                            <X className="h-5 w-5" />
                         </button>
 
-                        <div className="relative z-10 grid gap-4 p-4 pt-0 md:grid-cols-[1fr_1.35fr] md:gap-7 md:p-9 lg:p-10">
-                            <div className="relative min-h-[clamp(180px,42svh,300px)] overflow-hidden rounded-md border border-white/10 bg-neutral-950 md:min-h-[520px]">
-                                <Image
-                                    src="/pop-up.jpeg"
-                                    alt="Salvo shooting competition announcement"
-                                    fill
-                                    sizes="(min-width: 768px) 40vw, 100vw"
-                                    className="object-contain"
-                                />
-                            </div>
+                        <div className="relative min-h-[46svh] overflow-hidden border-b border-white/10 bg-black sm:min-h-[58svh] md:min-h-[min(720px,82svh)] md:border-b-0 md:border-r">
+                            <Image
+                                src="/37th-salvo-cup-poster.jpg"
+                                alt="37th Salvo Cup poster, 6 to 9 August 2026 at Salvo Shooters Arena"
+                                fill
+                                priority
+                                sizes="(min-width: 1024px) 440px, (min-width: 768px) 42vw, 100vw"
+                                className="object-contain"
+                            />
+                        </div>
 
-                            <div className="flex flex-col justify-center md:pr-12">
-                                <div className="mb-3 flex flex-wrap items-center gap-3 md:mb-4">
-                                    <span className="inline-flex items-center gap-2 rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-primary">
-                                        <Bell className="h-3.5 w-3.5" />
-                                        Competition Alert
-                                    </span>
-                                    <span className="inline-flex items-center gap-2 text-sm text-white/55">
-                                        <CalendarClock className="h-4 w-4 text-primary" />
-                                        Dates to be announced soon
-                                    </span>
-                                </div>
+                        <div className="relative flex flex-col justify-center overflow-hidden p-5 sm:p-8 md:p-9 lg:p-12">
+                            <div className="absolute -right-24 top-6 h-64 w-64 rounded-full bg-[#D4AF37]/10 blur-3xl" />
+                            <div className="absolute -bottom-28 left-4 h-64 w-64 rounded-full bg-emerald-700/10 blur-3xl" />
 
-                                <h2 id="competition-notice-title" className="mb-3 text-2xl font-bold tracking-tight text-white sm:text-3xl md:text-5xl">
-                                    Upcoming Shooting Competition
-                                </h2>
-                                <p className="mb-4 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base md:mb-5 md:text-lg">
-                                    Get ready for precision, pressure, and championship focus at Salvo Shooters Arena. Event categories and registration details will be announced soon.
+                            <div className="relative">
+                                <p className="inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-[#E5C558]">
+                                    <Trophy className="h-3.5 w-3.5" />
+                                    Competition announcement
                                 </p>
 
-                                <div className="flex flex-wrap gap-2 text-sm font-medium text-white/75 md:gap-3">
-                                    <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2">
-                                        <Crosshair className="h-4 w-4 text-primary" />
-                                        10m Air Rifle
-                                    </span>
-                                    <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2">
-                                        <Trophy className="h-4 w-4 text-primary" />
-                                        10m Air Pistol
-                                    </span>
+                                <h2 id="competition-notice-title" className="mt-5 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
+                                    37th Salvo Cup
+                                </h2>
+                                <p id="competition-notice-description" className="mt-3 max-w-xl text-sm leading-relaxed text-white/65 sm:text-base">
+                                    Four days of precision shooting across ISSF and NR Air Pistol and Air Rifle events, with exciting cash prizes.
+                                </p>
+
+                                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3.5">
+                                        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/40">
+                                            <CalendarDays className="h-4 w-4 text-[#D4AF37]" />
+                                            Dates
+                                        </p>
+                                        <p className="mt-2 font-black text-white">6–9 August 2026</p>
+                                    </div>
+                                    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3.5">
+                                        <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/40">
+                                            <MapPin className="h-4 w-4 text-[#D4AF37]" />
+                                            Venue
+                                        </p>
+                                        <p className="mt-2 font-black text-white">Sector 86, Mohali</p>
+                                    </div>
                                 </div>
 
-                                <div className="sticky bottom-0 -mx-4 mt-4 bg-black/95 px-4 py-3 md:static md:mx-0 md:mt-7 md:bg-transparent md:p-0">
+                                <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-white/70">
+                                    <Crosshair className="h-4 w-4 text-[#D4AF37]" />
+                                    Air Pistol & Air Rifle · ISSF & NR
+                                </p>
+
+                                <div className="mt-7 grid gap-3 sm:grid-cols-2">
                                     <Link
-                                        href="/competitions"
-                                        className="inline-flex h-11 w-full animate-pulse items-center justify-center rounded-md bg-[#D4AF37] px-6 text-sm font-semibold uppercase tracking-[0.12em] text-black shadow-[0_0_26px_rgba(212,175,55,0.42)] transition hover:bg-[#E5C558] hover:shadow-[0_0_36px_rgba(229,197,88,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:w-fit md:h-12 md:px-7"
+                                        href={`${competitionHref}/register`}
+                                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-[#D4AF37] px-5 text-sm font-black uppercase tracking-[0.1em] text-black shadow-[0_0_28px_rgba(212,175,55,0.28)] transition hover:bg-[#E5C558] hover:shadow-[0_0_36px_rgba(229,197,88,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E5C558] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                                     >
                                         Register Now
+                                        <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                    <Link
+                                        href={`${competitionHref}/results`}
+                                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-[#D4AF37]/60 bg-[#D4AF37]/[0.08] px-5 text-sm font-black uppercase tracking-[0.1em] text-[#F4D76A] transition hover:border-[#E5C558] hover:bg-[#D4AF37]/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E5C558] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                                    >
+                                        <Trophy className="h-4 w-4" />
+                                        View Results
                                     </Link>
                                 </div>
+
+                                <Link
+                                    href={competitionHref}
+                                    className="mt-4 inline-flex text-sm font-semibold text-white/50 underline decoration-white/20 underline-offset-4 transition hover:text-white"
+                                >
+                                    View competition details
+                                </Link>
                             </div>
                         </div>
-                    </div>
+                    </motion.section>
                 </motion.div>
             )}
         </AnimatePresence>
