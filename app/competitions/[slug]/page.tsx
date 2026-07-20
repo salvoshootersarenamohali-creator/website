@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy, Users } from "lucide-react"
 import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, isCompetitionRegistrationAvailable } from "@/lib/competition"
@@ -13,8 +14,36 @@ type PageProps = {
 
 export const dynamic = "force-dynamic"
 
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+    const { slug } = await params
+    if (slug !== "37th-salvo-cup") return {}
+
+    const title = "37th Salvo Cup | 6-9 August 2026"
+    const description = "Register for the 37th Salvo Cup at Salvo Shooters Arena, featuring ISSF and NR Air Pistol and Air Rifle events with championship rewards and cash prizes."
+    const image = "https://salvoshootersarena.com/37th-salvo-cup-hero.png"
+
+    return {
+        title,
+        description,
+        openGraph: {
+            title,
+            description,
+            type: "website",
+            url: "https://salvoshootersarena.com/competitions/37th-salvo-cup",
+            images: [{ url: image, width: 1731, height: 909, alt: "37th Salvo Cup, 6-9 August 2026" }],
+        },
+        twitter: {
+            card: "summary_large_image",
+            title,
+            description,
+            images: [image],
+        },
+    }
+}
+
 export default async function CompetitionPage({ params }: PageProps) {
     const { slug } = await params
+    const templateCompetition = getTemplatePublicCompetition()
     const competitionRecord = await prisma.competition.findUnique({
         where: { slug },
         include: { _count: { select: { registrations: true } } },
@@ -22,9 +51,8 @@ export default async function CompetitionPage({ params }: PageProps) {
         if (process.env.NODE_ENV === "production") throw error
         return null
     })
-    if (!competitionRecord && process.env.NODE_ENV !== "production" && slug === "36th-salvo-cup") {
-        const competition = getTemplatePublicCompetition()
-        return <CompetitionDetail competition={competition} registrations={0} />
+    if (!competitionRecord && process.env.NODE_ENV !== "production" && slug === templateCompetition.slug) {
+        return <CompetitionDetail competition={templateCompetition} registrations={0} />
     }
     if (!competitionRecord || !competitionRecord.isPublished) notFound()
 
@@ -156,11 +184,18 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
                                     <p className="mt-3 text-sm font-bold text-white">
                                         Entry fee: {formatCurrency(competition.config.feesByRuleSet[event.ruleSet] ?? competition.config.entryFee)}
                                     </p>
-                                    <p className="mt-3 text-sm text-white/55">
-                                        {competition.config.noCashPrizes
-                                            ? competition.config.awardsNote
-                                            : `Prizes: ${event.prizes.map((prize) => formatCurrency(prize)).join(" / ")}`}
-                                    </p>
+                                    {competition.config.noCashPrizes ? (
+                                        <p className="mt-3 text-sm text-white/55">{competition.config.awardsNote}</p>
+                                    ) : (
+                                        <ol className="mt-3 grid grid-cols-3 gap-2" aria-label={`${event.title} cash prizes`}>
+                                            {event.prizes.map((prize, index) => (
+                                                <li key={index} className="rounded border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] px-2 py-2 text-center">
+                                                    <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">{["1st", "2nd", "3rd"][index]}</span>
+                                                    <strong className="mt-1 block text-sm text-[#E5C558]">{formatCurrency(prize)}</strong>
+                                                </li>
+                                            ))}
+                                        </ol>
+                                    )}
                                 </div>
                             ))}
                         </div>

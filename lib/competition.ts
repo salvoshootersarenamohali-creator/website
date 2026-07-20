@@ -106,6 +106,13 @@ export const competitionEvents: CompetitionEvent[] = [
         discipline: "pistol",
         ruleSet: "ISSF",
         title: "ISSF Air Pistol",
+        prizes: [11000, 7100, 5100],
+    },
+    {
+        id: "nr-air-pistol",
+        discipline: "pistol",
+        ruleSet: "NR",
+        title: "NR Air Pistol",
         prizes: [7100, 5100, 3100],
     },
     {
@@ -113,14 +120,7 @@ export const competitionEvents: CompetitionEvent[] = [
         discipline: "rifle",
         ruleSet: "ISSF",
         title: "ISSF Air Rifle",
-        prizes: [5100, 3100, 2100],
-    },
-    {
-        id: "nr-air-pistol",
-        discipline: "pistol",
-        ruleSet: "NR",
-        title: "NR Air Pistol",
-        prizes: [5100, 3100, 2100],
+        prizes: [7100, 5100, 3100],
     },
     {
         id: "nr-air-rifle",
@@ -148,9 +148,10 @@ function isAgeBracket(value: unknown): value is AgeBracket {
 const ladder: AgeBracket[] = ["sub-youth", "youth", "junior", "senior"]
 
 export const slotOptions: SlotOption[] = [
-    { date: "2026-06-05", label: "June 5, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
-    { date: "2026-06-06", label: "June 6, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
-    { date: "2026-06-07", label: "June 7, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 4:00 PM"] },
+    { date: "2026-08-06", label: "August 6, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
+    { date: "2026-08-07", label: "August 7, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
+    { date: "2026-08-08", label: "August 8, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
+    { date: "2026-08-09", label: "August 9, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 4:00 PM"] },
 ]
 
 export const defaultCompetitionConfig: CompetitionConfig = {
@@ -162,7 +163,7 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     feesByRuleSet: { NR: null, ISSF: null },
     allowedPaymentModes: ["upi", "cash"],
     noCashPrizes: false,
-    awardsNote: "Cash prizes for the top 3 shooters in each event.",
+    awardsNote: "All winners receive an official event medal, championship trophy, and premium gift hamper in addition to the listed cash prize.",
     matchStartTime: "8:00 AM",
     minAge: null,
     requiredDocuments: {

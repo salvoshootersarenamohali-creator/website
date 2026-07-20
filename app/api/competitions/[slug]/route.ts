@@ -9,12 +9,13 @@ export const dynamic = "force-dynamic"
 
 export async function GET(_request: Request, context: RouteContext) {
     const { slug } = await context.params
+    const templateCompetition = getTemplatePublicCompetition()
     const competition = await prisma.competition.findUnique({ where: { slug } }).catch((error) => {
         if (process.env.NODE_ENV === "production") throw error
         return null
     })
-    if (!competition && process.env.NODE_ENV !== "production" && slug === "36th-salvo-cup") {
-        return Response.json({ competition: getTemplatePublicCompetition() })
+    if (!competition && process.env.NODE_ENV !== "production" && slug === templateCompetition.slug) {
+        return Response.json({ competition: templateCompetition })
     }
     if (!competition || !competition.isPublished) {
         return Response.json({ error: "Competition not found." }, { status: 404 })
