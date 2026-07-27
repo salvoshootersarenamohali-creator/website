@@ -94,8 +94,8 @@ export function CompetitionNotice() {
 
                         <div className="relative min-h-[46svh] overflow-hidden border-b border-white/10 bg-black sm:min-h-[58svh] md:min-h-[min(720px,82svh)] md:border-b-0 md:border-r">
                             <Image
-                                src="/37th-salvo-cup-poster.jpg"
-                                alt="37th Salvo Cup poster, 6 to 9 August 2026 at Salvo Shooters Arena"
+                                src="/37th-salvo-cup-poster-july-august-2026.png"
+                                alt="37th Salvo Cup poster, 31st July to 2nd August 2026 at Salvo Shooters Arena"
                                 fill
                                 priority
                                 sizes="(min-width: 1024px) 440px, (min-width: 768px) 42vw, 100vw"
@@ -117,7 +117,7 @@ export function CompetitionNotice() {
                                     37th Salvo Cup
                                 </h2>
                                 <p id="competition-notice-description" className="mt-3 max-w-xl text-sm leading-relaxed text-white/65 sm:text-base">
-                                    Four days of precision shooting across ISSF and NR Air Pistol and Air Rifle events, with exciting cash prizes.
+                                    Three days of precision shooting across ISSF and NR Air Pistol and Air Rifle events, with exciting cash prizes.
                                 </p>
 
                                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -126,7 +126,7 @@ export function CompetitionNotice() {
                                             <CalendarDays className="h-4 w-4 text-[#D4AF37]" />
                                             Dates
                                         </p>
-                                        <p className="mt-2 font-black text-white">6–9 August 2026</p>
+                                        <p className="mt-2 font-black text-white">31st July · 1st August · 2nd August 2026</p>
                                     </div>
                                     <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3.5">
                                         <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/40">

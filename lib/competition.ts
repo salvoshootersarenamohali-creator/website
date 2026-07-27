@@ -148,10 +148,9 @@ function isAgeBracket(value: unknown): value is AgeBracket {
 const ladder: AgeBracket[] = ["sub-youth", "youth", "junior", "senior"]
 
 export const slotOptions: SlotOption[] = [
-    { date: "2026-08-06", label: "August 6, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
-    { date: "2026-08-07", label: "August 7, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
-    { date: "2026-08-08", label: "August 8, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
-    { date: "2026-08-09", label: "August 9, 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 4:00 PM"] },
+    { date: "2026-07-31", label: "31st July 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
+    { date: "2026-08-01", label: "1st August 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
+    { date: "2026-08-02", label: "2nd August 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 4:00 PM"] },
 ]
 
 export const defaultCompetitionConfig: CompetitionConfig = {

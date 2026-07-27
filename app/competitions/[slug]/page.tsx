@@ -18,9 +18,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const { slug } = await params
     if (slug !== "37th-salvo-cup") return {}
 
-    const title = "37th Salvo Cup | 6-9 August 2026"
+    const title = "37th Salvo Cup | 31st July-2nd August 2026"
     const description = "Register for the 37th Salvo Cup at Salvo Shooters Arena, featuring ISSF and NR Air Pistol and Air Rifle events with championship rewards and cash prizes."
-    const image = "https://salvoshootersarena.com/37th-salvo-cup-hero.png"
+    const image = "https://salvoshootersarena.com/37th-salvo-cup-hero-july-august-2026.png"
 
     return {
         title,
@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
             description,
             type: "website",
             url: "https://salvoshootersarena.com/competitions/37th-salvo-cup",
-            images: [{ url: image, width: 1731, height: 909, alt: "37th Salvo Cup, 6-9 August 2026" }],
+            images: [{ url: image, width: 1731, height: 909, alt: "37th Salvo Cup, 31st July to 2nd August 2026" }],
         },
         twitter: {
             card: "summary_large_image",
