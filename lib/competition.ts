@@ -195,6 +195,14 @@ function readOptionalString(value: unknown) {
 }
 
 function readPositiveInteger(value: unknown, fallback: number | null) {
+    if (
+        value === null
+        || value === undefined
+        || (typeof value === "string" && !value.trim())
+    ) {
+        return fallback
+    }
+
     const number = Number(value)
     return Number.isInteger(number) && number >= 0 ? number : fallback
 }
