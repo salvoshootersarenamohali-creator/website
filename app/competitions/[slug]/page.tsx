@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy, Users } from "lucide-react"
-import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, isCompetitionRegistrationAvailable } from "@/lib/competition"
+import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 
@@ -119,7 +119,7 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
                                     <ArrowRight className="h-5 w-5" />
                                 </Link>
                             )}
-                            {(competition.resultsPublished || registrationAvailable) && (
+                            {(competition.resultsPublished || registrationAvailable || hasCompetitionEnded(competition.endDate)) && (
                                 <Link href={`/competitions/${competition.slug}/results`} className="inline-flex h-12 items-center justify-center rounded-md border border-white/15 px-6 font-bold text-white transition hover:border-[#D4AF37] hover:text-[#D4AF37]">
                                     View Results
                                 </Link>

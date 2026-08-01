@@ -560,14 +560,14 @@ export function formatCompetitionDateRange(startDate: string | Date, endDate: st
     const start = new Date(startDate)
     const end = new Date(endDate)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ""
-    const sameYear = start.getFullYear() === end.getFullYear()
-    const sameMonth = sameYear && start.getMonth() === end.getMonth()
+    const sameYear = start.getUTCFullYear() === end.getUTCFullYear()
+    const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth()
 
     if (sameMonth) {
-        const month = start.toLocaleString("en-IN", { month: "long" })
-        return `${start.getDate()}-${end.getDate()} ${month} ${start.getFullYear()}`
+        const month = start.toLocaleString("en-IN", { month: "long", timeZone: "UTC" })
+        return `${start.getUTCDate()}-${end.getUTCDate()} ${month} ${start.getUTCFullYear()}`
     }
 
-    const formatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric" })
-    return `${formatter.format(start)} - ${formatter.format(end)}${sameYear ? ` ${start.getFullYear()}` : ""}`
+    const formatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric", timeZone: "UTC" })
+    return `${formatter.format(start)} - ${formatter.format(end)}${sameYear ? ` ${start.getUTCFullYear()}` : ""}`
 }

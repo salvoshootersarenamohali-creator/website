@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:dev": "prisma migrate dev"
@@ -24,6 +25,7 @@
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "nodemailer": "^9.0.3",
+    "pdf-lib": "^1.17.1",
     "prisma": "^6.19.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -39,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
