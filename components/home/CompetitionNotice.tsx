@@ -13,7 +13,7 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 
-const competitionHref = "/competitions/37th-salvo-cup"
+const competitionHref = "/competitions/38th-salvo-cup"
 
 export function CompetitionNotice() {
     const [isVisible, setIsVisible] = React.useState(false)
@@ -87,15 +87,15 @@ export function CompetitionNotice() {
                             type="button"
                             onClick={() => setIsVisible(false)}
                             className="absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/80 text-white shadow-lg backdrop-blur transition hover:border-[#D4AF37] hover:text-[#E5C558] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
-                            aria-label="Close 37th Salvo Cup announcement"
+                            aria-label="Close 38th Salvo Cup announcement"
                         >
                             <X className="h-5 w-5" />
                         </button>
 
                         <div className="relative min-h-[46svh] overflow-hidden border-b border-white/10 bg-black sm:min-h-[58svh] md:min-h-[min(720px,82svh)] md:border-b-0 md:border-r">
                             <Image
-                                src="/37th-salvo-cup-poster-july-august-2026.png"
-                                alt="37th Salvo Cup poster, 31st July to 2nd August 2026 at Salvo Shooters Arena"
+                                src="/38th-salvo-cup-poster.jpg"
+                                alt="38th Salvo Cup poster, 25th to 27th September 2026 at Salvo Shooters Arena"
                                 fill
                                 priority
                                 sizes="(min-width: 1024px) 440px, (min-width: 768px) 42vw, 100vw"
@@ -114,10 +114,10 @@ export function CompetitionNotice() {
                                 </p>
 
                                 <h2 id="competition-notice-title" className="mt-5 text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl">
-                                    37th Salvo Cup
+                                    38th Salvo Cup
                                 </h2>
                                 <p id="competition-notice-description" className="mt-3 max-w-xl text-sm leading-relaxed text-white/65 sm:text-base">
-                                    Three days of precision shooting across ISSF and NR Air Pistol and Air Rifle events, with exciting cash prizes.
+                                    Three days of precision shooting across Air Pistol and Air Rifle events at Salvo Shooters Arena.
                                 </p>
 
                                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -126,7 +126,7 @@ export function CompetitionNotice() {
                                             <CalendarDays className="h-4 w-4 text-[#D4AF37]" />
                                             Dates
                                         </p>
-                                        <p className="mt-2 font-black text-white">31st July · 1st August · 2nd August 2026</p>
+                                        <p className="mt-2 font-black text-white">25th · 26th · 27th September 2026</p>
                                     </div>
                                     <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3.5">
                                         <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/40">
@@ -139,7 +139,7 @@ export function CompetitionNotice() {
 
                                 <p className="mt-5 flex items-center gap-2 text-sm font-semibold text-white/70">
                                     <Crosshair className="h-4 w-4 text-[#D4AF37]" />
-                                    Air Pistol & Air Rifle · ISSF & NR
+                                    Air Pistol & Air Rifle
                                 </p>
 
                                 <div className="mt-7 grid gap-3 sm:grid-cols-2">

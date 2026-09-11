@@ -16,6 +16,14 @@ export const dynamic = "force-dynamic"
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
     const { slug } = await params
+
+    if (slug === "38th-salvo-cup") {
+        return {
+            title: "38th Salvo Cup | 25th-27th September 2026",
+            description: "Register for the 38th Salvo Cup at Salvo Shooters Arena, featuring Air Pistol and Air Rifle events from 25th to 27th September 2026.",
+        }
+    }
+
     if (slug !== "37th-salvo-cup") return {}
 
     const title = "37th Salvo Cup | 31st July-2nd August 2026"

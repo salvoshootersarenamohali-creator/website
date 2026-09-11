@@ -46,20 +46,20 @@ export function serializeCompetition(competition: {
 
 export function getTemplatePublicCompetition(): PublicCompetition {
     return {
-        id: "37th-salvo-cup",
-        slug: "37th-salvo-cup",
-        title: "37th Salvo Cup",
-        shortTitle: "37th Salvo Cup",
-        description: "Three days of precision shooting, championship rewards, and cash prizes at Salvo Shooters Arena.",
+        id: "38th-salvo-cup",
+        slug: "38th-salvo-cup",
+        title: "38th Salvo Cup",
+        shortTitle: "38th Salvo Cup",
+        description: "Three days of Air Pistol and Air Rifle competition at Salvo Shooters Arena.",
         venue: "Salvo Shooters Arena, Sector 86, Mohali",
-        startDate: "2026-07-31T00:00:00.000Z",
-        endDate: "2026-08-02T00:00:00.000Z",
+        startDate: "2026-09-25T00:00:00.000Z",
+        endDate: "2026-09-27T00:00:00.000Z",
         status: "open",
         isPublished: true,
         registrationOpen: true,
         resultsPublished: false,
         paymentQrPath: "/upi-scanner.png",
-        heroImagePath: "/37th-salvo-cup-hero-july-august-2026.png",
+        heroImagePath: "/38th-salvo-cup-poster.jpg",
         config: defaultCompetitionConfig,
     }
 }
