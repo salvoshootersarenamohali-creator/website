@@ -32,8 +32,6 @@ type ResultRow = {
 type ResultCategory = {
     code: string
     label: string
-    entryCount: number
-    scoredCount: number
     rows: ResultRow[]
 }
 
@@ -48,11 +46,7 @@ type ResultsPayload = {
     generatedAt: string
     summary: {
         categories: number
-        entries: number
-        scored: number
         paraCategories: number
-        paraEntries: number
-        paraScored: number
     }
     categories: ResultCategory[]
     paraCategories: ResultCategory[]
@@ -260,20 +254,14 @@ export default function ResultsPage() {
             .filter((category) => category.rows.length > 0 || !text)
     }, [categories, query, selectedCategory])
     const topStudents = React.useMemo(() => payload?.topStudents ?? [], [payload])
-    const activeSummary = React.useMemo(() => {
-        if (!payload) return { categories: 0, entries: 0, scored: 0 }
-        return activeTab === "para"
-            ? { categories: payload.summary.paraCategories, entries: payload.summary.paraEntries, scored: payload.summary.paraScored }
-            : { categories: payload.summary.categories, entries: payload.summary.entries, scored: payload.summary.scored }
-    }, [activeTab, payload])
+    const activeCategoryCount = activeTab === "para"
+        ? payload?.summary.paraCategories ?? 0
+        : payload?.summary.categories ?? 0
 
     React.useEffect(() => {
         setSelectedCategory("all")
     }, [activeTab])
 
-    const scoredPercent = activeSummary.entries > 0
-        ? Math.round((activeSummary.scored / activeSummary.entries) * 100)
-        : 0
     const certificateSummary = certificatePayload?.summary
 
     return (
@@ -321,7 +309,7 @@ export default function ResultsPage() {
                                     </button>
                                 )}
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className={cn("grid gap-2", activeTab === "certificates" ? "grid-cols-3" : "grid-cols-2")}>
                                 {activeTab === "certificates" ? (
                                     <>
                                         <SummaryStat label="Participants" value={certificateSummary?.participants ?? "-"} />
@@ -330,9 +318,8 @@ export default function ResultsPage() {
                                     </>
                                 ) : (
                                     <>
-                                        <SummaryStat label="Categories" value={activeSummary.categories} />
-                                        <SummaryStat label="Entries" value={activeSummary.entries} />
-                                        <SummaryStat label="Scored" value={`${scoredPercent}%`} />
+                                        <SummaryStat label="Categories" value={activeCategoryCount} />
+                                        <SummaryStat label="Status" value="Live" />
                                     </>
                                 )}
                             </div>
@@ -353,13 +340,11 @@ export default function ResultsPage() {
                         <ResultsTabButton
                             active={activeTab === "regular"}
                             label="Results"
-                            count={payload?.summary.entries ?? 0}
                             onClick={() => setActiveTab("regular")}
                         />
                         <ResultsTabButton
                             active={activeTab === "para"}
                             label="Para Results"
-                            count={payload?.summary.paraEntries ?? 0}
                             onClick={() => setActiveTab("para")}
                         />
                         <ResultsTabButton
@@ -420,7 +405,7 @@ export default function ResultsPage() {
                                     )}
                                 >
                                     <span className="block font-bold">All</span>
-                                    <span className="block text-xs opacity-75">{activeSummary.entries} entries</span>
+                                    <span className="block text-xs opacity-75">View all categories</span>
                                 </button>
                                 {categories.map((category) => (
                                     <button
@@ -433,7 +418,7 @@ export default function ResultsPage() {
                                         )}
                                     >
                                         <span className="block font-bold">{category.code}</span>
-                                        <span className="block truncate text-xs opacity-75">{category.scoredCount}/{category.entryCount} scored</span>
+                                        <span className="block truncate text-xs opacity-75">{category.label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -924,16 +909,7 @@ function CategoryResults({ category }: { category: ResultCategory }) {
     return (
         <section className="overflow-hidden rounded-lg border border-white/10 bg-neutral-950">
             <div className="border-b border-white/10 p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h2 className="text-lg font-black text-[#D4AF37] sm:text-xl">{category.code} - {category.label}</h2>
-                        <p className="mt-1 text-sm text-white/45">{category.scoredCount} scored of {category.entryCount} entries</p>
-                    </div>
-                    <div className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Progress</p>
-                        <p className="mt-1 font-black">{category.entryCount ? Math.round((category.scoredCount / category.entryCount) * 100) : 0}%</p>
-                    </div>
-                </div>
+                <h2 className="text-lg font-black text-[#D4AF37] sm:text-xl">{category.code} - {category.label}</h2>
             </div>
 
             <div className="grid gap-3 p-3 md:hidden">

@@ -27,10 +27,6 @@ type TopStudentGroup = {
 type ResultsPayload = {
     competition?: PublicCompetition
     generatedAt: string
-    summary: {
-        entries: number
-        scored: number
-    }
     topStudents: TopStudentGroup[]
 }
 
@@ -134,9 +130,6 @@ export default function TvResultsPage() {
 
     const groups = payload?.topStudents ?? []
     const activeGroup = groups.length ? groups[activeIndex % groups.length] : null
-    const scoredPercent = payload && payload.summary.entries > 0
-        ? Math.round((payload.summary.scored / payload.summary.entries) * 100)
-        : 0
 
     React.useEffect(() => {
         if (groups.length <= 1) return
@@ -168,9 +161,8 @@ export default function TvResultsPage() {
                         </div>
                     </div>
 
-                    <div className="grid shrink-0 grid-cols-3 gap-[clamp(8px,0.8vw,14px)] text-right">
-                        <TvMetric label="Scored" value={`${scoredPercent}%`} />
-                        <TvMetric label="Entries" value={payload?.summary.entries ?? 0} />
+                    <div className="grid shrink-0 grid-cols-2 gap-[clamp(8px,0.8vw,14px)] text-right">
+                        <TvMetric label="Status" value="Live" />
                         <TvMetric label="Updated" value={payload?.generatedAt ? formatUpdatedAt(payload.generatedAt) : "--:--"} />
                     </div>
                 </header>

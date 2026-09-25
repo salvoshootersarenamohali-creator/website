@@ -115,12 +115,9 @@ export async function GET(request: NextRequest) {
                 .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
                 .map((category) => {
                     const rows = rankRows(category.rows)
-                    const scoredCount = rows.filter((row) => isEntryScored(row.entry)).length
                     return {
                         code: category.code,
                         label: category.label,
-                        entryCount: rows.length,
-                        scoredCount,
                         rows: rows.map(formatRow),
                     }
                 })
@@ -164,11 +161,7 @@ export async function GET(request: NextRequest) {
             generatedAt: new Date().toISOString(),
             summary: {
                 categories: categories.length,
-                entries: categories.reduce((sum, category) => sum + category.entryCount, 0),
-                scored: categories.reduce((sum, category) => sum + category.scoredCount, 0),
                 paraCategories: paraCategories.length,
-                paraEntries: paraCategories.reduce((sum, category) => sum + category.entryCount, 0),
-                paraScored: paraCategories.reduce((sum, category) => sum + category.scoredCount, 0),
             },
             categories,
             paraCategories,
