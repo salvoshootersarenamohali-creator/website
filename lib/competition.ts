@@ -403,7 +403,7 @@ export function isLittleChampCategory(category: ScoringCategory) {
 }
 
 export function getScoringSeriesCount(ruleSet: RuleSet, category: ScoringCategory) {
-    return isLittleChampCategory(category) ? 2 : getSeriesCount(ruleSet)
+    return isLittleChampCategory(category) ? 4 : getSeriesCount(ruleSet)
 }
 
 export const SHOTS_PER_SERIES = 10
