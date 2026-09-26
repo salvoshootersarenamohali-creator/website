@@ -11,9 +11,9 @@ const participant: DirectoryParticipant = {
     bestMedal: "gold",
     certificateUrl: "/certificate",
     entries: [
-        { entryId: "one", eventId: "pistol", eventTitle: "ISSF Air Pistol", categoryCode: "S-01", categoryLabel: "Sub Youth Men", isPara: false, rank: 1, positionLabel: "1st", medal: "gold" },
-        { entryId: "two", eventId: "rifle", eventTitle: "NR Air Rifle", categoryCode: "R-12", categoryLabel: "Senior Women", isPara: false, rank: 2, positionLabel: "2nd", medal: "silver" },
-        { entryId: "three", eventId: "para-pistol", eventTitle: "Para Air Pistol", categoryCode: "P-01", categoryLabel: "Open", isPara: true, rank: 5, positionLabel: "5th", medal: null },
+        { entryId: "one", eventId: "pistol", eventTitle: "ISSF Air Pistol", categoryCode: "S-01", categoryLabel: "Sub Youth Men", isPara: false, rank: 1, positionLabel: "1st", displayScore: "592.4", innerTenCount: 21, medal: "gold" },
+        { entryId: "two", eventId: "rifle", eventTitle: "NR Air Rifle", categoryCode: "R-12", categoryLabel: "Senior Women", isPara: false, rank: 2, positionLabel: "2nd", displayScore: "395", innerTenCount: 14, medal: "silver" },
+        { entryId: "three", eventId: "para-pistol", eventTitle: "Para Air Pistol", categoryCode: "P-01", categoryLabel: "Open", isPara: true, rank: 5, positionLabel: "5th", displayScore: "568.2", innerTenCount: 9, medal: null },
     ],
 }
 

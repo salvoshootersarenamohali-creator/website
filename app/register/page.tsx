@@ -383,6 +383,9 @@ export default function RegisterPage() {
                                 </div>
                                 <Field label="Phone Number" required>
                                     <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
+                                    <p className="mt-2 text-xs leading-relaxed text-white/45">
+                                        By registering, you agree that Salvo Shooters Arena may send essential competition updates, including results and certificate links, to this number on WhatsApp.
+                                    </p>
                                 </Field>
                                 {config.requiresAddress && (
                                     <Field label="Address" required>

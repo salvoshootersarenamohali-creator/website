@@ -79,6 +79,7 @@ describe("participant directory", () => {
         expect(directory.categories.every((category) => category.participants.some((participant) => participant.registrationId === "multi"))).toBe(true)
         expect(multi?.entries).toHaveLength(2)
         expect(multi?.medalCount).toBe(2)
+        expect(multi?.entries[0]).toMatchObject({ displayScore: "600.0", positionLabel: "1st", innerTenCount: 10 })
         expect(new Set(directory.categories.flatMap((category) => category.participants.filter((participant) => participant.registrationId === "multi").map((participant) => participant.certificateUrl))).size).toBe(1)
     })
 

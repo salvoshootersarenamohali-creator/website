@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
-import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Upload, Users, X } from "lucide-react"
+import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Send, Trash2, Trophy, Upload, Users, X } from "lucide-react"
 import {
     CategoryOption,
     CompetitionConfig,
@@ -121,6 +121,40 @@ type CombinedLeaderboard = {
     title: string
     rangeLabel: string
     rows: ResultRow[]
+}
+
+type WhatsAppBroadcastPreview = {
+    configured: boolean
+    missingConfiguration: string[]
+    templateName: string
+    templateLanguage: string
+    canSend: boolean
+    sendBlockReason: string
+    competition: {
+        title: string
+        slug: string
+        resultsPublished: boolean
+        ended: boolean
+    }
+    summary: {
+        scoredParticipants: number
+        readyToSend: number
+        invalidPhones: number
+    }
+    recipients: {
+        registrationId: string
+        participantName: string
+        maskedPhone: string
+        validPhone: boolean
+        results: {
+            categoryCode: string
+            categoryLabel: string
+            score: string
+            rank: string
+        }[]
+        certificateUrl: string
+        messagePreview: string
+    }[]
 }
 
 const coachNames = ["piyush", "anshul", "ayush", "yogesh", "vansh", "kamal", "rahul"]
@@ -1455,6 +1489,8 @@ function ResultsView({
 
             {message && <p className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{message}</p>}
 
+            <WhatsAppResultsBroadcast adminPin={adminPin} competitionSlug={competitionSlug} />
+
             <div className="mb-6 flex max-h-44 flex-wrap gap-2 overflow-auto rounded-md border border-white/10 bg-black/25 p-3">
                 {categoryOptions.map((category) => (
                     <button
@@ -1507,6 +1543,162 @@ function ResultsView({
                 )}
             </div>
         </section>
+    )
+}
+
+function WhatsAppResultsBroadcast({ adminPin, competitionSlug }: { adminPin: string; competitionSlug: string }) {
+    const [preview, setPreview] = React.useState<WhatsAppBroadcastPreview | null>(null)
+    const [loading, setLoading] = React.useState(true)
+    const [sending, setSending] = React.useState(false)
+    const [sentIds, setSentIds] = React.useState<string[]>([])
+    const [failures, setFailures] = React.useState<{ registrationId: string; participantName: string; error: string }[]>([])
+    const [error, setError] = React.useState("")
+
+    const loadPreview = React.useCallback(async () => {
+        setLoading(true)
+        setError("")
+        try {
+            const response = await fetch(scopedAdminPath(competitionSlug, "/whatsapp/results"), {
+                headers: { "x-admin-pin": adminPin },
+                cache: "no-store",
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to prepare WhatsApp messages.")
+            setPreview(data as unknown as WhatsAppBroadcastPreview)
+        } catch (previewError) {
+            setError(previewError instanceof Error ? previewError.message : "Unable to prepare WhatsApp messages.")
+        } finally {
+            setLoading(false)
+        }
+    }, [adminPin, competitionSlug])
+
+    React.useEffect(() => {
+        loadPreview()
+    }, [loadPreview])
+
+    const sentSet = React.useMemo(() => new Set(sentIds), [sentIds])
+    const pendingRecipients = preview?.recipients.filter((recipient) => recipient.validPhone && !sentSet.has(recipient.registrationId)) ?? []
+    const firstPreview = preview?.recipients.find((recipient) => recipient.validPhone)
+
+    const sendAll = async () => {
+        if (!preview?.canSend || !pendingRecipients.length || sending) return
+        const confirmed = window.confirm(
+            `Send personalized WhatsApp result and certificate messages to ${pendingRecipients.length} participants?\n\nMessages cannot be recalled. Keep this page open until sending finishes.`
+        )
+        if (!confirmed) return
+
+        setSending(true)
+        setError("")
+        setFailures([])
+        const nextFailures: { registrationId: string; participantName: string; error: string }[] = []
+
+        for (const recipient of pendingRecipients) {
+            try {
+                const response = await fetch(scopedAdminPath(competitionSlug, "/whatsapp/results"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                    body: JSON.stringify({ registrationId: recipient.registrationId }),
+                })
+                const data = await readResponseJson(response)
+                if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "WhatsApp rejected the message.")
+                setSentIds((current) => current.includes(recipient.registrationId) ? current : [...current, recipient.registrationId])
+            } catch (sendError) {
+                const failure = {
+                    registrationId: recipient.registrationId,
+                    participantName: recipient.participantName,
+                    error: sendError instanceof Error ? sendError.message : "Unable to send the message.",
+                }
+                nextFailures.push(failure)
+                setFailures([...nextFailures])
+            }
+        }
+
+        setSending(false)
+    }
+
+    return (
+        <div className="mb-6 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p className="flex items-center gap-2 text-lg font-black text-emerald-100">
+                        <MessageCircle className="h-5 w-5" />
+                        WhatsApp Results Broadcast
+                    </p>
+                    <p className="mt-1 max-w-3xl text-sm text-white/55">
+                        Sends one personalized approved template per scored participant with every score, category rank, and certificate download link.
+                    </p>
+                </div>
+                <button onClick={loadPreview} disabled={loading || sending} className="admin-button disabled:opacity-50">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Refresh preview
+                </button>
+            </div>
+
+            {error && <p className="mt-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+
+            {preview && (
+                <>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <MiniCount label="Scored participants" value={preview.summary.scoredParticipants} />
+                        <MiniCount label="Ready to send" value={preview.summary.readyToSend} />
+                        <MiniCount label="Invalid phones" value={preview.summary.invalidPhones} />
+                    </div>
+
+                    <div className="mt-4 rounded-md border border-white/10 bg-black/25 p-3 text-sm">
+                        <p className="font-bold text-white/80">Template: {preview.templateName} ({preview.templateLanguage})</p>
+                        {!preview.configured && (
+                            <p className="mt-1 text-amber-200">Missing server configuration: {preview.missingConfiguration.join(", ")}</p>
+                        )}
+                        {preview.sendBlockReason && <p className="mt-1 text-amber-100/80">{preview.sendBlockReason}</p>}
+                        <p className="mt-2 text-xs text-white/45">Send only to participants who agreed to receive competition updates on WhatsApp.</p>
+                    </div>
+
+                    {firstPreview && (
+                        <details className="mt-4 rounded-md border border-white/10 bg-black/25 p-3">
+                            <summary className="cursor-pointer text-sm font-bold text-white/75">Preview message for {firstPreview.participantName} ({firstPreview.maskedPhone})</summary>
+                            <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-white/60">{firstPreview.messagePreview}</pre>
+                        </details>
+                    )}
+
+                    {(sending || sentIds.length > 0) && (
+                        <div className="mt-4">
+                            <div className="mb-1 flex items-center justify-between text-xs font-bold text-white/55">
+                                <span>{sending ? "Sending messages..." : "Broadcast complete"}</span>
+                                <span>{sentIds.length}/{preview.summary.readyToSend} sent</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                                <div
+                                    className="h-full bg-emerald-400 transition-all"
+                                    style={{ width: `${preview.summary.readyToSend ? Math.round((sentIds.length / preview.summary.readyToSend) * 100) : 0}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {failures.length > 0 && (
+                        <div className="mt-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
+                            <p className="font-black">{failures.length} message{failures.length === 1 ? "" : "s"} failed</p>
+                            <ul className="mt-2 space-y-1 text-xs text-red-100/75">
+                                {failures.map((failure) => <li key={failure.registrationId}>{failure.participantName}: {failure.error}</li>)}
+                            </ul>
+                        </div>
+                    )}
+
+                    <button
+                        onClick={sendAll}
+                        disabled={!preview.canSend || !pendingRecipients.length || sending}
+                        className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-md bg-emerald-400 px-5 font-black text-black transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        {sending
+                            ? `Sending ${sentIds.length}/${preview.summary.readyToSend}`
+                            : pendingRecipients.length
+                                ? `Send to ${pendingRecipients.length} participants`
+                                : "All ready messages sent"}
+                    </button>
+                </>
+            )}
+        </div>
     )
 }
 

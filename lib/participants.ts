@@ -1,4 +1,4 @@
-import { categorySortValue, isEntryScored, rankRows, ResultEntryLike } from "@/lib/results"
+import { categorySortValue, formatScore, getRuleSet, isEntryScored, rankRows, ResultEntryLike } from "@/lib/results"
 
 export type MedalType = "gold" | "silver" | "bronze"
 
@@ -26,6 +26,8 @@ export type ParticipantEntry = {
     isPara: boolean
     rank: number
     positionLabel: string
+    displayScore: string
+    innerTenCount: number
     medal: MedalType | null
 }
 
@@ -152,6 +154,8 @@ export function buildParticipantDirectory(
                 isPara: row.entry.isPara,
                 rank: row.rank,
                 positionLabel: formatPosition(row.rank),
+                displayScore: formatScore(row.entry.totalScore, getRuleSet(row.entry)),
+                innerTenCount: row.entry.innerTenCount,
                 medal: medalForRank(row.rank),
             }
             const participantEntries = entriesByRegistration.get(row.registration.id) ?? []
