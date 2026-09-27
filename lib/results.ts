@@ -1,4 +1,4 @@
-import { getScoringSeriesCount } from "@/lib/competition"
+import { getScoringSeriesCount, isLittleChampCategory } from "@/lib/competition"
 
 export type ResultEntryLike = {
     categoryCode: string
@@ -21,6 +21,19 @@ export type RankedResultRow<TRegistration extends ResultRegistrationLike, TEntry
 export function categorySortValue(code: string) {
     const match = code.match(/^([A-Za-z]+)-(\d+)$/)
     return match ? `${match[1]}-${match[2].padStart(4, "0")}` : code
+}
+
+export function isTopResultCategory(
+    category: Pick<ResultEntryLike, "categoryCode"> & { categoryLabel?: string | null },
+    prefix: "S" | "R",
+    min: number,
+    max: number
+) {
+    const match = category.categoryCode.trim().toUpperCase().match(/^([SR])-(\d+)$/)
+    if (!match || match[1] !== prefix || isLittleChampCategory(category)) return false
+
+    const number = Number(match[2])
+    return Number.isInteger(number) && number >= min && number <= max
 }
 
 export function getRuleSet(entry: Pick<ResultEntryLike, "ruleSet">) {

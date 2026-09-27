@@ -36,6 +36,7 @@ import {
     formatScore,
     getRuleSet,
     isEntryScored,
+    isTopResultCategory,
     rankRows,
 } from "@/lib/results"
 import { toProperCase } from "@/lib/registration-validation"
@@ -220,13 +221,6 @@ function buildWhatsAppScoreUrl(registration: Pick<AdminRegistration, "name" | "p
 
 function academyLabel(value: string) {
     return value.trim() || "Unassigned Range"
-}
-
-function isCategoryInNumberRange(code: string, prefix: "S" | "R", min: number, max: number) {
-    const match = code.trim().toUpperCase().match(/^([SR])-(\d+)$/)
-    if (!match || match[1] !== prefix) return false
-    const number = Number(match[2])
-    return Number.isInteger(number) && number >= min && number <= max
 }
 
 function getDuplicateGroups(registrations: AdminRegistration[]) {
@@ -1515,7 +1509,7 @@ function TopStudentsView({ registrations }: { registrations: AdminRegistration[]
         const buildLeaderboard = (title: string, rangeLabel: string, prefix: "S" | "R", min: number, max: number) => {
             const rows = registrations.flatMap((registration) =>
                 registration.entries
-                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, min, max))
+                    .filter((entry) => isTopResultCategory(entry, prefix, min, max))
                     .filter(isEntryScored)
                     .map((entry) => ({ registration, entry }))
             )

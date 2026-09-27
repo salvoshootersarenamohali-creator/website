@@ -1,16 +1,9 @@
 import { NextRequest } from "next/server"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
-import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntryScored, rankRows } from "@/lib/results"
+import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntryScored, isTopResultCategory, rankRows } from "@/lib/results"
 
 export const dynamic = "force-dynamic"
-
-function isCategoryInNumberRange(code: string, prefix: "S" | "R", min: number, max: number) {
-    const match = code.trim().toUpperCase().match(/^([SR])-(\d+)$/)
-    if (!match || match[1] !== prefix) return false
-    const number = Number(match[2])
-    return Number.isInteger(number) && number >= min && number <= max
-}
 
 export async function GET(request: NextRequest) {
     try {
@@ -130,7 +123,7 @@ export async function GET(request: NextRequest) {
             const rows = registrations.flatMap((registration) =>
                 registration.entries
                     .filter((entry) => !entry.isPara)
-                    .filter((entry) => isCategoryInNumberRange(entry.categoryCode, prefix, min, max))
+                    .filter((entry) => isTopResultCategory(entry, prefix, min, max))
                     .filter(isEntryScored)
                     .map((entry) => ({
                         registration: {
