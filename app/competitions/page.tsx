@@ -1,7 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowRight, CalendarDays, Medal, ShieldCheck, Trophy } from "lucide-react"
-import { formatCompetitionDateRange, getCompetitionStatusLabel, isCompetitionClosed } from "@/lib/competition"
+import { formatCompetitionDateRange, getCompetitionStatusLabel, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -117,11 +117,11 @@ export default async function CompetitionsPage() {
 
 function StatusPill({ competition }: { competition: { endDate: string; registrationOpen: boolean; resultsPublished: boolean; status: string } }) {
     const label = getCompetitionStatusLabel(competition)
-    const closed = isCompetitionClosed(competition)
-    const classes = closed
-        ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
-        : competition.registrationOpen
+    const registrationAvailable = isCompetitionRegistrationAvailable(competition)
+    const classes = registrationAvailable
         ? "border-emerald-300/35 bg-emerald-400/10 text-emerald-100"
+        : label === "Closed"
+            ? "border-rose-300/35 bg-rose-400/10 text-rose-100"
         : competition.resultsPublished
             ? "border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#D4AF37]"
             : "border-white/10 bg-white/[0.04] text-white/60"

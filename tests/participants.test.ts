@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { formatCompetitionDateRange, getCompetitionEndBoundary, hasCompetitionEnded } from "@/lib/competition"
+import {
+    formatCompetitionDateRange,
+    getCompetitionEndBoundary,
+    getCompetitionStatusLabel,
+    hasCompetitionEnded,
+    isCompetitionRegistrationAvailable,
+} from "@/lib/competition"
 import {
     buildParticipantDirectory,
     formatPosition,
@@ -38,6 +44,29 @@ describe("certificate release boundary", () => {
 
     it("formats stored date-only UTC values without shifting days", () => {
         expect(formatCompetitionDateRange("2026-07-31T00:00:00.000Z", "2026-08-02T00:00:00.000Z")).toBe("31 Jul - 2 Aug 2026")
+    })
+})
+
+describe("registration availability", () => {
+    const completedCompetition = {
+        endDate: "2026-09-27T00:00:00.000Z",
+        status: "open",
+        isPublished: true,
+        registrationOpen: true,
+        resultsPublished: false,
+    }
+
+    it("allows an administrator to reopen registration after the event date", () => {
+        const now = new Date("2026-09-29T00:00:00.000Z")
+        expect(isCompetitionRegistrationAvailable(completedCompetition)).toBe(true)
+        expect(getCompetitionStatusLabel(completedCompetition, now)).toBe("Registration Open")
+    })
+
+    it("keeps completed competitions closed when the registration switch is off", () => {
+        const competition = { ...completedCompetition, registrationOpen: false }
+        const now = new Date("2026-09-29T00:00:00.000Z")
+        expect(isCompetitionRegistrationAvailable(competition)).toBe(false)
+        expect(getCompetitionStatusLabel(competition, now)).toBe("Closed")
     })
 })
 

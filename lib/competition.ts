@@ -543,15 +543,14 @@ export function isCompetitionClosed(competition: CompetitionStatusLike, now = ne
     return competition.status === "closed" || hasCompetitionEnded(competition.endDate, now)
 }
 
-export function isCompetitionRegistrationAvailable(competition: CompetitionStatusLike, now = new Date()) {
+export function isCompetitionRegistrationAvailable(competition: CompetitionStatusLike) {
     return competition.isPublished !== false
         && competition.registrationOpen
-        && !isCompetitionClosed(competition, now)
 }
 
 export function getCompetitionStatusLabel(competition: CompetitionStatusLike, now = new Date()) {
-    if (isCompetitionClosed(competition, now)) return "Closed"
     if (competition.registrationOpen) return "Registration Open"
+    if (isCompetitionClosed(competition, now)) return "Closed"
     if (competition.resultsPublished) return "Results"
     return competition.status || "Draft"
 }
