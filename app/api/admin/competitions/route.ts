@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { parseCompetitionDate } from "@/lib/competition"
 import { cloneDefaultConfigForYear, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -7,9 +8,8 @@ function slugify(value: string) {
     return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 }
 
-function readDate(value: unknown, fallback: Date) {
-    const date = new Date(String(value ?? ""))
-    return Number.isNaN(date.getTime()) ? fallback : date
+function readBoolean(value: unknown) {
+    return value === true || value === "true"
 }
 
 export async function GET(request: NextRequest) {
@@ -48,10 +48,21 @@ export async function POST(request: NextRequest) {
             suffix += 1
         }
 
-        const now = new Date()
-        const startDate = readDate(body.startDate, now)
-        const endDate = readDate(body.endDate, startDate)
-        const competitionYear = Number.isInteger(Number(body.competitionYear)) ? Number(body.competitionYear) : startDate.getFullYear()
+        const startDate = parseCompetitionDate(String(body.startDate ?? ""))
+        const endDate = parseCompetitionDate(String(body.endDate ?? ""))
+        if (!startDate || !endDate) {
+            return Response.json({ error: "Enter valid start and end dates." }, { status: 400 })
+        }
+        if (endDate.getTime() < startDate.getTime()) {
+            return Response.json({ error: "The end date cannot be before the start date." }, { status: 400 })
+        }
+
+        const requestedYear = Number(body.competitionYear)
+        const competitionYear = Number.isInteger(requestedYear) && requestedYear >= 1900 && requestedYear <= 2200
+            ? requestedYear
+            : startDate.getUTCFullYear()
+        const isPublished = readBoolean(body.isPublished)
+        const registrationOpen = isPublished && readBoolean(body.registrationOpen)
 
         const competition = await prisma.competition.create({
             data: {
@@ -63,17 +74,17 @@ export async function POST(request: NextRequest) {
                 startDate,
                 endDate,
                 competitionYear,
-                status: "draft",
-                isPublished: false,
-                registrationOpen: false,
+                status: registrationOpen ? "open" : "draft",
+                isPublished,
+                registrationOpen,
                 resultsPublished: false,
                 paymentQrPath: String(body.paymentQrPath ?? "").trim() || "/upi-scanner.png",
                 heroImagePath: String(body.heroImagePath ?? "").trim() || "/competition-range.JPG",
-                config: cloneDefaultConfigForYear(competitionYear),
+                config: cloneDefaultConfigForYear(competitionYear, startDate, endDate),
             },
         })
 
-        return Response.json({ competition: serializeCompetition(competition) }, { status: 201 })
+        return Response.json({ competition: { ...serializeCompetition(competition), registrations: 0 } }, { status: 201 })
     } catch (error) {
         console.error("Unable to create competition", error)
         return Response.json({ error: "Unable to create competition." }, { status: 500 })

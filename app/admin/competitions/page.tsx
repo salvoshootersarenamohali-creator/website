@@ -3,11 +3,13 @@
 import * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { CalendarDays, Edit3, ExternalLink, Loader2, Lock, Plus, Save, Trophy, Upload } from "lucide-react"
+import { CalendarDays, Edit3, ExternalLink, Loader2, Lock, Plus, Save, Trash2, Trophy, Upload } from "lucide-react"
 import {
+    buildCompetitionSlotsForDateRange,
     CompetitionConfig,
     PublicCompetition,
     formatCompetitionDateRange,
+    formatCompetitionDateLabel,
     normalizeCompetitionConfig,
 } from "@/lib/competition"
 import { toProperCase } from "@/lib/registration-validation"
@@ -18,13 +20,79 @@ type AdminCompetition = PublicCompetition & {
 
 type CompetitionAssetType = "hero" | "paymentQr"
 
+function prepareCompetitionForEditing(competition: AdminCompetition): AdminCompetition {
+    const startDate = competition.startDate.slice(0, 10)
+    const endDate = competition.endDate.slice(0, 10)
+    return {
+        ...competition,
+        config: {
+            ...competition.config,
+            slotOptions: buildCompetitionSlotsForDateRange(startDate, endDate, competition.config.slotOptions),
+        },
+    }
+}
+
+function getLocalDateInputValue(date = new Date()) {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+}
+
+function createDefaultForm() {
+    const today = getLocalDateInputValue()
+    return {
+        title: "",
+        shortTitle: "",
+        slug: "",
+        startDate: today,
+        endDate: today,
+        competitionYear: Number(today.slice(0, 4)),
+        isPublished: true,
+        registrationOpen: false,
+    }
+}
+
 const emptyCreateForm = {
     title: "",
     shortTitle: "",
     slug: "",
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: new Date().toISOString().slice(0, 10),
-    competitionYear: new Date().getFullYear(),
+    startDate: "",
+    endDate: "",
+    competitionYear: new Date().getUTCFullYear(),
+    isPublished: true,
+    registrationOpen: false,
+}
+
+function toTimeInputValue(value: string) {
+    const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value.trim())
+    if (!match) return ""
+    let hour = Number(match[1])
+    const minute = Number(match[2])
+    if (hour < 1 || hour > 12 || minute > 59) return ""
+    if (match[3].toUpperCase() === "PM" && hour !== 12) hour += 12
+    if (match[3].toUpperCase() === "AM" && hour === 12) hour = 0
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+}
+
+function fromTimeInputValue(value: string) {
+    const match = /^(\d{2}):(\d{2})$/.exec(value)
+    if (!match) return ""
+    const hour = Number(match[1])
+    const displayHour = hour % 12 || 12
+    return `${displayHour}:${match[2]} ${hour >= 12 ? "PM" : "AM"}`
+}
+
+function readRelayTime(slot: string) {
+    const [start = "", end = ""] = slot.split(/\s+-\s+/, 2)
+    return { start: toTimeInputValue(start), end: toTimeInputValue(end) }
+}
+
+function buildRelayTime(start: string, end: string) {
+    const startLabel = fromTimeInputValue(start)
+    const endLabel = fromTimeInputValue(end)
+    if (!startLabel) return ""
+    return endLabel ? `${startLabel} - ${endLabel}` : startLabel
 }
 
 async function readResponseJson(response: Response) {
@@ -46,6 +114,11 @@ export default function AdminCompetitionsPage() {
     const [isLoading, setIsLoading] = React.useState(false)
     const [isCreating, setIsCreating] = React.useState(false)
     const [error, setError] = React.useState("")
+    const [notice, setNotice] = React.useState("")
+
+    React.useEffect(() => {
+        setCreateForm(createDefaultForm())
+    }, [])
 
     const selected = competitions.find((competition) => competition.slug === selectedSlug) ?? competitions[0] ?? null
 
@@ -77,6 +150,7 @@ export default function AdminCompetitionsPage() {
         event.preventDefault()
         setIsCreating(true)
         setError("")
+        setNotice("")
         try {
             const response = await fetch("/api/admin/competitions", {
                 method: "POST",
@@ -86,9 +160,12 @@ export default function AdminCompetitionsPage() {
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to create competition.")
             const competition = data.competition as AdminCompetition
-            setCreateForm(emptyCreateForm)
+            setCreateForm(createDefaultForm())
             await loadCompetitions(activePin)
             setSelectedSlug(competition.slug)
+            setNotice(createForm.isPublished
+                ? `${competition.title} was created and is now visible on the competitions page.`
+                : `${competition.title} was created as a draft. Publish it in the editor when it is ready.`)
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Unable to create competition.")
         } finally {
@@ -133,19 +210,62 @@ export default function AdminCompetitionsPage() {
                                     <h2 className="text-xl font-black">Create from Template</h2>
                                 </div>
                                 <div className="space-y-3">
-                                    <input value={createForm.title} onChange={(event) => setCreateForm({ ...createForm, title: toProperCase(event.target.value) })} className="field" placeholder="Competition title" />
-                                    <input value={createForm.shortTitle} onChange={(event) => setCreateForm({ ...createForm, shortTitle: toProperCase(event.target.value) })} className="field" placeholder="Short title" />
-                                    <input value={createForm.slug} onChange={(event) => setCreateForm({ ...createForm, slug: event.target.value })} className="field" placeholder="optional-slug" />
+                                    <CreateField label="Competition title">
+                                        <input required value={createForm.title} onChange={(event) => setCreateForm({ ...createForm, title: toProperCase(event.target.value) })} className="field" placeholder="Competition title" />
+                                    </CreateField>
+                                    <CreateField label="Short title">
+                                        <input value={createForm.shortTitle} onChange={(event) => setCreateForm({ ...createForm, shortTitle: toProperCase(event.target.value) })} className="field" placeholder="Defaults to the full title" />
+                                    </CreateField>
+                                    <CreateField label="Page URL">
+                                        <input value={createForm.slug} onChange={(event) => setCreateForm({ ...createForm, slug: event.target.value })} className="field" placeholder="generated-from-title" />
+                                    </CreateField>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <input type="date" value={createForm.startDate} onChange={(event) => setCreateForm({ ...createForm, startDate: event.target.value })} className="field" />
-                                        <input type="date" value={createForm.endDate} onChange={(event) => setCreateForm({ ...createForm, endDate: event.target.value })} className="field" />
+                                        <CreateField label="Start date">
+                                            <input
+                                                required
+                                                type="date"
+                                                value={createForm.startDate}
+                                                onChange={(event) => {
+                                                    const startDate = event.target.value
+                                                    setCreateForm((current) => ({
+                                                        ...current,
+                                                        startDate,
+                                                        endDate: !current.endDate || current.endDate < startDate ? startDate : current.endDate,
+                                                        competitionYear: Number(startDate.slice(0, 4)) || current.competitionYear,
+                                                    }))
+                                                }}
+                                                className="field"
+                                            />
+                                        </CreateField>
+                                        <CreateField label="End date">
+                                            <input required type="date" min={createForm.startDate} value={createForm.endDate} onChange={(event) => setCreateForm({ ...createForm, endDate: event.target.value })} className="field" />
+                                        </CreateField>
                                     </div>
-                                    <input type="number" value={createForm.competitionYear} onChange={(event) => setCreateForm({ ...createForm, competitionYear: Number(event.target.value) })} className="field" />
+                                    <CreateField label="Competition year">
+                                        <input required min={1900} max={2200} type="number" value={createForm.competitionYear} onChange={(event) => setCreateForm({ ...createForm, competitionYear: Number(event.target.value) })} className="field" />
+                                    </CreateField>
                                 </div>
+                                <div className="mt-4 grid gap-2">
+                                    <Toggle
+                                        label="Show on competitions page"
+                                        checked={createForm.isPublished}
+                                        onChange={(value) => setCreateForm({ ...createForm, isPublished: value, registrationOpen: value ? createForm.registrationOpen : false })}
+                                    />
+                                    <Toggle
+                                        label="Open registration immediately"
+                                        checked={createForm.registrationOpen}
+                                        onChange={(value) => setCreateForm({ ...createForm, registrationOpen: value, isPublished: value || createForm.isPublished })}
+                                    />
+                                </div>
+                                <p className="mt-3 text-xs leading-relaxed text-white/45">
+                                    Relay days will be created automatically from the selected date range. You can adjust individual times after creation.
+                                </p>
                                 <button disabled={isCreating} className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#D4AF37] font-bold text-black disabled:opacity-60">
                                     {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                                    Create Draft
+                                    {createForm.isPublished ? "Create & Publish" : "Create Draft"}
                                 </button>
+                                {notice && <p className="mt-3 rounded-md border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-100">{notice}</p>}
+                                {error && <p className="mt-3 rounded-md border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
                             </form>
 
                             <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
@@ -164,7 +284,11 @@ export default function AdminCompetitionsPage() {
                                                 </div>
                                                 <span className="rounded-full border border-white/10 px-2 py-1 text-xs font-bold text-white/60">{competition.status}</span>
                                             </div>
-                                            <p className="mt-3 text-sm text-[#D4AF37]">{competition.registrations} registrations</p>
+                                            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                                                <span className="text-[#D4AF37]">{competition.registrations} registrations</span>
+                                                <span className={competition.isPublished ? "text-emerald-300" : "text-white/35"}>{competition.isPublished ? "Public" : "Draft"}</span>
+                                                <span className={competition.registrationOpen ? "text-cyan-200" : "text-white/35"}>{competition.registrationOpen ? "Registration open" : "Registration closed"}</span>
+                                            </div>
                                         </button>
                                     ))}
                                 </div>
@@ -194,7 +318,7 @@ export default function AdminCompetitionsPage() {
 }
 
 function CompetitionEditor({ competition, adminPin, onSaved }: { competition: AdminCompetition; adminPin: string; onSaved: (competition: AdminCompetition) => void }) {
-    const [form, setForm] = React.useState(() => competition)
+    const [form, setForm] = React.useState(() => prepareCompetitionForEditing(competition))
     const [saving, setSaving] = React.useState(false)
     const [message, setMessage] = React.useState("")
     const previousCompetitionId = React.useRef(competition.id)
@@ -202,13 +326,36 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
     React.useEffect(() => {
         if (previousCompetitionId.current !== competition.id) {
             previousCompetitionId.current = competition.id
-            setForm(competition)
+            setForm(prepareCompetitionForEditing(competition))
             setMessage("")
         }
     }, [competition])
 
     const updateConfig = (config: CompetitionConfig) => {
         setForm((current) => ({ ...current, config }))
+    }
+
+    const updateDateRange = (field: "startDate" | "endDate", value: string) => {
+        setForm((current) => {
+            let startDate = field === "startDate" ? value : current.startDate.slice(0, 10)
+            let endDate = field === "endDate" ? value : current.endDate.slice(0, 10)
+            if (startDate && endDate && endDate < startDate) {
+                if (field === "startDate") endDate = startDate
+                else startDate = endDate
+            }
+
+            const competitionYear = Number(startDate.slice(0, 4)) || current.config.competitionYear
+            return {
+                ...current,
+                startDate: `${startDate}T00:00:00.000Z`,
+                endDate: `${endDate}T00:00:00.000Z`,
+                config: {
+                    ...current.config,
+                    competitionYear,
+                    slotOptions: buildCompetitionSlotsForDateRange(startDate, endDate, current.config.slotOptions),
+                },
+            }
+        })
     }
 
     const save = async () => {
@@ -223,7 +370,9 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save competition.")
             const saved = data.competition as AdminCompetition
-            onSaved({ ...saved, config: normalizeCompetitionConfig(saved.config), registrations: form.registrations })
+            const normalized = { ...saved, config: normalizeCompetitionConfig(saved.config), registrations: form.registrations }
+            setForm(normalized)
+            onSaved(normalized)
             setMessage("Saved.")
         } catch (saveError) {
             setMessage(saveError instanceof Error ? saveError.message : "Unable to save competition.")
@@ -254,10 +403,17 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
                         <Edit3 className="h-4 w-4" />
                         Dashboard
                     </Link>
-                    <Link href={`/competitions/${form.slug}`} className="admin-button">
-                        <ExternalLink className="h-4 w-4" />
-                        Public
-                    </Link>
+                    {form.isPublished ? (
+                        <Link href={`/competitions/${form.slug}`} className="admin-button">
+                            <ExternalLink className="h-4 w-4" />
+                            Public
+                        </Link>
+                    ) : (
+                        <span className="admin-button cursor-not-allowed opacity-45" title="Publish this competition before opening its public page.">
+                            <ExternalLink className="h-4 w-4" />
+                            Not public
+                        </span>
+                    )}
                     <button onClick={save} disabled={saving} className="admin-button gold disabled:opacity-60">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         Save
@@ -277,8 +433,8 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
                         <option value="archived">Archived</option>
                     </select>
                 </Field>
-                <Field label="Start Date"><input type="date" value={form.startDate.slice(0, 10)} onChange={(event) => setForm({ ...form, startDate: `${event.target.value}T00:00:00.000Z` })} className="field" /></Field>
-                <Field label="End Date"><input type="date" value={form.endDate.slice(0, 10)} onChange={(event) => setForm({ ...form, endDate: `${event.target.value}T00:00:00.000Z` })} className="field" /></Field>
+                <Field label="Start Date"><input type="date" value={form.startDate.slice(0, 10)} onChange={(event) => updateDateRange("startDate", event.target.value)} className="field" /></Field>
+                <Field label="End Date"><input type="date" min={form.startDate.slice(0, 10)} value={form.endDate.slice(0, 10)} onChange={(event) => updateDateRange("endDate", event.target.value)} className="field" /></Field>
                 <Field label="Competition Year"><input type="number" value={form.config.competitionYear} onChange={(event) => updateConfig({ ...form.config, competitionYear: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Venue"><input value={form.venue ?? ""} onChange={(event) => setForm({ ...form, venue: toProperCase(event.target.value) })} className="field" /></Field>
             </div>
@@ -309,8 +465,8 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <Toggle label="Published" checked={form.isPublished} onChange={(value) => setForm({ ...form, isPublished: value })} />
-                <Toggle label="Registration Open" checked={form.registrationOpen} onChange={(value) => setForm({ ...form, registrationOpen: value })} />
+                <Toggle label="Published" checked={form.isPublished} onChange={(value) => setForm({ ...form, isPublished: value, registrationOpen: value ? form.registrationOpen : false })} />
+                <Toggle label="Registration Open" checked={form.registrationOpen} onChange={(value) => setForm({ ...form, registrationOpen: value, isPublished: value || form.isPublished })} />
                 <Toggle label="Results Published" checked={form.resultsPublished} onChange={(value) => setForm({ ...form, resultsPublished: value })} />
             </div>
 
@@ -459,11 +615,35 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
         })
     }
 
+    const updateRelaySlot = (dayIndex: number, slotIndex: number, start: string, end: string) => {
+        const day = config.slotOptions[dayIndex]
+        const slots = day.slots.map((slot, index) => index === slotIndex ? buildRelayTime(start, end) : slot)
+        updateSlotDay(dayIndex, { slots })
+    }
+
+    const addRelaySlot = (dayIndex: number) => {
+        const day = config.slotOptions[dayIndex]
+        updateSlotDay(dayIndex, { slots: [...day.slots, "8:00 AM - 11:00 AM"] })
+    }
+
+    const removeRelaySlot = (dayIndex: number, slotIndex: number) => {
+        const day = config.slotOptions[dayIndex]
+        updateSlotDay(dayIndex, { slots: day.slots.filter((_, index) => index !== slotIndex) })
+    }
+
     return (
         <div className="mt-6 space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Entry Fee"><input type="number" value={config.entryFee} onChange={(event) => onChange({ ...config, entryFee: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Little Champ Fee"><input type="number" value={config.littleChampEntryFee} onChange={(event) => onChange({ ...config, littleChampEntryFee: Number(event.target.value) })} className="field" /></Field>
+                <Field label="Match Start Time">
+                    <input
+                        type="time"
+                        value={toTimeInputValue(config.matchStartTime)}
+                        onChange={(event) => onChange({ ...config, matchStartTime: fromTimeInputValue(event.target.value) })}
+                        className="field"
+                    />
+                </Field>
             </div>
 
             <div>
@@ -493,20 +673,58 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
             </div>
 
             <div>
-                <h3 className="mb-3 text-xl font-black">Relay Dates and Slots</h3>
+                <h3 className="text-xl font-black">Relay Dates and Slots</h3>
+                <p className="mb-3 mt-1 text-sm text-white/45">Relay days follow the competition date range. Use the start and end date fields above to add or remove days.</p>
                 <div className="grid gap-3">
                     {config.slotOptions.map((slot, index) => (
                         <div key={slot.date} className="rounded-md border border-white/10 bg-black/25 p-4">
-                            <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-                                <input type="date" value={slot.date} onChange={(event) => updateSlotDay(index, { date: event.target.value })} className="field" />
-                                <input value={slot.label} onChange={(event) => updateSlotDay(index, { label: toProperCase(event.target.value) })} className="field" />
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <p className="font-black">{formatCompetitionDateLabel(slot.date)}</p>
+                                    <p className="text-xs text-white/40">{slot.date}</p>
+                                </div>
+                                <button type="button" onClick={() => addRelaySlot(index)} className="admin-button">
+                                    <Plus className="h-4 w-4" />
+                                    Add time slot
+                                </button>
                             </div>
-                            <textarea
-                                value={slot.slots.join("\n")}
-                                onChange={(event) => updateSlotDay(index, { slots: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })}
-                                className="field mt-3 min-h-24"
-                                aria-label="Relay slots"
-                            />
+                            <div className="grid gap-2">
+                                {slot.slots.map((relaySlot, slotIndex) => {
+                                    const relayTime = readRelayTime(relaySlot)
+                                    return (
+                                        <div key={slotIndex} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                                            <CreateField label="Start">
+                                                <input
+                                                    type="time"
+                                                    value={relayTime.start}
+                                                    onChange={(event) => updateRelaySlot(index, slotIndex, event.target.value, relayTime.end)}
+                                                    className="field"
+                                                    aria-label={`Start time for ${slot.date} slot ${slotIndex + 1}`}
+                                                />
+                                            </CreateField>
+                                            <CreateField label="End (optional)">
+                                                <input
+                                                    type="time"
+                                                    value={relayTime.end}
+                                                    onChange={(event) => updateRelaySlot(index, slotIndex, relayTime.start, event.target.value)}
+                                                    className="field"
+                                                    aria-label={`End time for ${slot.date} slot ${slotIndex + 1}`}
+                                                />
+                                            </CreateField>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeRelaySlot(index, slotIndex)}
+                                                className="admin-button h-11 px-3 text-red-200"
+                                                aria-label={`Remove slot ${slotIndex + 1} from ${slot.date}`}
+                                                title="Remove time slot"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    )
+                                })}
+                                {!slot.slots.length && <p className="rounded-md border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">Add at least one time slot for this day.</p>}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -519,6 +737,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     return (
         <label className="mt-4 block">
             <span className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-white/40">{label}</span>
+            {children}
+        </label>
+    )
+}
+
+function CreateField({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <label className="block">
+            <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</span>
             {children}
         </label>
     )

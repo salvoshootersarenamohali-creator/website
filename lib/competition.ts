@@ -153,6 +153,73 @@ export const slotOptions: SlotOption[] = [
     { date: "2026-09-27", label: "27th September 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 4:00 PM"] },
 ]
 
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+
+export function parseCompetitionDate(value: string | Date) {
+    const text = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
+    const match = DATE_ONLY_PATTERN.exec(text)
+    if (!match) return null
+
+    const year = Number(match[1])
+    const month = Number(match[2])
+    const day = Number(match[3])
+    const date = new Date(Date.UTC(year, month - 1, day))
+    if (
+        date.getUTCFullYear() !== year
+        || date.getUTCMonth() !== month - 1
+        || date.getUTCDate() !== day
+    ) {
+        return null
+    }
+    return date
+}
+
+export function formatCompetitionDateLabel(value: string | Date) {
+    const date = parseCompetitionDate(value)
+    if (!date) return ""
+    return new Intl.DateTimeFormat("en-IN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+    }).format(date)
+}
+
+export function buildCompetitionSlotsForDateRange(
+    startValue: string | Date,
+    endValue: string | Date,
+    templates: SlotOption[] = slotOptions,
+) {
+    const start = parseCompetitionDate(startValue)
+    const end = parseCompetitionDate(endValue)
+    if (!start || !end || end.getTime() < start.getTime()) return []
+
+    const existingByDate = new Map(templates.map((option) => [option.date, option]))
+    const firstTemplateSlots = templates[0]?.slots ?? slotOptions[0].slots
+    const middleTemplateSlots = templates[1]?.slots ?? firstTemplateSlots
+    const lastTemplateSlots = templates.at(-1)?.slots ?? firstTemplateSlots
+    const dayCount = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
+
+    return Array.from({ length: dayCount }, (_, index) => {
+        const date = new Date(start.getTime() + index * 86_400_000)
+        const dateText = date.toISOString().slice(0, 10)
+        const existing = existingByDate.get(dateText)
+        const fallbackSlots = dayCount === 1
+            ? firstTemplateSlots
+            : index === dayCount - 1
+                ? lastTemplateSlots
+                : index === 0
+                    ? firstTemplateSlots
+                    : middleTemplateSlots
+
+        return {
+            date: dateText,
+            label: formatCompetitionDateLabel(dateText),
+            slots: [...(existing?.slots.length ? existing.slots : fallbackSlots)],
+        }
+    })
+}
+
 export const defaultCompetitionConfig: CompetitionConfig = {
     competitionYear: DEFAULT_COMPETITION_YEAR,
     entryFee: ENTRY_FEE,

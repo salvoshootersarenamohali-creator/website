@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { Prisma } from "@prisma/client"
 import {
     PublicCompetition,
+    buildCompetitionSlotsForDateRange,
     defaultCompetitionConfig,
     hasCompetitionEnded,
     normalizeCompetitionConfig,
@@ -112,16 +113,20 @@ export function competitionFilePrefix(competition: Pick<PublicCompetition, "slug
     return competition.slug.replace(/[^a-z0-9-]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "competition"
 }
 
-export function cloneDefaultConfigForYear(year: number) {
+export function cloneDefaultConfigForYear(year: number, startDate?: string | Date, endDate?: string | Date) {
+    const yearSlots = defaultCompetitionConfig.slotOptions.map((slot) => ({
+        ...slot,
+        date: slot.date.replace(String(defaultCompetitionConfig.competitionYear), String(year)),
+        label: slot.label.replace(String(defaultCompetitionConfig.competitionYear), String(year)),
+        slots: [...slot.slots],
+    }))
+
     return {
         ...defaultCompetitionConfig,
         competitionYear: year,
-        slotOptions: defaultCompetitionConfig.slotOptions.map((slot) => ({
-            ...slot,
-            date: slot.date.replace(String(defaultCompetitionConfig.competitionYear), String(year)),
-            label: slot.label.replace(String(defaultCompetitionConfig.competitionYear), String(year)),
-            slots: [...slot.slots],
-        })),
+        slotOptions: startDate && endDate
+            ? buildCompetitionSlotsForDateRange(startDate, endDate, yearSlots)
+            : yearSlots,
         events: defaultCompetitionConfig.events.map((event) => ({
             ...event,
             prizes: [...event.prizes] as [number, number, number],
