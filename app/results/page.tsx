@@ -5,7 +5,7 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { AlertCircle, Award, BarChart3, CheckCircle2, Clock3, Download, Loader2, LockKeyhole, Medal, RefreshCw, Search, Trophy, Users } from "lucide-react"
 import { getCompetitionEndBoundary, hasCompetitionEnded, PublicCompetition } from "@/lib/competition"
-import type { MedalType, ParticipantCategory } from "@/lib/participants"
+import type { MedalType, PublicParticipantCategory } from "@/lib/participants"
 import { cn } from "@/lib/utils"
 
 type ResultsTab = "regular" | "para" | "certificates"
@@ -57,14 +57,13 @@ type CertificateDirectoryPayload = {
     competition: PublicCompetition
     generatedAt: string
     summary: {
-        participants: number
         categories: number
         regularCategories: number
         paraCategories: number
     }
-    categories: ParticipantCategory[]
-    regularCategories: ParticipantCategory[]
-    paraCategories: ParticipantCategory[]
+    categories: PublicParticipantCategory[]
+    regularCategories: PublicParticipantCategory[]
+    paraCategories: PublicParticipantCategory[]
 }
 
 function getCompetitionSlugFromPath(pathname: string) {
@@ -309,10 +308,9 @@ export default function ResultsPage() {
                                     </button>
                                 )}
                             </div>
-                            <div className={cn("grid gap-2", activeTab === "certificates" ? "grid-cols-3" : "grid-cols-2")}>
+                            <div className="grid grid-cols-2 gap-2">
                                 {activeTab === "certificates" ? (
                                     <>
-                                        <SummaryStat label="Participants" value={certificateSummary?.participants ?? "-"} />
                                         <SummaryStat label="Categories" value={certificateSummary?.categories ?? "-"} />
                                         <SummaryStat label="Status" value="Ready" />
                                     </>
@@ -350,7 +348,6 @@ export default function ResultsPage() {
                         <ResultsTabButton
                             active={activeTab === "certificates"}
                             label="Certificates"
-                            count={certificatePayload?.summary.participants}
                             disabled={!certificatesAvailable}
                             title={certificatesAvailable ? "View participants and download certificates" : certificateUnlockLabel}
                             icon={certificatesAvailable ? <Award className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
@@ -465,7 +462,6 @@ export default function ResultsPage() {
 function ResultsTabButton({
     active,
     label,
-    count,
     disabled = false,
     icon,
     onClick,
@@ -473,7 +469,6 @@ function ResultsTabButton({
 }: {
     active: boolean
     label: string
-    count?: number
     disabled?: boolean
     icon?: React.ReactNode
     onClick: () => void
@@ -493,7 +488,6 @@ function ResultsTabButton({
         >
             {icon}
             {label}
-            {typeof count === "number" && <span className="font-semibold opacity-75">({count})</span>}
         </button>
     )
 }
@@ -517,7 +511,7 @@ function CertificatesExperience({
     onCategoryChange: (value: string) => void
     onRetry: () => void
 }) {
-    const filterCategories = React.useCallback((categories: ParticipantCategory[]) => {
+    const filterCategories = React.useCallback((categories: PublicParticipantCategory[]) => {
         const searchText = query.trim().toLocaleLowerCase("en-IN")
         return categories
             .filter((category) => selectedCategory === "all" || category.key === selectedCategory)
@@ -575,8 +569,7 @@ function CertificatesExperience({
                             Participants are listed in every scored category. Medal winners receive an achievement certificate; all other eligible shooters receive a participation certificate.
                         </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:min-w-[300px]">
-                        <DirectoryStat icon={<Users className="h-4 w-4" />} label="Participants" value={payload.summary.participants} />
+                    <div className="grid gap-2 sm:min-w-[150px]">
                         <DirectoryStat icon={<Trophy className="h-4 w-4" />} label="Categories" value={payload.summary.categories} />
                     </div>
                 </div>
@@ -617,7 +610,7 @@ function CertificatesExperience({
                     )}
                 >
                     <span className="block font-black">All categories</span>
-                    <span className="block text-xs opacity-75">{payload.summary.participants} unique participants</span>
+                    <span className="block text-xs opacity-75">Browse directory</span>
                 </button>
                 {payload.categories.map((category) => (
                     <button
@@ -630,7 +623,7 @@ function CertificatesExperience({
                         )}
                     >
                         <span className="block font-black">{category.isPara ? "Para - " : ""}{category.code}</span>
-                        <span className="block truncate text-xs opacity-75">{category.participantCount} {category.participantCount === 1 ? "participant" : "participants"}</span>
+                        <span className="block truncate text-xs opacity-75">View certificates</span>
                     </button>
                 ))}
             </div>
@@ -647,9 +640,9 @@ function CertificatesExperience({
             ) : (
                 <div className="rounded-xl border border-white/10 bg-neutral-950 p-10 text-center">
                     <Users className="mx-auto h-9 w-9 text-white/30" />
-                    <p className="mt-4 text-lg font-black">{payload.summary.participants ? "No matching participant found." : "No certificates are available yet."}</p>
+                    <p className="mt-4 text-lg font-black">{payload.categories.length ? "No matching participant found." : "No certificates are available yet."}</p>
                     <p className="mt-2 text-sm text-white/50">
-                        {payload.summary.participants ? "Check the spelling or choose another category." : "A participant appears here after at least one complete score is uploaded."}
+                        {payload.categories.length ? "Check the spelling or choose another category." : "A participant appears here after at least one complete score is uploaded."}
                     </p>
                 </div>
             )}
@@ -666,7 +659,7 @@ function DirectoryStat({ icon, label, value }: { icon: React.ReactNode; label: s
     )
 }
 
-function DirectoryGroup({ title, description, categories, para = false }: { title: string; description: string; categories: ParticipantCategory[]; para?: boolean }) {
+function DirectoryGroup({ title, description, categories, para = false }: { title: string; description: string; categories: PublicParticipantCategory[]; para?: boolean }) {
     return (
         <section>
             <div className="mb-3 flex items-end justify-between gap-4">
@@ -683,7 +676,7 @@ function DirectoryGroup({ title, description, categories, para = false }: { titl
     )
 }
 
-function ParticipantCategorySection({ category }: { category: ParticipantCategory }) {
+function ParticipantCategorySection({ category }: { category: PublicParticipantCategory }) {
     return (
         <section className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950 shadow-xl shadow-black/10">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 p-4 sm:p-5">
@@ -692,7 +685,7 @@ function ParticipantCategorySection({ category }: { category: ParticipantCategor
                         {category.isPara && <span className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">Para</span>}
                         <h3 className="text-lg font-black text-[#E5C558] sm:text-xl">{category.code} - {category.label}</h3>
                     </div>
-                    <p className="mt-1 text-sm text-white/45">{category.participants.length} certificate-ready {category.participants.length === 1 ? "participant" : "participants"}</p>
+                    <p className="mt-1 text-sm text-white/45">Certificate-ready participants</p>
                 </div>
                 <span className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/55">Alphabetical list</span>
             </div>

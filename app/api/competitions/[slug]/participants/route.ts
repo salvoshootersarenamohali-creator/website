@@ -1,5 +1,6 @@
 import { hasCompetitionEnded } from "@/lib/competition"
 import { serializeCompetition } from "@/lib/competition-server"
+import { toPublicParticipantDirectory } from "@/lib/participants"
 import { loadParticipantDirectory } from "@/lib/participants-server"
 import { prisma } from "@/lib/prisma"
 
@@ -21,19 +22,11 @@ export async function GET(_request: Request, context: RouteContext) {
         }
 
         const directory = await loadParticipantDirectory(competition.id, competition.slug)
+        const publicDirectory = toPublicParticipantDirectory(directory)
         return Response.json({
             competition: serializeCompetition(competition),
             generatedAt: new Date().toISOString(),
-            summary: {
-                participants: directory.uniqueParticipantCount,
-                categories: directory.categoryCount,
-                regularCategories: directory.regularCategories.length,
-                paraCategories: directory.paraCategories.length,
-            },
-            participants: directory.participants,
-            categories: directory.categories,
-            regularCategories: directory.regularCategories,
-            paraCategories: directory.paraCategories,
+            ...publicDirectory,
         })
     } catch (error) {
         console.error("Unable to load certificate participants", error)

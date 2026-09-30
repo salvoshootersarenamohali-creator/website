@@ -12,6 +12,7 @@ import {
     medalForRank,
     ParticipantSourceEntry,
     ParticipantSourceRegistration,
+    toPublicParticipantDirectory,
 } from "@/lib/participants"
 
 function entry(overrides: Partial<ParticipantSourceEntry> & Pick<ParticipantSourceEntry, "id" | "categoryCode">): ParticipantSourceEntry {
@@ -138,5 +139,19 @@ describe("participant directory", () => {
 
         expect(directory.participants.find((participant) => participant.registrationId === "missing")).toBeUndefined()
         expect(directory.participants.find((participant) => participant.registrationId === "unscored")).toBeUndefined()
+    })
+
+    it("does not expose participant totals in the public directory payload", () => {
+        const directory = buildParticipantDirectory([
+            registration("one", "Shooter One", [entry({ id: "entry-one", categoryCode: "S-01" })]),
+            registration("two", "Shooter Two", [entry({ id: "entry-two", categoryCode: "S-01" })]),
+        ], "salvo-cup")
+
+        const publicDirectory = toPublicParticipantDirectory(directory)
+
+        expect(publicDirectory).not.toHaveProperty("participants")
+        expect(publicDirectory.summary).not.toHaveProperty("participants")
+        expect(publicDirectory.categories[0]).not.toHaveProperty("participantCount")
+        expect(publicDirectory.categories[0].participants).toHaveLength(2)
     })
 })

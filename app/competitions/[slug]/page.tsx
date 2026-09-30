@@ -3,7 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
-import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy, Users } from "lucide-react"
+import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy } from "lucide-react"
 import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
@@ -54,21 +54,20 @@ export default async function CompetitionPage({ params }: PageProps) {
     const templateCompetition = getTemplatePublicCompetition()
     const competitionRecord = await prisma.competition.findUnique({
         where: { slug },
-        include: { _count: { select: { registrations: true } } },
     }).catch((error) => {
         if (process.env.NODE_ENV === "production") throw error
         return null
     })
     if (!competitionRecord && process.env.NODE_ENV !== "production" && slug === templateCompetition.slug) {
-        return <CompetitionDetail competition={templateCompetition} registrations={0} />
+        return <CompetitionDetail competition={templateCompetition} />
     }
     if (!competitionRecord || !competitionRecord.isPublished) notFound()
 
     const competition = serializeCompetition(competitionRecord)
-    return <CompetitionDetail competition={competition} registrations={competitionRecord._count.registrations} />
+    return <CompetitionDetail competition={competition} />
 }
 
-function CompetitionDetail({ competition, registrations }: { competition: ReturnType<typeof getTemplatePublicCompetition>; registrations: number }) {
+function CompetitionDetail({ competition }: { competition: ReturnType<typeof getTemplatePublicCompetition> }) {
     const dateRange = formatCompetitionDateRange(competition.startDate, competition.endDate)
     const registrationAvailable = isCompetitionRegistrationAvailable(competition)
     const statusLabel = getCompetitionStatusLabel(competition)
@@ -176,9 +175,9 @@ function CompetitionDetail({ competition, registrations }: { competition: Return
                         <h2 className="text-2xl font-black">Competition Details</h2>
                         <div className="mt-5 grid gap-3 sm:grid-cols-2">
                             <Info icon={<CalendarDays className="h-4 w-4" />} label="Dates" value={dateRange} />
-                            <Info icon={<Users className="h-4 w-4" />} label="Registrations" value={registrations} />
+                            <Info icon={<Trophy className="h-4 w-4" />} label="Events" value={competition.config.events.length} />
                             <Info icon={<Medal className="h-4 w-4" />} label="Status" value={statusLabel} />
-                            <Info icon={<Trophy className="h-4 w-4" />} label="Venue" value={competition.venue || "Salvo Shooters Arena"} />
+                            <Info icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition.venue || "Salvo Shooters Arena"} />
                         </div>
                     </section>
 

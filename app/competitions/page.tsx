@@ -14,19 +14,11 @@ export default async function CompetitionsPage() {
                 { startDate: "desc" },
                 { createdAt: "desc" },
             ],
-            include: {
-                _count: {
-                    select: { registrations: true },
-                },
-            },
         })
-        .then((rows) => rows.map((competition) => ({
-            ...serializeCompetition(competition),
-            registrations: competition._count.registrations,
-        })))
+        .then((rows) => rows.map(serializeCompetition))
         .catch((error) => {
             if (process.env.NODE_ENV === "production") throw error
-            return [{ ...getTemplatePublicCompetition(), registrations: 0 }]
+            return [getTemplatePublicCompetition()]
         })
 
     return (
@@ -81,8 +73,7 @@ export default async function CompetitionsPage() {
                                                 {competition.description || "Competition details, registration, and results."}
                                             </p>
                                         </Link>
-                                        <div className="mt-5 grid grid-cols-3 gap-2">
-                                            <Mini label="Entries" value={competition.registrations} />
+                                        <div className="mt-5 grid grid-cols-2 gap-2">
                                             <Mini label="Events" value={competition.config.events.length} />
                                             <Mini label="Results" value={competition.resultsPublished ? "Live" : "Soon"} />
                                         </div>

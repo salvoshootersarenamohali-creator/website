@@ -52,6 +52,19 @@ export type ParticipantCategory = {
     participants: ParticipantCategoryRow[]
 }
 
+export type PublicParticipantCategory = Omit<ParticipantCategory, "participantCount">
+
+export type PublicParticipantDirectory = {
+    summary: {
+        categories: number
+        regularCategories: number
+        paraCategories: number
+    }
+    categories: PublicParticipantCategory[]
+    regularCategories: PublicParticipantCategory[]
+    paraCategories: PublicParticipantCategory[]
+}
+
 export type ParticipantDirectory = {
     uniqueParticipantCount: number
     categoryCount: number
@@ -202,6 +215,27 @@ export function buildParticipantDirectory(
         uniqueParticipantCount: participants.length,
         categoryCount: categories.length,
         participants,
+        categories,
+        regularCategories: categories.filter((category) => !category.isPara),
+        paraCategories: categories.filter((category) => category.isPara),
+    }
+}
+
+export function toPublicParticipantDirectory(directory: ParticipantDirectory): PublicParticipantDirectory {
+    const categories = directory.categories.map<PublicParticipantCategory>((category) => ({
+        key: category.key,
+        code: category.code,
+        label: category.label,
+        isPara: category.isPara,
+        participants: category.participants,
+    }))
+
+    return {
+        summary: {
+            categories: directory.categoryCount,
+            regularCategories: directory.regularCategories.length,
+            paraCategories: directory.paraCategories.length,
+        },
         categories,
         regularCategories: categories.filter((category) => !category.isPara),
         paraCategories: categories.filter((category) => category.isPara),
