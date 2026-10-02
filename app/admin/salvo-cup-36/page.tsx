@@ -40,6 +40,7 @@ import {
     rankRows,
 } from "@/lib/results"
 import { toProperCase } from "@/lib/registration-validation"
+import { getRegistrationParaState } from "@/lib/para-registration"
 import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
@@ -1621,11 +1622,18 @@ function RegistrationDetail({
     const [deleting, setDeleting] = React.useState(false)
     const [deleteError, setDeleteError] = React.useState("")
     const [editing, setEditing] = React.useState(false)
+    const [markingPara, setMarkingPara] = React.useState(false)
+    const [paraError, setParaError] = React.useState("")
+    const paraState = getRegistrationParaState(registration.entries)
+    const isParaShooter = paraState === "para"
+    const hasParaEntries = paraState !== "regular"
 
     React.useEffect(() => {
         setDeleting(false)
         setDeleteError("")
         setEditing(false)
+        setMarkingPara(false)
+        setParaError("")
     }, [registration.id])
 
     const deleteRegistration = async () => {
@@ -1650,11 +1658,47 @@ function RegistrationDetail({
         }
     }
 
+    const togglePara = async () => {
+        const nextIsPara = !isParaShooter
+        const policyText = config.paraEntryMode === "sponsored"
+            ? "all entry fees will become Rs. 0 and the registration will be marked Sponsored"
+            : `every entry will use the ${formatCurrency(config.paraEntryFee)} para fee`
+        const message = nextIsPara
+            ? `Mark ${registration.name} and all ${registration.entries.length} entries as para? ${policyText}.`
+            : `Remove para status from ${registration.name}? All entries will return to the competition's current standard fees.`
+        if (!window.confirm(message)) return
+
+        setMarkingPara(true)
+        setParaError("")
+        try {
+            const response = await fetch(scopedAdminPath(competitionSlug, `/registrations/${registration.id}/para`), {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
+                body: JSON.stringify({ isPara: nextIsPara }),
+            })
+            const data = await readResponseJson(response)
+            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to update para shooter status.")
+            onChanged()
+        } catch (updateError) {
+            setParaError(updateError instanceof Error ? updateError.message : "Unable to update para shooter status.")
+        } finally {
+            setMarkingPara(false)
+        }
+    }
+
     return (
         <div>
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-black">{registration.name}</h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-3xl font-black">{registration.name}</h2>
+                        {hasParaEntries && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/35 bg-sky-400/10 px-2 py-1 text-xs font-bold text-sky-100">
+                                <Accessibility className="h-3.5 w-3.5" />
+                                {isParaShooter ? "Para Shooter" : "Mixed Para Status"}
+                            </span>
+                        )}
+                    </div>
                     <p className="text-white/55">{registration.academy} | {registration.phone}</p>
                     <p className="mt-2 text-sm text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
                 </div>
@@ -1662,6 +1706,14 @@ function RegistrationDetail({
                     <button onClick={() => setEditing((current) => !current)} className="admin-button">
                         {editing ? <X className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                         {editing ? "Close Edit" : "Edit"}
+                    </button>
+                    <button
+                        onClick={togglePara}
+                        disabled={markingPara || deleting}
+                        className={`admin-button disabled:opacity-60 ${isParaShooter ? "border-sky-300/45 bg-sky-400/15 text-sky-100" : ""}`}
+                    >
+                        {markingPara ? <Loader2 className="h-4 w-4 animate-spin" /> : <Accessibility className="h-4 w-4" />}
+                        {isParaShooter ? "Remove Para Status" : "Mark Shooter Para"}
                     </button>
                     <button
                         onClick={deleteRegistration}
@@ -1677,7 +1729,7 @@ function RegistrationDetail({
                     </button>
                 </div>
             </div>
-            {deleteError && <p className="mb-6 text-sm text-red-300">{deleteError}</p>}
+            {(deleteError || paraError) && <p className="mb-6 text-sm text-red-300">{deleteError || paraError}</p>}
 
             {editing && (
                 <RegistrationEditForm
@@ -1915,6 +1967,7 @@ function RegistrationEditForm({
     })
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState("")
+    const registrationIsParaShooter = registration.entries.length > 0 && registration.entries.every((entry) => entry.isPara)
 
     const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
     const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
@@ -1937,10 +1990,14 @@ function RegistrationEditForm({
     const removedScoredEntries = registration.entries.filter((entry) =>
         !entries.some((selectedEntry) => entryKey(selectedEntry) === entryKey(entry)) && isEntryScored(entry)
     )
+    const isSelectedEntryPara = (entry: SelectedEntry) => {
+        const existingEntry = registration.entries.find((candidate) => entryKey(candidate) === entryKey(entry))
+        return existingEntry?.isPara ?? registrationIsParaShooter
+    }
     const amount = entries.reduce((sum, entry) => {
         const categories = categoriesByEvent.get(entry.eventId) ?? []
         const category = categories.find((item) => item.code === entry.categoryCode)
-        return sum + (category ? getEntryFee(category, config) : 0)
+        return sum + (category ? getEntryFee(category, config, isSelectedEntryPara(entry)) : 0)
     }, 0)
     const isOnlinePaid = form.paymentMode === "upi" && form.paymentStatus === "Paid"
 
@@ -2142,7 +2199,9 @@ function RegistrationEditForm({
                                     >
                                         <span className="block font-bold">{category.code}</span>
                                         <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
-                                        <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
+                                        <span className="mt-1 block text-xs font-bold">
+                                            {formatCurrency(getEntryFee(category, config, isSelectedEntryPara({ eventId: event.id, categoryCode: category.code })))}
+                                        </span>
                                     </button>
                                 )) : (
                                     <p className="text-sm text-white/45">No eligible categories for this event.</p>
@@ -2287,7 +2346,6 @@ function ScoreRow({
     const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
     const [innerTenCount, setInnerTenCount] = React.useState(savedScore ? String(entry.innerTenCount) : "")
     const [saving, setSaving] = React.useState(false)
-    const [markingPara, setMarkingPara] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
     const parsedSeriesScores = seriesScores.map((score) => Number(score))
@@ -2350,25 +2408,6 @@ function ScoreRow({
         }
     }
 
-    const togglePara = async () => {
-        setMarkingPara(true)
-        setError("")
-        try {
-            const response = await fetch(scopedAdminPath(competitionSlug, `/entries/${entry.id}/para`), {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ isPara: !entry.isPara }),
-            })
-            const data = await readResponseJson(response)
-            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to update para entry status.")
-            onChanged()
-        } catch (paraError) {
-            setError(paraError instanceof Error ? paraError.message : "Unable to update para entry status.")
-        } finally {
-            setMarkingPara(false)
-        }
-    }
-
     const deleteEntry = async () => {
         const confirmed = window.confirm(`Delete this person and all their entries from the database?\n\nThis removes ${entry.categoryCode} - ${entry.categoryLabel} and any other entries under the same registration.`)
         if (!confirmed) return
@@ -2412,16 +2451,8 @@ function ScoreRow({
                         <MiniCount label="Scores" value={`${validSeriesScores.length}/${seriesCount}`} />
                     </div>
                     <button
-                        onClick={togglePara}
-                        disabled={saving || deleting || markingPara}
-                        className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-sm font-bold transition disabled:opacity-60 ${entry.isPara ? "border-sky-300/45 bg-sky-400/15 text-sky-100 hover:border-sky-200" : "border-white/10 bg-white/[0.04] text-white/75 hover:border-sky-300/50 hover:text-sky-100"}`}
-                    >
-                        {markingPara ? <Loader2 className="h-4 w-4 animate-spin" /> : <Accessibility className="h-4 w-4" />}
-                        {entry.isPara ? "Para Entry" : "Mark Para"}
-                    </button>
-                    <button
                         onClick={deleteEntry}
-                        disabled={saving || deleting || markingPara}
+                        disabled={saving || deleting}
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:border-red-300 disabled:opacity-60"
                     >
                         {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -2481,7 +2512,7 @@ function ScoreRow({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button onClick={save} disabled={saving || deleting || markingPara} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
+                <button onClick={save} disabled={saving || deleting} className="h-11 rounded-md bg-[#D4AF37] px-4 font-bold text-black disabled:opacity-60">
                     {saving ? "Saving..." : "Save Score"}
                 </button>
                 {error ? (

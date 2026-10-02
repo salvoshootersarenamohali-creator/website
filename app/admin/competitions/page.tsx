@@ -695,10 +695,25 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
 
     return (
         <div className="mt-6 space-y-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Entry Fee"><input min={0} step={1} type="number" value={config.entryFee} onChange={(event) => onChange({ ...config, entryFee: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Little Champ Fee"><input min={0} step={1} type="number" value={config.littleChampEntryFee} onChange={(event) => onChange({ ...config, littleChampEntryFee: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Team Entry Fee"><input min={0} step={1} type="number" value={config.teamEntryFee} onChange={(event) => onChange({ ...config, teamEntryFee: Number(event.target.value) })} className="field" /></Field>
+                <Field label="Para Entry Policy">
+                    <select
+                        value={config.paraEntryMode}
+                        onChange={(event) => onChange({ ...config, paraEntryMode: event.target.value as CompetitionConfig["paraEntryMode"] })}
+                        className="field"
+                    >
+                        <option value="custom-fee">Charge a custom fee</option>
+                        <option value="sponsored">Sponsored - no fee</option>
+                    </select>
+                </Field>
+                {config.paraEntryMode === "custom-fee" && (
+                    <Field label="Para Entry Fee">
+                        <input min={0} step={1} type="number" value={config.paraEntryFee} onChange={(event) => onChange({ ...config, paraEntryFee: Number(event.target.value) })} className="field" />
+                    </Field>
+                )}
                 <Field label="Match Start Time">
                     <input
                         type="time"

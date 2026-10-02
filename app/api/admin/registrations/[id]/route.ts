@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
-import { normalizeCompetitionConfig } from "@/lib/competition"
+import { getRegistrationEntryFee, normalizeCompetitionConfig } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
+import { AUTOMATIC_PARA_SPONSOR } from "@/lib/para-registration"
 import { prisma } from "@/lib/prisma"
 import {
     RegistrationValidationError,
@@ -59,12 +60,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         })
 
         const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi"] })
-        if (paymentStatus === "Paid" && data.paymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
-            return Response.json({ error: "Online paid registrations require a 12-digit UTR number." }, { status: 400 })
-        }
-        if (paymentStatus === "Sponsored" && data.paymentMode === "upi") {
-            return Response.json({ error: "Sponsored registrations must use cash payment mode." }, { status: 400 })
-        }
 
         const existing = await prisma.registration.findUnique({
             where: { id },
@@ -73,7 +68,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         if (!existing) return Response.json({ error: "Registration not found." }, { status: 404 })
         if (existing.competitionId !== competition.id) return Response.json({ error: "Registration not found for this competition." }, { status: 404 })
 
-        const nextKeys = new Set(resolvedEntries.map(entryKey))
+        const existingByKey = new Map(existing.entries.map((entry) => [entryKey(entry), entry]))
+        const registrationIsParaShooter = existing.entries.length > 0 && existing.entries.every((entry) => entry.isPara)
+        const pricedEntries = resolvedEntries.map((entry) => {
+            const existingEntry = existingByKey.get(entryKey(entry))
+            const isPara = existingEntry?.isPara ?? registrationIsParaShooter
+            return { ...entry, isPara, fee: getRegistrationEntryFee(entry, config, isPara) }
+        })
+        const automaticallySponsored = pricedEntries.length > 0
+            && pricedEntries.every((entry) => entry.isPara)
+            && config.paraEntryMode === "sponsored"
+        const nextPaymentMode = automaticallySponsored ? "cash" : data.paymentMode
+        const nextPaymentStatus = automaticallySponsored ? "Sponsored" : paymentStatus
+
+        if (nextPaymentStatus === "Paid" && nextPaymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
+            return Response.json({ error: "Online paid registrations require a 12-digit UTR number." }, { status: 400 })
+        }
+        if (nextPaymentStatus === "Sponsored" && nextPaymentMode === "upi") {
+            return Response.json({ error: "Sponsored registrations must use cash payment mode." }, { status: 400 })
+        }
+
+        const nextKeys = new Set(pricedEntries.map(entryKey))
         const removedEntries = existing.entries.filter((entry) => !nextKeys.has(entryKey(entry)))
         const removedScoredEntries = removedEntries.filter(hasScores)
         if (removedScoredEntries.length && !allowScoredEntryRemoval) {
@@ -88,10 +103,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             }, { status: 409 })
         }
 
-        const existingByKey = new Map(existing.entries.map((entry) => [entryKey(entry), entry]))
-        const amount = getResolvedRegistrationAmount(resolvedEntries)
-        const confirmedAt = existing.paymentStatus === paymentStatus ? existing.paymentConfirmedAt : paymentStatus === "Pending" ? null : new Date()
-        const confirmedBy = existing.paymentStatus === paymentStatus ? existing.paymentConfirmedBy : paymentStatus === "Pending" ? null : existing.paymentConfirmedBy
+        const amount = getResolvedRegistrationAmount(pricedEntries)
+        const confirmedAt = automaticallySponsored
+            ? existing.paymentStatus === "Sponsored" && existing.paymentConfirmedBy === AUTOMATIC_PARA_SPONSOR ? existing.paymentConfirmedAt : new Date()
+            : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedAt : nextPaymentStatus === "Pending" ? null : new Date()
+        const confirmedBy = automaticallySponsored
+            ? AUTOMATIC_PARA_SPONSOR
+            : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedBy : nextPaymentStatus === "Pending" ? null : existing.paymentConfirmedBy
 
         const registration = await prisma.$transaction(async (tx) => {
             if (removedEntries.length) {
@@ -100,7 +118,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                 })
             }
 
-            await Promise.all(resolvedEntries.map((entry) => {
+            await Promise.all(pricedEntries.map((entry) => {
                 const existingEntry = existingByKey.get(entryKey(entry))
                 if (!existingEntry) {
                     return tx.registrationEntry.create({
@@ -113,6 +131,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                             categoryCode: entry.categoryCode,
                             categoryLabel: entry.categoryLabel,
                             fee: entry.fee,
+                            isPara: entry.isPara,
                         },
                     })
                 }
@@ -125,6 +144,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                         ruleSet: entry.ruleSet,
                         categoryLabel: entry.categoryLabel,
                         fee: entry.fee,
+                        isPara: entry.isPara,
                     },
                 })
             }))
@@ -142,12 +162,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     address: data.address || null,
                     preferredDate: new Date(`${data.preferredDate}T00:00:00`),
                     preferredSlot: data.preferredSlot,
-                    paymentMode: data.paymentMode,
-                    paymentStatus,
+                    paymentMode: nextPaymentMode,
+                    paymentStatus: nextPaymentStatus,
                     paymentConfirmedBy: confirmedBy,
                     paymentConfirmedAt: confirmedAt,
                     amount,
-                    utrNumber: paymentStatus === "Paid" && data.paymentMode === "upi" ? data.utrNumber : null,
+                    utrNumber: nextPaymentStatus === "Paid" && nextPaymentMode === "upi" ? data.utrNumber : null,
                 },
                 include: { entries: { orderBy: { createdAt: "asc" } } },
             })

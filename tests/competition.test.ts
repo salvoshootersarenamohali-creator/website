@@ -4,10 +4,13 @@ import {
     defaultCompetitionConfig,
     formatCompetitionDateLabel,
     getCompetitionCategories,
+    getEntryFee,
+    getRegistrationEntryFee,
     getScoringSeriesCount,
     normalizeCompetitionConfig,
     parseCompetitionDate,
     validateCashPrizeConfiguration,
+    validateParaEntryConfiguration,
 } from "@/lib/competition"
 
 describe("competition scoring format", () => {
@@ -167,5 +170,64 @@ describe("competition cash prizes", () => {
             ...generalConfig,
             cashPrizeGroups: [{ ...generalConfig.cashPrizeGroups[0], target: { type: "event", eventId: "missing" } }],
         })).toBe("Every cash prize group must have a valid display association.")
+    })
+})
+
+describe("competition para entry policy", () => {
+    it("defaults legacy configurations to a custom para fee matching the base entry fee", () => {
+        const config = normalizeCompetitionConfig({ entryFee: 1250 })
+
+        expect(config.paraEntryMode).toBe("custom-fee")
+        expect(config.paraEntryFee).toBe(1250)
+    })
+
+    it("normalizes valid para settings and safely falls back from malformed values", () => {
+        expect(normalizeCompetitionConfig({ paraEntryMode: "sponsored", paraEntryFee: 650 })).toMatchObject({
+            paraEntryMode: "sponsored",
+            paraEntryFee: 650,
+        })
+        expect(normalizeCompetitionConfig({ entryFee: 1100, paraEntryMode: "invalid", paraEntryFee: -1 })).toMatchObject({
+            paraEntryMode: "custom-fee",
+            paraEntryFee: 1100,
+        })
+    })
+
+    it("rejects unknown modes and malformed custom fees", () => {
+        expect(validateParaEntryConfiguration({ paraEntryMode: "invalid", paraEntryFee: 500 })).toBe("Para entry policy must use a custom fee or sponsorship.")
+        expect(validateParaEntryConfiguration({ paraEntryMode: "custom-fee", paraEntryFee: -1 })).toBe("Para entry fee must be a non-negative whole number.")
+        expect(validateParaEntryConfiguration({ paraEntryMode: "custom-fee", paraEntryFee: 10.5 })).toBe("Para entry fee must be a non-negative whole number.")
+        expect(validateParaEntryConfiguration({ paraEntryMode: "custom-fee", paraEntryFee: "500" })).toBe("Para entry fee must be a non-negative whole number.")
+        expect(validateParaEntryConfiguration({ paraEntryMode: "custom-fee", paraEntryFee: "free" })).toBe("Para entry fee must be a non-negative whole number.")
+        expect(validateParaEntryConfiguration({ paraEntryMode: "sponsored", paraEntryFee: "inactive" })).toBeNull()
+    })
+
+    it("uses custom or sponsored pricing only after an entry is marked para", () => {
+        const category = { bracket: "senior" as const, ruleSet: "NR" as const }
+        const paidConfig = normalizeCompetitionConfig({
+            entryFee: 1000,
+            feesByRuleSet: { NR: 800, ISSF: 1000 },
+            paraEntryMode: "custom-fee",
+            paraEntryFee: 450,
+        })
+        const sponsoredConfig = normalizeCompetitionConfig({ ...paidConfig, paraEntryMode: "sponsored" })
+
+        expect(getEntryFee(category, paidConfig)).toBe(800)
+        expect(getEntryFee(category, paidConfig, true)).toBe(450)
+        expect(getEntryFee(category, sponsoredConfig, true)).toBe(0)
+    })
+
+    it("restores the current configured fee for stored custom and Little Champ entries", () => {
+        const nrEvent = defaultCompetitionConfig.events.find((event) => event.id === "nr-air-rifle")!
+        const config = normalizeCompetitionConfig({
+            ...defaultCompetitionConfig,
+            littleChampEntryFee: 700,
+            events: [{
+                ...nrEvent,
+                categories: [{ code: "CUSTOM-LC", label: "Junior Supported", bracket: "little-standing", gender: "open" }],
+            }],
+        })
+
+        expect(getRegistrationEntryFee({ eventId: nrEvent.id, categoryCode: "CUSTOM-LC", categoryLabel: "Junior Supported", ruleSet: "NR" }, config)).toBe(700)
+        expect(getRegistrationEntryFee({ eventId: "missing", categoryCode: "R-21", categoryLabel: "Stored entry", ruleSet: "NR" }, config)).toBe(700)
     })
 })

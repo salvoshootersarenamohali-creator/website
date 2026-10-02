@@ -5,6 +5,7 @@ export type PaymentMode = "cash" | "upi"
 export type CategoryGender = Gender | "open"
 export type PaymentStatus = "Pending" | "Paid"
 export type CashPrizeMode = "event-wide" | "custom-groups" | "none"
+export type ParaEntryMode = "custom-fee" | "sponsored"
 export type PrizeAmounts = [number, number, number]
 
 export type CashPrizeTarget =
@@ -59,6 +60,8 @@ export type CompetitionConfig = {
     entryFee: number
     littleChampEntryFee: number
     teamEntryFee: number
+    paraEntryMode: ParaEntryMode
+    paraEntryFee: number
     events: CompetitionEvent[]
     slotOptions: SlotOption[]
     feesByRuleSet: Record<RuleSet, number | null>
@@ -255,6 +258,8 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     entryFee: ENTRY_FEE,
     littleChampEntryFee: LITTLE_CHAMP_ENTRY_FEE,
     teamEntryFee: DEFAULT_TEAM_ENTRY_FEE,
+    paraEntryMode: "custom-fee",
+    paraEntryFee: ENTRY_FEE,
     events: competitionEvents,
     slotOptions,
     feesByRuleSet: { NR: null, ISSF: null },
@@ -520,6 +525,7 @@ function readFeesByRuleSet(value: unknown): Record<RuleSet, number | null> {
 
 export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
     const raw = typeof value === "object" && value !== null ? value as Partial<CompetitionConfig> : {}
+    const entryFee = readPositiveInteger(raw.entryFee, ENTRY_FEE) ?? ENTRY_FEE
     const parsedEvents = readEvents(raw.events)
     const events = parsedEvents.length ? parsedEvents.map(stripLegacyCategoryPrizes) : competitionEvents
     const slots = readSlots(raw.slotOptions)
@@ -535,9 +541,11 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
 
     return {
         competitionYear: Number.isInteger(raw.competitionYear) ? Number(raw.competitionYear) : DEFAULT_COMPETITION_YEAR,
-        entryFee: readPositiveInteger(raw.entryFee, ENTRY_FEE) ?? ENTRY_FEE,
+        entryFee,
         littleChampEntryFee: readPositiveInteger(raw.littleChampEntryFee, LITTLE_CHAMP_ENTRY_FEE) ?? LITTLE_CHAMP_ENTRY_FEE,
         teamEntryFee: readPositiveInteger(raw.teamEntryFee, DEFAULT_TEAM_ENTRY_FEE) ?? DEFAULT_TEAM_ENTRY_FEE,
+        paraEntryMode: raw.paraEntryMode === "sponsored" ? "sponsored" : "custom-fee",
+        paraEntryFee: readPositiveInteger(raw.paraEntryFee, entryFee) ?? entryFee,
         events,
         slotOptions: slots.length ? slots : slotOptions,
         feesByRuleSet: readFeesByRuleSet(raw.feesByRuleSet),
@@ -585,6 +593,22 @@ export function validateCashPrizeConfiguration(value: unknown) {
         if (!readCashPrizeTarget(group.target, events)) return "Every cash prize group must have a valid display association."
     }
 
+    return null
+}
+
+export function validateParaEntryConfiguration(value: unknown) {
+    if (typeof value !== "object" || value === null) return null
+    const raw = value as Record<string, unknown>
+    if (raw.paraEntryMode === undefined) return null
+    if (raw.paraEntryMode !== "custom-fee" && raw.paraEntryMode !== "sponsored") {
+        return "Para entry policy must use a custom fee or sponsorship."
+    }
+    if (
+        raw.paraEntryMode === "custom-fee"
+        && (typeof raw.paraEntryFee !== "number" || !Number.isInteger(raw.paraEntryFee) || raw.paraEntryFee < 0)
+    ) {
+        return "Para entry fee must be a non-negative whole number."
+    }
     return null
 }
 
@@ -747,13 +771,36 @@ export function getEligibleCategories(event: CompetitionEvent, age: number, gend
         .filter((category) => Boolean(category.code))
 }
 
-export function getEntryFee(category: Pick<CategoryOption, "bracket">, config: CompetitionConfig = defaultCompetitionConfig) {
-    if ("ruleSet" in category) {
-        const fee = config.feesByRuleSet[category.ruleSet as RuleSet]
+type EntryFeeCategory = ScoringCategory & {
+    ruleSet?: RuleSet | string | null
+}
+
+export function getEntryFee(category: EntryFeeCategory, config: CompetitionConfig = defaultCompetitionConfig, isPara = false) {
+    if (isPara) {
+        return config.paraEntryMode === "sponsored" ? 0 : config.paraEntryFee
+    }
+
+    if (category.ruleSet === "NR" || category.ruleSet === "ISSF") {
+        const fee = config.feesByRuleSet[category.ruleSet]
         if (typeof fee === "number") return fee
     }
 
-    return category.bracket.startsWith("little") ? config.littleChampEntryFee : config.entryFee
+    return isLittleChampCategory(category) ? config.littleChampEntryFee : config.entryFee
+}
+
+export function getRegistrationEntryFee(
+    entry: EntryFeeCategory & { eventId?: string | null; categoryCode?: string | null },
+    config: CompetitionConfig = defaultCompetitionConfig,
+    isPara = false,
+) {
+    const event = entry.eventId ? getEventById(entry.eventId, config) : undefined
+    const configuredCategory = event
+        ? getCompetitionCategories(event).find((category) => category.code === entry.categoryCode)
+        : undefined
+
+    return configuredCategory && event
+        ? getEntryFee({ ...configuredCategory, ruleSet: event.ruleSet }, config, isPara)
+        : getEntryFee(entry, config, isPara)
 }
 
 export function validateSelection(entries: SelectedEntry[], config: CompetitionConfig = defaultCompetitionConfig) {

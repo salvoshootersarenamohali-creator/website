@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
+import { Accessibility, CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
 import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
 import {
     CategoryOption,
@@ -430,6 +430,20 @@ export default function RegisterPage() {
                             </Panel>
 
                             <Panel title="Payment">
+                                <div className="mb-4 rounded-md border border-sky-300/25 bg-sky-400/10 p-4 text-sm text-sky-50">
+                                    <div className="flex items-center gap-2 font-black uppercase tracking-[0.14em] text-sky-100">
+                                        <Accessibility className="h-5 w-5" />
+                                        Para entry policy
+                                    </div>
+                                    <p className="mt-2 leading-relaxed text-sky-50/80">
+                                        {config.paraEntryMode === "sponsored"
+                                            ? "Verified para shooters are fully sponsored and pay no entry fee."
+                                            : `Verified para shooters are charged ${formatCurrency(config.paraEntryFee)} per selected entry.`}
+                                        {" "}Para status and the final amount are confirmed by an admin after registration. {config.allowedPaymentModes.includes("cash")
+                                            ? "Para shooters should select cash/pay-later and avoid paying online until verification is complete."
+                                            : "Para shooters should contact the organizer before making the required online payment."}
+                                    </p>
+                                </div>
                                 <div className="grid gap-3 sm:grid-cols-2">
                                     {config.allowedPaymentModes.map((mode) => (
                                         <button
