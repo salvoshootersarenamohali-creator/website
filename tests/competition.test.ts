@@ -3,11 +3,11 @@ import {
     buildCompetitionSlotsForDateRange,
     defaultCompetitionConfig,
     formatCompetitionDateLabel,
-    getCategoryCashPrizes,
     getCompetitionCategories,
     getScoringSeriesCount,
     normalizeCompetitionConfig,
     parseCompetitionDate,
+    validateCashPrizeConfiguration,
 } from "@/lib/competition"
 
 describe("competition scoring format", () => {
@@ -72,7 +72,7 @@ describe("competition cash prizes", () => {
         expect(normalizeCompetitionConfig({ teamEntryFee: -1 }).teamEntryFee).toBe(900)
     })
 
-    it("keeps valid category prizes and ignores malformed prize rows", () => {
+    it("converts valid legacy category prizes into custom groups", () => {
         const event = defaultCompetitionConfig.events.find((candidate) => candidate.id === "nr-air-pistol")!
         const config = normalizeCompetitionConfig({
             ...defaultCompetitionConfig,
@@ -89,7 +89,14 @@ describe("competition cash prizes", () => {
         })
 
         expect(config.teamEntryFee).toBe(1200)
-        expect(config.events[0].categoryPrizes).toEqual({ "S-19": [5000, 3000, 1000] })
+        expect(config.cashPrizeMode).toBe("custom-groups")
+        expect(config.cashPrizeGroups).toEqual([{
+            id: "legacy-nr-air-pistol-s-19",
+            title: "NR Air Pistol Standing Little Champ Boys",
+            tag: "NR",
+            prizes: [5000, 3000, 1000],
+            target: { type: "categories", eventId: "nr-air-pistol", categoryCodes: ["S-19"] },
+        }])
     })
 
     it("lists generated Little Champ categories and preserves custom categories", () => {
@@ -107,15 +114,58 @@ describe("competition cash prizes", () => {
         ])
     })
 
-    it("resolves event-wide, selected-category, and disabled cash prizes", () => {
-        const event = {
-            ...defaultCompetitionConfig.events[1],
-            categoryPrizes: { "S-19": [9000, 6000, 3000] as [number, number, number] },
+    it("normalizes the complete Bharat Cup prize schedule in display order", () => {
+        const groups = [
+            { id: "issf-pistol", title: "10M Air Pistol", tag: "ISSF", prizes: [21000, 11000, 7100], target: { type: "event", eventId: "issf-air-pistol" } },
+            { id: "issf-rifle", title: "10M Air Rifle Peep Sight", tag: "ISSF", prizes: [11000, 7100, 5100], target: { type: "event", eventId: "issf-air-rifle" } },
+            { id: "nr-pistol", title: "10M Air Pistol", tag: "NR", prizes: [11000, 7100, 5100], target: { type: "event", eventId: "nr-air-pistol" } },
+            { id: "nr-rifle", title: "10M Air Rifle Peep Sight", tag: "NR", prizes: [7100, 5100, 3100], target: { type: "event", eventId: "nr-air-rifle" } },
+            { id: "standing-pistol", title: "Little Champ Standing Pistol", tag: null, prizes: [2100, 1500, 1100], target: { type: "categories", eventId: "nr-air-pistol", categoryCodes: ["S-19", "S-20"] } },
+            { id: "standing-rifle", title: "Little Champ Standing Rifle", tag: null, prizes: [2100, 1500, 1100], target: { type: "categories", eventId: "nr-air-rifle", categoryCodes: ["R-19", "R-20"] } },
+            { id: "sitting-pistol", title: "Little Champ Sitting - Pistol", tag: null, prizes: [2100, 1500, 1100], target: { type: "categories", eventId: "nr-air-pistol", categoryCodes: ["S-21", "S-22"] } },
+            { id: "mixed-team", title: "Mixed Team", tag: "TEAM", prizes: [5100, 3100, 2100], target: { type: "team" } },
+        ]
+        const rawConfig = {
+            ...defaultCompetitionConfig,
+            cashPrizeMode: "custom-groups",
+            cashPrizeTitle: "Champion of Champions - Cash Prize Structure",
+            cashPrizeNote: "Minimum 30 entries are required. Every cash prize includes a Medal and Trophy.",
+            cashPrizeGroups: groups,
         }
+        const config = normalizeCompetitionConfig(rawConfig)
 
-        expect(getCategoryCashPrizes(event, "S-20", { cashPrizeMode: "event-wide" })).toEqual(event.prizes)
-        expect(getCategoryCashPrizes(event, "S-19", { cashPrizeMode: "category-specific" })).toEqual([9000, 6000, 3000])
-        expect(getCategoryCashPrizes(event, "S-20", { cashPrizeMode: "category-specific" })).toBeNull()
-        expect(getCategoryCashPrizes(event, "S-19", { cashPrizeMode: "none" })).toBeNull()
+        expect(validateCashPrizeConfiguration(rawConfig)).toBeNull()
+        expect(config.cashPrizeGroups).toHaveLength(8)
+        expect(config.cashPrizeGroups.map((group) => group.id)).toEqual(groups.map((group) => group.id))
+        expect(config.cashPrizeGroups[4].target).toEqual({ type: "categories", eventId: "nr-air-pistol", categoryCodes: ["S-19", "S-20"] })
+        expect(config.cashPrizeGroups[7]).toMatchObject({ title: "Mixed Team", prizes: [5100, 3100, 2100], target: { type: "team" } })
+    })
+
+    it("supports general groups and rejects malformed custom schedules", () => {
+        const generalConfig = {
+            ...defaultCompetitionConfig,
+            cashPrizeMode: "custom-groups",
+            cashPrizeTitle: "Special Awards",
+            cashPrizeGroups: [{ id: "special", title: "Special Award", tag: null, prizes: [1000, 500, 250], target: { type: "general" } }],
+        }
+        expect(validateCashPrizeConfiguration(generalConfig)).toBeNull()
+        expect(normalizeCompetitionConfig(generalConfig).cashPrizeGroups[0].target).toEqual({ type: "general" })
+
+        expect(validateCashPrizeConfiguration({ ...generalConfig, cashPrizeGroups: [] })).toBe("Add at least one cash prize group.")
+        expect(validateCashPrizeConfiguration({
+            ...generalConfig,
+            cashPrizeGroups: [
+                generalConfig.cashPrizeGroups[0],
+                { ...generalConfig.cashPrizeGroups[0] },
+            ],
+        })).toBe("Every cash prize group must have a unique ID.")
+        expect(validateCashPrizeConfiguration({
+            ...generalConfig,
+            cashPrizeGroups: [{ ...generalConfig.cashPrizeGroups[0], prizes: [1000, -1, 250] }],
+        })).toBe("Every cash prize group must have three non-negative whole-number amounts.")
+        expect(validateCashPrizeConfiguration({
+            ...generalConfig,
+            cashPrizeGroups: [{ ...generalConfig.cashPrizeGroups[0], target: { type: "event", eventId: "missing" } }],
+        })).toBe("Every cash prize group must have a valid display association.")
     })
 })

@@ -4,8 +4,22 @@ export type Gender = "male" | "female"
 export type PaymentMode = "cash" | "upi"
 export type CategoryGender = Gender | "open"
 export type PaymentStatus = "Pending" | "Paid"
-export type CashPrizeMode = "event-wide" | "category-specific" | "none"
+export type CashPrizeMode = "event-wide" | "custom-groups" | "none"
 export type PrizeAmounts = [number, number, number]
+
+export type CashPrizeTarget =
+    | { type: "event"; eventId: string }
+    | { type: "categories"; eventId: string; categoryCodes: string[] }
+    | { type: "team" }
+    | { type: "general" }
+
+export type CashPrizeGroup = {
+    id: string
+    title: string
+    tag: string | null
+    prizes: PrizeAmounts
+    target: CashPrizeTarget
+}
 
 export type SlotOption = {
     date: string
@@ -19,7 +33,6 @@ export type CompetitionEvent = {
     ruleSet: RuleSet
     title: string
     prizes: PrizeAmounts
-    categoryPrizes: Record<string, PrizeAmounts>
     categories?: CompetitionCategoryConfig[]
 }
 
@@ -51,6 +64,9 @@ export type CompetitionConfig = {
     feesByRuleSet: Record<RuleSet, number | null>
     allowedPaymentModes: PaymentMode[]
     cashPrizeMode: CashPrizeMode
+    cashPrizeTitle: string
+    cashPrizeNote: string
+    cashPrizeGroups: CashPrizeGroup[]
     noCashPrizes: boolean
     awardsNote: string
     matchStartTime: string
@@ -120,7 +136,6 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "ISSF",
         title: "ISSF Air Pistol",
         prizes: [11000, 7100, 5100],
-        categoryPrizes: {},
     },
     {
         id: "nr-air-pistol",
@@ -128,7 +143,6 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "NR",
         title: "NR Air Pistol",
         prizes: [7100, 5100, 3100],
-        categoryPrizes: {},
     },
     {
         id: "issf-air-rifle",
@@ -136,7 +150,6 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "ISSF",
         title: "ISSF Air Rifle",
         prizes: [7100, 5100, 3100],
-        categoryPrizes: {},
     },
     {
         id: "nr-air-rifle",
@@ -144,7 +157,6 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "NR",
         title: "NR Air Rifle",
         prizes: [5100, 3100, 2100],
-        categoryPrizes: {},
     },
 ]
 
@@ -248,6 +260,9 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     feesByRuleSet: { NR: null, ISSF: null },
     allowedPaymentModes: ["upi", "cash"],
     cashPrizeMode: "event-wide",
+    cashPrizeTitle: "Cash Prize Schedule",
+    cashPrizeNote: "",
+    cashPrizeGroups: [],
     noCashPrizes: false,
     awardsNote: "All winners receive an official event medal, championship trophy, and premium gift hamper in addition to the listed cash prize.",
     matchStartTime: "8:00 AM",
@@ -371,11 +386,15 @@ function readCategoryPrizes(value: unknown): Record<string, PrizeAmounts> {
     )
 }
 
-function readEvents(value: unknown) {
+type ParsedCompetitionEvent = CompetitionEvent & {
+    legacyCategoryPrizes: Record<string, PrizeAmounts>
+}
+
+function readEvents(value: unknown): ParsedCompetitionEvent[] {
     if (!Array.isArray(value)) return []
 
     return value.flatMap((event) => {
-        const candidate = event as Partial<CompetitionEvent>
+        const candidate = event as Partial<CompetitionEvent> & { categoryPrizes?: unknown }
         if (
             typeof candidate.id !== "string"
             || !candidate.id.trim()
@@ -397,9 +416,77 @@ function readEvents(value: unknown) {
             ruleSet: candidate.ruleSet,
             title: candidate.title.trim(),
             prizes,
-            categoryPrizes: readCategoryPrizes(candidate.categoryPrizes),
+            legacyCategoryPrizes: readCategoryPrizes(candidate.categoryPrizes),
             ...(categories.length ? { categories } : {}),
         }]
+    })
+}
+
+function stripLegacyCategoryPrizes(event: ParsedCompetitionEvent): CompetitionEvent {
+    return {
+        id: event.id,
+        discipline: event.discipline,
+        ruleSet: event.ruleSet,
+        title: event.title,
+        prizes: [...event.prizes],
+        ...(event.categories ? { categories: event.categories.map((category) => ({ ...category })) } : {}),
+    }
+}
+
+function readCashPrizeTarget(value: unknown, events: CompetitionEvent[]): CashPrizeTarget | null {
+    if (typeof value !== "object" || value === null) return null
+    const candidate = value as Partial<CashPrizeTarget> & { eventId?: unknown; categoryCodes?: unknown }
+
+    if (candidate.type === "general" || candidate.type === "team") return { type: candidate.type }
+    if (candidate.type !== "event" && candidate.type !== "categories") return null
+
+    const eventId = String(candidate.eventId ?? "").trim()
+    const event = events.find((item) => item.id === eventId)
+    if (!event) return null
+    if (candidate.type === "event") return { type: "event", eventId }
+
+    const validCodes = new Set(getCompetitionCategories(event).map((category) => category.code))
+    const categoryCodes = Array.isArray(candidate.categoryCodes)
+        ? Array.from(new Set(candidate.categoryCodes.map((code) => String(code ?? "").trim()).filter((code) => validCodes.has(code))))
+        : []
+    return categoryCodes.length ? { type: "categories", eventId, categoryCodes } : null
+}
+
+function readCashPrizeGroups(value: unknown, events: CompetitionEvent[]): CashPrizeGroup[] {
+    if (!Array.isArray(value)) return []
+
+    const seenIds = new Set<string>()
+    return value.flatMap((group) => {
+        if (typeof group !== "object" || group === null) return []
+        const candidate = group as Partial<CashPrizeGroup>
+        const id = String(candidate.id ?? "").trim()
+        const title = String(candidate.title ?? "").trim()
+        const prizes = readPrizeAmounts(candidate.prizes)
+        const target = readCashPrizeTarget(candidate.target, events)
+        if (!id || seenIds.has(id) || !title || !prizes || !target) return []
+
+        seenIds.add(id)
+        const tag = String(candidate.tag ?? "").trim() || null
+        return [{ id, title, tag, prizes, target }]
+    })
+}
+
+function legacyCategoryPrizeGroups(events: ParsedCompetitionEvent[]): CashPrizeGroup[] {
+    return events.flatMap((event) => {
+        const categories = new Map(getCompetitionCategories(event).map((category) => [category.code, category]))
+        return Object.entries(event.legacyCategoryPrizes).map(([categoryCode, prizes]) => {
+            const category = categories.get(categoryCode)
+            const safeId = `${event.id}-${categoryCode}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+            return {
+                id: `legacy-${safeId}`,
+                title: category?.label ?? `${event.title} ${categoryCode}`,
+                tag: event.ruleSet,
+                prizes,
+                target: category
+                    ? { type: "categories" as const, eventId: event.id, categoryCodes: [categoryCode] }
+                    : { type: "general" as const },
+            }
+        })
     })
 }
 
@@ -433,22 +520,32 @@ function readFeesByRuleSet(value: unknown): Record<RuleSet, number | null> {
 
 export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
     const raw = typeof value === "object" && value !== null ? value as Partial<CompetitionConfig> : {}
-    const events = readEvents(raw.events)
+    const parsedEvents = readEvents(raw.events)
+    const events = parsedEvents.length ? parsedEvents.map(stripLegacyCategoryPrizes) : competitionEvents
     const slots = readSlots(raw.slotOptions)
-    const cashPrizeMode = raw.cashPrizeMode === "event-wide" || raw.cashPrizeMode === "category-specific" || raw.cashPrizeMode === "none"
+    const isLegacyCategoryMode = (raw.cashPrizeMode as string | undefined) === "category-specific"
+    const cashPrizeMode = raw.cashPrizeMode === "event-wide" || raw.cashPrizeMode === "custom-groups" || raw.cashPrizeMode === "none"
         ? raw.cashPrizeMode
+        : isLegacyCategoryMode ? "custom-groups"
         : raw.noCashPrizes === true ? "none" : "event-wide"
+    const configuredCashPrizeGroups = readCashPrizeGroups(raw.cashPrizeGroups, events)
+    const cashPrizeGroups = isLegacyCategoryMode && !configuredCashPrizeGroups.length
+        ? legacyCategoryPrizeGroups(parsedEvents)
+        : configuredCashPrizeGroups
 
     return {
         competitionYear: Number.isInteger(raw.competitionYear) ? Number(raw.competitionYear) : DEFAULT_COMPETITION_YEAR,
         entryFee: readPositiveInteger(raw.entryFee, ENTRY_FEE) ?? ENTRY_FEE,
         littleChampEntryFee: readPositiveInteger(raw.littleChampEntryFee, LITTLE_CHAMP_ENTRY_FEE) ?? LITTLE_CHAMP_ENTRY_FEE,
         teamEntryFee: readPositiveInteger(raw.teamEntryFee, DEFAULT_TEAM_ENTRY_FEE) ?? DEFAULT_TEAM_ENTRY_FEE,
-        events: events.length ? events : competitionEvents,
+        events,
         slotOptions: slots.length ? slots : slotOptions,
         feesByRuleSet: readFeesByRuleSet(raw.feesByRuleSet),
         allowedPaymentModes: readPaymentModes(raw.allowedPaymentModes),
         cashPrizeMode,
+        cashPrizeTitle: String(raw.cashPrizeTitle ?? defaultCompetitionConfig.cashPrizeTitle).trim() || defaultCompetitionConfig.cashPrizeTitle,
+        cashPrizeNote: String(raw.cashPrizeNote ?? "").trim(),
+        cashPrizeGroups,
         noCashPrizes: cashPrizeMode === "none",
         awardsNote: String(raw.awardsNote ?? defaultCompetitionConfig.awardsNote).trim() || defaultCompetitionConfig.awardsNote,
         matchStartTime: String(raw.matchStartTime ?? defaultCompetitionConfig.matchStartTime).trim() || defaultCompetitionConfig.matchStartTime,
@@ -463,6 +560,32 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
         contactPhone: readOptionalString(raw.contactPhone),
         detailDefaults: readDetailDefaults(raw.detailDefaults),
     }
+}
+
+export function validateCashPrizeConfiguration(value: unknown) {
+    if (typeof value !== "object" || value === null) return null
+    const raw = value as Record<string, unknown>
+    if (raw.cashPrizeMode !== "custom-groups") return null
+
+    if (!String(raw.cashPrizeTitle ?? "").trim()) return "Enter a title for the custom cash prize schedule."
+    if (!Array.isArray(raw.cashPrizeGroups) || raw.cashPrizeGroups.length === 0) {
+        return "Add at least one cash prize group."
+    }
+
+    const events = readEvents(raw.events).map(stripLegacyCategoryPrizes)
+    const seenIds = new Set<string>()
+    for (const rawGroup of raw.cashPrizeGroups) {
+        if (typeof rawGroup !== "object" || rawGroup === null) return "Every cash prize group must be valid."
+        const group = rawGroup as Record<string, unknown>
+        const id = String(group.id ?? "").trim()
+        if (!id || seenIds.has(id)) return "Every cash prize group must have a unique ID."
+        seenIds.add(id)
+        if (!String(group.title ?? "").trim()) return "Every cash prize group must have a title."
+        if (!readPrizeAmounts(group.prizes)) return "Every cash prize group must have three non-negative whole-number amounts."
+        if (!readCashPrizeTarget(group.target, events)) return "Every cash prize group must have a valid display association."
+    }
+
+    return null
 }
 
 export function getAgeFromDobYear(dob: string, competitionYear = DEFAULT_COMPETITION_YEAR) {
@@ -587,16 +710,6 @@ export function getCompetitionCategories(event: CompetitionEvent): CompetitionPr
             return code ? [{ code, label: buildCategoryLabel(event, bracket, gender), bracket, gender }] : []
         }),
     )
-}
-
-export function getCategoryCashPrizes(
-    event: CompetitionEvent,
-    categoryCode: string,
-    config: Pick<CompetitionConfig, "cashPrizeMode">,
-): PrizeAmounts | null {
-    if (config.cashPrizeMode === "none") return null
-    if (config.cashPrizeMode === "category-specific") return event.categoryPrizes[categoryCode] ?? null
-    return event.prizes
 }
 
 export function getEligibleCategories(event: CompetitionEvent, age: number, gender: Gender, config: CompetitionConfig = defaultCompetitionConfig): CategoryOption[] {

@@ -609,38 +609,65 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
         updateEvent(eventIndex, { prizes })
     }
 
-    const updateCategoryPrize = (eventIndex: number, categoryCode: string, prizeIndex: number, value: number) => {
-        const event = config.events[eventIndex]
-        const prizes = [...event.categoryPrizes[categoryCode]] as [number, number, number]
+    const updateCashPrizeGroup = (index: number, patch: Partial<CompetitionConfig["cashPrizeGroups"][number]>) => {
+        onChange({
+            ...config,
+            cashPrizeGroups: config.cashPrizeGroups.map((group, groupIndex) => groupIndex === index ? { ...group, ...patch } : group),
+        })
+    }
+
+    const addCashPrizeGroup = () => {
+        const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `prize-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        onChange({
+            ...config,
+            cashPrizeGroups: [
+                ...config.cashPrizeGroups,
+                { id, title: "New Prize Group", tag: null, prizes: [0, 0, 0], target: { type: "general" } },
+            ],
+        })
+    }
+
+    const removeCashPrizeGroup = (index: number) => {
+        onChange({ ...config, cashPrizeGroups: config.cashPrizeGroups.filter((_, groupIndex) => groupIndex !== index) })
+    }
+
+    const moveCashPrizeGroup = (index: number, direction: -1 | 1) => {
+        const destination = index + direction
+        if (destination < 0 || destination >= config.cashPrizeGroups.length) return
+        const cashPrizeGroups = [...config.cashPrizeGroups]
+        const selectedGroup = cashPrizeGroups[index]
+        cashPrizeGroups[index] = cashPrizeGroups[destination]
+        cashPrizeGroups[destination] = selectedGroup
+        onChange({ ...config, cashPrizeGroups })
+    }
+
+    const updateCashPrizeGroupAmount = (groupIndex: number, prizeIndex: number, value: number) => {
+        const prizes = [...config.cashPrizeGroups[groupIndex].prizes] as [number, number, number]
         prizes[prizeIndex] = value
-        updateEvent(eventIndex, { categoryPrizes: { ...event.categoryPrizes, [categoryCode]: prizes } })
+        updateCashPrizeGroup(groupIndex, { prizes })
     }
 
-    const toggleCategoryPrize = (eventIndex: number, categoryCode: string) => {
-        const event = config.events[eventIndex]
-        const categoryPrizes = { ...event.categoryPrizes }
-        if (categoryPrizes[categoryCode]) {
-            delete categoryPrizes[categoryCode]
-        } else {
-            categoryPrizes[categoryCode] = [...event.prizes] as [number, number, number]
-        }
-        updateEvent(eventIndex, { categoryPrizes })
+    const updateCashPrizeTargetType = (groupIndex: number, type: CompetitionConfig["cashPrizeGroups"][number]["target"]["type"]) => {
+        const firstEventId = config.events[0]?.id
+        const target = type === "event" && firstEventId
+            ? { type, eventId: firstEventId } as const
+            : type === "categories" && firstEventId
+                ? { type, eventId: firstEventId, categoryCodes: [] as string[] } as const
+                : type === "team"
+                    ? { type } as const
+                    : { type: "general" } as const
+        updateCashPrizeGroup(groupIndex, { target })
     }
 
-    const toggleAllCategoryPrizes = (eventIndex: number) => {
-        const event = config.events[eventIndex]
-        const categories = getCompetitionCategories(event)
-        const allEnabled = categories.length > 0 && categories.every((category) => event.categoryPrizes[category.code])
-        const categoryPrizes = { ...event.categoryPrizes }
-
-        for (const category of categories) {
-            if (allEnabled) {
-                delete categoryPrizes[category.code]
-            } else if (!categoryPrizes[category.code]) {
-                categoryPrizes[category.code] = [...event.prizes] as [number, number, number]
-            }
-        }
-        updateEvent(eventIndex, { categoryPrizes })
+    const toggleCashPrizeCategory = (groupIndex: number, categoryCode: string) => {
+        const group = config.cashPrizeGroups[groupIndex]
+        if (group.target.type !== "categories") return
+        const categoryCodes = group.target.categoryCodes.includes(categoryCode)
+            ? group.target.categoryCodes.filter((code) => code !== categoryCode)
+            : [...group.target.categoryCodes, categoryCode]
+        updateCashPrizeGroup(groupIndex, { target: { ...group.target, categoryCodes } })
     }
 
     const updateSlotDay = (index: number, patch: Partial<CompetitionConfig["slotOptions"][number]>) => {
@@ -683,7 +710,7 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
             </div>
 
             <div>
-                <h3 className="mb-3 text-xl font-black">Events and Prizes</h3>
+                <h3 className="mb-3 text-xl font-black">Cash Prizes</h3>
                 <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-4">
                     <CreateField label="Cash prize setup">
                         <select
@@ -695,23 +722,136 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                             className="field"
                         >
                             <option value="event-wide">Event-wide prizes for every category</option>
-                            <option value="category-specific">Choose categories and amounts</option>
+                            <option value="custom-groups">Custom prize schedule</option>
                             <option value="none">No cash prizes</option>
                         </select>
                     </CreateField>
                     <p className="mt-2 text-sm text-white/45">
                         {config.cashPrizeMode === "event-wide"
                             ? "Each category in an event uses the same 1st, 2nd, and 3rd prize amounts."
-                            : config.cashPrizeMode === "category-specific"
-                                ? "Only enabled categories receive cash prizes. Each category can use different amounts."
+                            : config.cashPrizeMode === "custom-groups"
+                                ? "Build an ordered public prize schedule for COC awards, category pools, team prizes, or other award groups."
                                 : "Cash prizes are hidden; the competition's award note is shown instead."}
                     </p>
                 </div>
+
+                {config.cashPrizeMode === "custom-groups" && (
+                    <div className="mb-5 space-y-4 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/[0.05] p-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <CreateField label="Schedule title">
+                                <input value={config.cashPrizeTitle} onChange={(event) => onChange({ ...config, cashPrizeTitle: event.target.value })} className="field" />
+                            </CreateField>
+                            <CreateField label="Schedule note">
+                                <textarea
+                                    value={config.cashPrizeNote}
+                                    onChange={(event) => onChange({ ...config, cashPrizeNote: event.target.value })}
+                                    className="field min-h-20"
+                                    placeholder="Medal, trophy, minimum-entry, or team-event conditions"
+                                />
+                            </CreateField>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p className="font-black">Prize Groups</p>
+                                <p className="text-xs text-white/45">Groups are displayed publicly in this order. Associations are informational only.</p>
+                            </div>
+                            <button type="button" onClick={addCashPrizeGroup} className="admin-button gold">
+                                <Plus className="h-4 w-4" />
+                                Add prize group
+                            </button>
+                        </div>
+
+                        <div className="grid gap-3">
+                            {config.cashPrizeGroups.map((group, groupIndex) => {
+                                const targetEventId = group.target.type === "event" || group.target.type === "categories" ? group.target.eventId : null
+                                const targetEvent = targetEventId ? config.events.find((event) => event.id === targetEventId) : null
+                                const targetCategories = targetEvent ? getCompetitionCategories(targetEvent) : []
+                                return (
+                                    <div key={group.id} className="rounded-md border border-white/10 bg-black/35 p-4">
+                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-sm font-black text-[#E5C558]">Prize group {groupIndex + 1}</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button type="button" disabled={groupIndex === 0} onClick={() => moveCashPrizeGroup(groupIndex, -1)} className="admin-button disabled:opacity-40">Move up</button>
+                                                <button type="button" disabled={groupIndex === config.cashPrizeGroups.length - 1} onClick={() => moveCashPrizeGroup(groupIndex, 1)} className="admin-button disabled:opacity-40">Move down</button>
+                                                <button type="button" onClick={() => removeCashPrizeGroup(groupIndex)} className="admin-button text-red-200">
+                                                    <Trash2 className="h-4 w-4" /> Delete
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-3 md:grid-cols-[1fr_160px_200px]">
+                                            <CreateField label="Group title">
+                                                <input value={group.title} onChange={(event) => updateCashPrizeGroup(groupIndex, { title: event.target.value })} className="field" />
+                                            </CreateField>
+                                            <CreateField label="Badge (optional)">
+                                                <input value={group.tag ?? ""} onChange={(event) => updateCashPrizeGroup(groupIndex, { tag: event.target.value || null })} className="field" placeholder="ISSF / NR / TEAM" />
+                                            </CreateField>
+                                            <CreateField label="Display association">
+                                                <select value={group.target.type} onChange={(event) => updateCashPrizeTargetType(groupIndex, event.target.value as CompetitionConfig["cashPrizeGroups"][number]["target"]["type"])} className="field">
+                                                    <option value="event">Event overall</option>
+                                                    <option value="categories">Category pool</option>
+                                                    <option value="team">Team event</option>
+                                                    <option value="general">General / unlinked</option>
+                                                </select>
+                                            </CreateField>
+                                        </div>
+
+                                        {(group.target.type === "event" || group.target.type === "categories") && (
+                                            <div className="mt-3">
+                                                <CreateField label="Associated event">
+                                                    <select
+                                                        value={group.target.eventId}
+                                                        onChange={(event) => updateCashPrizeGroup(groupIndex, {
+                                                            target: group.target.type === "categories"
+                                                                ? { type: "categories", eventId: event.target.value, categoryCodes: [] }
+                                                                : { type: "event", eventId: event.target.value },
+                                                        })}
+                                                        className="field"
+                                                    >
+                                                        {config.events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}
+                                                    </select>
+                                                </CreateField>
+                                            </div>
+                                        )}
+
+                                        {group.target.type === "categories" && (
+                                            <div className="mt-3">
+                                                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/40">Included categories</p>
+                                                <div className="grid gap-2 sm:grid-cols-2">
+                                                    {targetCategories.map((category) => {
+                                                        const checked = group.target.type === "categories" && group.target.categoryCodes.includes(category.code)
+                                                        return (
+                                                            <label key={category.code} className={`flex cursor-pointer gap-3 rounded-md border p-3 text-sm ${checked ? "border-[#D4AF37]/50 bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.025]"}`}>
+                                                                <input type="checkbox" checked={checked} onChange={() => toggleCashPrizeCategory(groupIndex, category.code)} />
+                                                                <span><strong>{category.code}</strong><span className="mt-0.5 block text-xs text-white/50">{category.label}</span></span>
+                                                            </label>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                                            {group.prizes.map((prize, prizeIndex) => (
+                                                <CreateField key={prizeIndex} label={`${["1st", "2nd", "3rd"][prizeIndex]} prize`}>
+                                                    <input min={0} step={1} type="number" value={prize} onChange={(event) => updateCashPrizeGroupAmount(groupIndex, prizeIndex, Number(event.target.value))} className="field" />
+                                                </CreateField>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                            {!config.cashPrizeGroups.length && (
+                                <p className="rounded-md border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">Add at least one prize group before saving this mode.</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                <h3 className="mb-3 text-xl font-black">Events</h3>
                 <div className="grid gap-3">
-                    {config.events.map((event, eventIndex) => {
-                        const categories = getCompetitionCategories(event)
-                        const allCategoriesEnabled = categories.length > 0 && categories.every((category) => event.categoryPrizes[category.code])
-                        return (
+                    {config.events.map((event, eventIndex) => (
                         <div key={event.id} className="rounded-md border border-white/10 bg-black/25 p-4">
                             <div className="grid gap-3 md:grid-cols-[1fr_120px_120px]">
                                 <input value={event.title} onChange={(input) => updateEvent(eventIndex, { title: toProperCase(input.target.value) })} className="field" />
@@ -731,52 +871,8 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                                     ))}
                                 </div>
                             )}
-                            {config.cashPrizeMode === "category-specific" && (
-                                <div className="mt-4">
-                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                        <p className="text-sm font-bold text-white/65">Category cash prizes</p>
-                                        <button type="button" onClick={() => toggleAllCategoryPrizes(eventIndex)} className="admin-button">
-                                            {allCategoriesEnabled ? "Clear all" : "Select all"}
-                                        </button>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        {categories.map((category) => {
-                                            const prizes = event.categoryPrizes[category.code]
-                                            return (
-                                                <div key={category.code} className={`rounded-md border p-3 ${prizes ? "border-[#D4AF37]/35 bg-[#D4AF37]/[0.07]" : "border-white/10 bg-white/[0.025]"}`}>
-                                                    <div className="flex flex-wrap items-center justify-between gap-3">
-                                                        <div>
-                                                            <p className="font-bold">{category.code}</p>
-                                                            <p className="text-xs text-white/50">{category.label}</p>
-                                                        </div>
-                                                        <button type="button" onClick={() => toggleCategoryPrize(eventIndex, category.code)} className={`admin-button ${prizes ? "gold" : ""}`}>
-                                                            {prizes ? "Cash prize enabled" : "Enable cash prize"}
-                                                        </button>
-                                                    </div>
-                                                    {prizes && (
-                                                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                                                            {prizes.map((prize, prizeIndex) => (
-                                                                <CreateField key={prizeIndex} label={`${["1st", "2nd", "3rd"][prizeIndex]} prize`}>
-                                                                    <input
-                                                                        min={0}
-                                                                        step={1}
-                                                                        type="number"
-                                                                        value={prize}
-                                                                        onChange={(input) => updateCategoryPrize(eventIndex, category.code, prizeIndex, Number(input.target.value))}
-                                                                        className="field"
-                                                                    />
-                                                                </CreateField>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                            )}
                         </div>
-                    )})}
+                    ))}
                 </div>
             </div>
 

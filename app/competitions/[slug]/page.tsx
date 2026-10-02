@@ -4,7 +4,8 @@ import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy } from "lucide-react"
-import { formatCompetitionDateRange, formatCurrency, getCategoryCashPrizes, getCompetitionCategories, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
+import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
+import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 
@@ -202,32 +203,14 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                                                 </li>
                                             ))}
                                         </ol>
-                                    ) : (
-                                        <div className="mt-3 space-y-2">
-                                            {getCompetitionCategories(event)
-                                                .filter((category) => getCategoryCashPrizes(event, category.code, competition.config))
-                                                .map((category) => {
-                                                    const prizes = getCategoryCashPrizes(event, category.code, competition.config)
-                                                    if (!prizes) return null
-                                                    return (
-                                                        <div key={category.code} className="rounded border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] p-3">
-                                                            <p className="text-xs font-bold text-white/70">{category.code} - {category.label}</p>
-                                                            <p className="mt-1 text-xs font-bold text-[#E5C558]">
-                                                                {prizes.map((prize, index) => `${["1st", "2nd", "3rd"][index]} ${formatCurrency(prize)}`).join(" | ")}
-                                                            </p>
-                                                        </div>
-                                                    )
-                                                })}
-                                            {!getCompetitionCategories(event).some((category) => getCategoryCashPrizes(event, category.code, competition.config)) && (
-                                                <p className="text-sm text-white/45">No cash prizes configured for this event.</p>
-                                            )}
-                                        </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             ))}
                         </div>
                     </section>
                 </div>
+
+                <CashPrizeSchedule config={competition.config} className="mt-5" />
 
                 <div className="mt-5 grid gap-5 lg:grid-cols-3">
                     <section className="rounded-lg border border-emerald-300/20 bg-emerald-400/[0.06] p-5">

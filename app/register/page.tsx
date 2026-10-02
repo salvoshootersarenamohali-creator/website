@@ -4,6 +4,7 @@ import * as React from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
+import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
 import {
     CategoryOption,
     PublicCompetition,
@@ -14,7 +15,6 @@ import {
     defaultCompetitionConfig,
     formatCurrency,
     getAgeFromDobYear,
-    getCategoryCashPrizes,
     getEligibleCategories,
     getEntryFee,
     getEventById,
@@ -337,6 +337,7 @@ export default function RegisterPage() {
             </section>
 
             <main className="container mx-auto px-4 py-12">
+                <CashPrizeSchedule config={config} className="mb-8" />
                 {registration ? (
                     <CompetitorCard registration={registration} competition={competition} onNew={() => {
                         setRegistration(null)
@@ -530,20 +531,14 @@ export default function RegisterPage() {
                                                             <span key={prize} className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
                                                                 {index + 1}: Rs. {prize.toLocaleString("en-IN")}
                                                             </span>
-                                                        )) : (
-                                                            <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
-                                                                Category-specific prizes
-                                                            </span>
-                                                        )}
+                                                        )) : null}
                                                     </div>
                                                 </div>
                                                 <div className="mt-5 flex flex-wrap gap-2">
                                                     {!form.gender || age === null ? (
                                                         <p className="text-sm text-white/45">Enter gender and date of birth to unlock eligible categories.</p>
                                                     ) : categories.length ? (
-                                                        categories.map((category) => {
-                                                            const categoryPrizes = getCategoryCashPrizes(event, category.code, config)
-                                                            return (
+                                                        categories.map((category) => (
                                                                 <button
                                                                     key={category.code}
                                                                     type="button"
@@ -554,14 +549,8 @@ export default function RegisterPage() {
                                                                     <span className="block font-bold">{category.code}</span>
                                                                     <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
                                                                     <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
-                                                                    {config.cashPrizeMode === "category-specific" && categoryPrizes && (
-                                                                        <span className="mt-1 block text-[11px] font-bold">
-                                                                            Cash: {categoryPrizes.map((prize) => formatCurrency(prize)).join(" / ")}
-                                                                        </span>
-                                                                    )}
                                                                 </button>
-                                                            )
-                                                        })
+                                                        ))
                                                     ) : (
                                                         <p className="text-sm text-white/45">No eligible categories for this event.</p>
                                                     )}

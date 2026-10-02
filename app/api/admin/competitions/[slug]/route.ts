@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
-import { normalizeCompetitionConfig, parseCompetitionDate } from "@/lib/competition"
+import { normalizeCompetitionConfig, parseCompetitionDate, validateCashPrizeConfiguration } from "@/lib/competition"
 import { serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -50,7 +50,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             return Response.json({ error: "Another competition already uses this slug." }, { status: 409 })
         }
 
-        const config = normalizeCompetitionConfig(body.config ?? existing.config)
+        const rawConfig = body.config ?? existing.config
+        const cashPrizeError = validateCashPrizeConfiguration(rawConfig)
+        if (cashPrizeError) return Response.json({ error: cashPrizeError }, { status: 400 })
+        const config = normalizeCompetitionConfig(rawConfig)
         const startDate = parseCompetitionDate(String(body.startDate ?? existing.startDate.toISOString()))
         const endDate = parseCompetitionDate(String(body.endDate ?? existing.endDate.toISOString()))
         if (!startDate || !endDate) {
