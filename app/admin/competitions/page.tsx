@@ -10,6 +10,7 @@ import {
     PublicCompetition,
     formatCompetitionDateRange,
     formatCompetitionDateLabel,
+    getCompetitionCategories,
     normalizeCompetitionConfig,
 } from "@/lib/competition"
 import { toProperCase } from "@/lib/registration-validation"
@@ -608,6 +609,40 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
         updateEvent(eventIndex, { prizes })
     }
 
+    const updateCategoryPrize = (eventIndex: number, categoryCode: string, prizeIndex: number, value: number) => {
+        const event = config.events[eventIndex]
+        const prizes = [...event.categoryPrizes[categoryCode]] as [number, number, number]
+        prizes[prizeIndex] = value
+        updateEvent(eventIndex, { categoryPrizes: { ...event.categoryPrizes, [categoryCode]: prizes } })
+    }
+
+    const toggleCategoryPrize = (eventIndex: number, categoryCode: string) => {
+        const event = config.events[eventIndex]
+        const categoryPrizes = { ...event.categoryPrizes }
+        if (categoryPrizes[categoryCode]) {
+            delete categoryPrizes[categoryCode]
+        } else {
+            categoryPrizes[categoryCode] = [...event.prizes] as [number, number, number]
+        }
+        updateEvent(eventIndex, { categoryPrizes })
+    }
+
+    const toggleAllCategoryPrizes = (eventIndex: number) => {
+        const event = config.events[eventIndex]
+        const categories = getCompetitionCategories(event)
+        const allEnabled = categories.length > 0 && categories.every((category) => event.categoryPrizes[category.code])
+        const categoryPrizes = { ...event.categoryPrizes }
+
+        for (const category of categories) {
+            if (allEnabled) {
+                delete categoryPrizes[category.code]
+            } else if (!categoryPrizes[category.code]) {
+                categoryPrizes[category.code] = [...event.prizes] as [number, number, number]
+            }
+        }
+        updateEvent(eventIndex, { categoryPrizes })
+    }
+
     const updateSlotDay = (index: number, patch: Partial<CompetitionConfig["slotOptions"][number]>) => {
         onChange({
             ...config,
@@ -633,9 +668,10 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
 
     return (
         <div className="mt-6 space-y-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="Entry Fee"><input type="number" value={config.entryFee} onChange={(event) => onChange({ ...config, entryFee: Number(event.target.value) })} className="field" /></Field>
-                <Field label="Little Champ Fee"><input type="number" value={config.littleChampEntryFee} onChange={(event) => onChange({ ...config, littleChampEntryFee: Number(event.target.value) })} className="field" /></Field>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <Field label="Entry Fee"><input min={0} step={1} type="number" value={config.entryFee} onChange={(event) => onChange({ ...config, entryFee: Number(event.target.value) })} className="field" /></Field>
+                <Field label="Little Champ Fee"><input min={0} step={1} type="number" value={config.littleChampEntryFee} onChange={(event) => onChange({ ...config, littleChampEntryFee: Number(event.target.value) })} className="field" /></Field>
+                <Field label="Team Entry Fee"><input min={0} step={1} type="number" value={config.teamEntryFee} onChange={(event) => onChange({ ...config, teamEntryFee: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Match Start Time">
                     <input
                         type="time"
@@ -648,8 +684,34 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
 
             <div>
                 <h3 className="mb-3 text-xl font-black">Events and Prizes</h3>
+                <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-4">
+                    <CreateField label="Cash prize setup">
+                        <select
+                            value={config.cashPrizeMode}
+                            onChange={(event) => {
+                                const cashPrizeMode = event.target.value as CompetitionConfig["cashPrizeMode"]
+                                onChange({ ...config, cashPrizeMode, noCashPrizes: cashPrizeMode === "none" })
+                            }}
+                            className="field"
+                        >
+                            <option value="event-wide">Event-wide prizes for every category</option>
+                            <option value="category-specific">Choose categories and amounts</option>
+                            <option value="none">No cash prizes</option>
+                        </select>
+                    </CreateField>
+                    <p className="mt-2 text-sm text-white/45">
+                        {config.cashPrizeMode === "event-wide"
+                            ? "Each category in an event uses the same 1st, 2nd, and 3rd prize amounts."
+                            : config.cashPrizeMode === "category-specific"
+                                ? "Only enabled categories receive cash prizes. Each category can use different amounts."
+                                : "Cash prizes are hidden; the competition's award note is shown instead."}
+                    </p>
+                </div>
                 <div className="grid gap-3">
-                    {config.events.map((event, eventIndex) => (
+                    {config.events.map((event, eventIndex) => {
+                        const categories = getCompetitionCategories(event)
+                        const allCategoriesEnabled = categories.length > 0 && categories.every((category) => event.categoryPrizes[category.code])
+                        return (
                         <div key={event.id} className="rounded-md border border-white/10 bg-black/25 p-4">
                             <div className="grid gap-3 md:grid-cols-[1fr_120px_120px]">
                                 <input value={event.title} onChange={(input) => updateEvent(eventIndex, { title: toProperCase(input.target.value) })} className="field" />
@@ -662,13 +724,59 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                                     <option value="rifle">Rifle</option>
                                 </select>
                             </div>
-                            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                                {event.prizes.map((prize, prizeIndex) => (
-                                    <input key={prizeIndex} type="number" value={prize} onChange={(input) => updatePrize(eventIndex, prizeIndex, Number(input.target.value))} className="field" aria-label={`Prize ${prizeIndex + 1}`} />
-                                ))}
-                            </div>
+                            {config.cashPrizeMode === "event-wide" && (
+                                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                                    {event.prizes.map((prize, prizeIndex) => (
+                                        <input key={prizeIndex} min={0} step={1} type="number" value={prize} onChange={(input) => updatePrize(eventIndex, prizeIndex, Number(input.target.value))} className="field" aria-label={`${event.title} prize ${prizeIndex + 1}`} />
+                                    ))}
+                                </div>
+                            )}
+                            {config.cashPrizeMode === "category-specific" && (
+                                <div className="mt-4">
+                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-sm font-bold text-white/65">Category cash prizes</p>
+                                        <button type="button" onClick={() => toggleAllCategoryPrizes(eventIndex)} className="admin-button">
+                                            {allCategoriesEnabled ? "Clear all" : "Select all"}
+                                        </button>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        {categories.map((category) => {
+                                            const prizes = event.categoryPrizes[category.code]
+                                            return (
+                                                <div key={category.code} className={`rounded-md border p-3 ${prizes ? "border-[#D4AF37]/35 bg-[#D4AF37]/[0.07]" : "border-white/10 bg-white/[0.025]"}`}>
+                                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                                        <div>
+                                                            <p className="font-bold">{category.code}</p>
+                                                            <p className="text-xs text-white/50">{category.label}</p>
+                                                        </div>
+                                                        <button type="button" onClick={() => toggleCategoryPrize(eventIndex, category.code)} className={`admin-button ${prizes ? "gold" : ""}`}>
+                                                            {prizes ? "Cash prize enabled" : "Enable cash prize"}
+                                                        </button>
+                                                    </div>
+                                                    {prizes && (
+                                                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                            {prizes.map((prize, prizeIndex) => (
+                                                                <CreateField key={prizeIndex} label={`${["1st", "2nd", "3rd"][prizeIndex]} prize`}>
+                                                                    <input
+                                                                        min={0}
+                                                                        step={1}
+                                                                        type="number"
+                                                                        value={prize}
+                                                                        onChange={(input) => updateCategoryPrize(eventIndex, category.code, prizeIndex, Number(input.target.value))}
+                                                                        className="field"
+                                                                    />
+                                                                </CreateField>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    ))}
+                    )})}
                 </div>
             </div>
 

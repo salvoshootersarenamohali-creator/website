@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             },
             include: { entries: { orderBy: { createdAt: "asc" } } },
         })
-        const resolved = resolveTeamEntry(data, competition.id, registrations)
+        const resolved = resolveTeamEntry(data, competition.id, registrations, config.teamEntryFee)
 
         const teamEntry = await prisma.teamEntry.create({
             data: {

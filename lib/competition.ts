@@ -4,6 +4,8 @@ export type Gender = "male" | "female"
 export type PaymentMode = "cash" | "upi"
 export type CategoryGender = Gender | "open"
 export type PaymentStatus = "Pending" | "Paid"
+export type CashPrizeMode = "event-wide" | "category-specific" | "none"
+export type PrizeAmounts = [number, number, number]
 
 export type SlotOption = {
     date: string
@@ -16,7 +18,8 @@ export type CompetitionEvent = {
     discipline: Discipline
     ruleSet: RuleSet
     title: string
-    prizes: [number, number, number]
+    prizes: PrizeAmounts
+    categoryPrizes: Record<string, PrizeAmounts>
     categories?: CompetitionCategoryConfig[]
 }
 
@@ -42,10 +45,12 @@ export type CompetitionConfig = {
     competitionYear: number
     entryFee: number
     littleChampEntryFee: number
+    teamEntryFee: number
     events: CompetitionEvent[]
     slotOptions: SlotOption[]
     feesByRuleSet: Record<RuleSet, number | null>
     allowedPaymentModes: PaymentMode[]
+    cashPrizeMode: CashPrizeMode
     noCashPrizes: boolean
     awardsNote: string
     matchStartTime: string
@@ -88,6 +93,13 @@ export type CategoryOption = {
     discipline: Discipline
 }
 
+export type CompetitionPrizeCategory = {
+    code: string
+    label: string
+    bracket: AgeBracket
+    gender: CategoryGender
+}
+
 export type SelectedEntry = {
     eventId: string
     categoryCode: string
@@ -99,6 +111,7 @@ export const DEFAULT_COMPETITION_YEAR = 2026
 
 export const ENTRY_FEE = 1000
 export const LITTLE_CHAMP_ENTRY_FEE = 800
+export const DEFAULT_TEAM_ENTRY_FEE = 900
 
 export const competitionEvents: CompetitionEvent[] = [
     {
@@ -107,6 +120,7 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "ISSF",
         title: "ISSF Air Pistol",
         prizes: [11000, 7100, 5100],
+        categoryPrizes: {},
     },
     {
         id: "nr-air-pistol",
@@ -114,6 +128,7 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "NR",
         title: "NR Air Pistol",
         prizes: [7100, 5100, 3100],
+        categoryPrizes: {},
     },
     {
         id: "issf-air-rifle",
@@ -121,6 +136,7 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "ISSF",
         title: "ISSF Air Rifle",
         prizes: [7100, 5100, 3100],
+        categoryPrizes: {},
     },
     {
         id: "nr-air-rifle",
@@ -128,6 +144,7 @@ export const competitionEvents: CompetitionEvent[] = [
         ruleSet: "NR",
         title: "NR Air Rifle",
         prizes: [5100, 3100, 2100],
+        categoryPrizes: {},
     },
 ]
 
@@ -146,6 +163,7 @@ function isAgeBracket(value: unknown): value is AgeBracket {
 }
 
 const ladder: AgeBracket[] = ["sub-youth", "youth", "junior", "senior"]
+const competitionCategoryBrackets: AgeBracket[] = ["little-standing", "little-sitting", "sub-youth", "youth", "junior", "senior", "master"]
 
 export const slotOptions: SlotOption[] = [
     { date: "2026-09-25", label: "25th September 2026", slots: ["8:00 AM - 11:00 AM", "11:00 AM - 2:00 PM", "2:00 PM - 5:00 PM", "5:00 PM - 8:00 PM"] },
@@ -224,10 +242,12 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     competitionYear: DEFAULT_COMPETITION_YEAR,
     entryFee: ENTRY_FEE,
     littleChampEntryFee: LITTLE_CHAMP_ENTRY_FEE,
+    teamEntryFee: DEFAULT_TEAM_ENTRY_FEE,
     events: competitionEvents,
     slotOptions,
     feesByRuleSet: { NR: null, ISSF: null },
     allowedPaymentModes: ["upi", "cash"],
+    cashPrizeMode: "event-wide",
     noCashPrizes: false,
     awardsNote: "All winners receive an official event medal, championship trophy, and premium gift hamper in addition to the listed cash prize.",
     matchStartTime: "8:00 AM",
@@ -327,6 +347,30 @@ function readCategories(value: unknown): CompetitionCategoryConfig[] {
     })
 }
 
+function readPrizeAmounts(value: unknown): PrizeAmounts | null {
+    if (
+        !Array.isArray(value)
+        || value.length !== 3
+        || !value.every((prize) => Number.isInteger(prize) && prize >= 0)
+    ) {
+        return null
+    }
+
+    return [...value] as PrizeAmounts
+}
+
+function readCategoryPrizes(value: unknown): Record<string, PrizeAmounts> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {}
+
+    return Object.fromEntries(
+        Object.entries(value).flatMap(([code, prizes]) => {
+            const normalizedCode = code.trim()
+            const normalizedPrizes = readPrizeAmounts(prizes)
+            return normalizedCode && normalizedPrizes ? [[normalizedCode, normalizedPrizes]] : []
+        }),
+    )
+}
+
 function readEvents(value: unknown) {
     if (!Array.isArray(value)) return []
 
@@ -339,12 +383,12 @@ function readEvents(value: unknown) {
             || (candidate.ruleSet !== "NR" && candidate.ruleSet !== "ISSF")
             || typeof candidate.title !== "string"
             || !candidate.title.trim()
-            || !Array.isArray(candidate.prizes)
-            || candidate.prizes.length !== 3
-            || !candidate.prizes.every((prize) => typeof prize === "number")
         ) {
             return []
         }
+
+        const prizes = readPrizeAmounts(candidate.prizes)
+        if (!prizes) return []
 
         const categories = readCategories(candidate.categories)
         return [{
@@ -352,7 +396,8 @@ function readEvents(value: unknown) {
             discipline: candidate.discipline,
             ruleSet: candidate.ruleSet,
             title: candidate.title.trim(),
-            prizes: [...candidate.prizes] as [number, number, number],
+            prizes,
+            categoryPrizes: readCategoryPrizes(candidate.categoryPrizes),
             ...(categories.length ? { categories } : {}),
         }]
     })
@@ -390,16 +435,21 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
     const raw = typeof value === "object" && value !== null ? value as Partial<CompetitionConfig> : {}
     const events = readEvents(raw.events)
     const slots = readSlots(raw.slotOptions)
+    const cashPrizeMode = raw.cashPrizeMode === "event-wide" || raw.cashPrizeMode === "category-specific" || raw.cashPrizeMode === "none"
+        ? raw.cashPrizeMode
+        : raw.noCashPrizes === true ? "none" : "event-wide"
 
     return {
         competitionYear: Number.isInteger(raw.competitionYear) ? Number(raw.competitionYear) : DEFAULT_COMPETITION_YEAR,
-        entryFee: Number.isInteger(raw.entryFee) ? Number(raw.entryFee) : ENTRY_FEE,
-        littleChampEntryFee: Number.isInteger(raw.littleChampEntryFee) ? Number(raw.littleChampEntryFee) : LITTLE_CHAMP_ENTRY_FEE,
+        entryFee: readPositiveInteger(raw.entryFee, ENTRY_FEE) ?? ENTRY_FEE,
+        littleChampEntryFee: readPositiveInteger(raw.littleChampEntryFee, LITTLE_CHAMP_ENTRY_FEE) ?? LITTLE_CHAMP_ENTRY_FEE,
+        teamEntryFee: readPositiveInteger(raw.teamEntryFee, DEFAULT_TEAM_ENTRY_FEE) ?? DEFAULT_TEAM_ENTRY_FEE,
         events: events.length ? events : competitionEvents,
         slotOptions: slots.length ? slots : slotOptions,
         feesByRuleSet: readFeesByRuleSet(raw.feesByRuleSet),
         allowedPaymentModes: readPaymentModes(raw.allowedPaymentModes),
-        noCashPrizes: raw.noCashPrizes === true,
+        cashPrizeMode,
+        noCashPrizes: cashPrizeMode === "none",
         awardsNote: String(raw.awardsNote ?? defaultCompetitionConfig.awardsNote).trim() || defaultCompetitionConfig.awardsNote,
         matchStartTime: String(raw.matchStartTime ?? defaultCompetitionConfig.matchStartTime).trim() || defaultCompetitionConfig.matchStartTime,
         minAge: readPositiveInteger(raw.minAge, null),
@@ -519,6 +569,34 @@ export function buildCategoryLabel(event: CompetitionEvent, bracket: AgeBracket,
         : bracket.startsWith("little") ? "Girls" : "Women"
 
     return `${event.title} ${bracketLabels[bracket]} ${personLabel}`
+}
+
+export function getCompetitionCategories(event: CompetitionEvent): CompetitionPrizeCategory[] {
+    if (event.categories?.length) {
+        return event.categories.map((category) => ({
+            code: category.code,
+            label: category.label,
+            bracket: category.bracket,
+            gender: category.gender,
+        }))
+    }
+
+    return competitionCategoryBrackets.flatMap((bracket) =>
+        (["male", "female"] as const).flatMap((gender) => {
+            const code = buildCategoryCode(event.discipline, event.ruleSet, bracket, gender)
+            return code ? [{ code, label: buildCategoryLabel(event, bracket, gender), bracket, gender }] : []
+        }),
+    )
+}
+
+export function getCategoryCashPrizes(
+    event: CompetitionEvent,
+    categoryCode: string,
+    config: Pick<CompetitionConfig, "cashPrizeMode">,
+): PrizeAmounts | null {
+    if (config.cashPrizeMode === "none") return null
+    if (config.cashPrizeMode === "category-specific") return event.categoryPrizes[categoryCode] ?? null
+    return event.prizes
 }
 
 export function getEligibleCategories(event: CompetitionEvent, age: number, gender: Gender, config: CompetitionConfig = defaultCompetitionConfig): CategoryOption[] {

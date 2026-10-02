@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest"
 import {
     buildCompetitionSlotsForDateRange,
+    defaultCompetitionConfig,
     formatCompetitionDateLabel,
+    getCategoryCashPrizes,
+    getCompetitionCategories,
     getScoringSeriesCount,
+    normalizeCompetitionConfig,
     parseCompetitionDate,
 } from "@/lib/competition"
 
@@ -53,5 +57,65 @@ describe("competition schedule", () => {
         expect(parseCompetitionDate("2026-02-30")).toBeNull()
         expect(formatCompetitionDateLabel("not-a-date")).toBe("")
         expect(buildCompetitionSlotsForDateRange("2026-09-27", "2026-09-25")).toEqual([])
+    })
+})
+
+describe("competition cash prizes", () => {
+    it("normalizes legacy prize settings without changing their behavior", () => {
+        expect(normalizeCompetitionConfig({ noCashPrizes: false }).cashPrizeMode).toBe("event-wide")
+
+        const noCashConfig = normalizeCompetitionConfig({ noCashPrizes: true })
+        expect(noCashConfig.cashPrizeMode).toBe("none")
+        expect(noCashConfig.noCashPrizes).toBe(true)
+        expect(noCashConfig.teamEntryFee).toBe(900)
+        expect(normalizeCompetitionConfig({ teamEntryFee: 0 }).teamEntryFee).toBe(0)
+        expect(normalizeCompetitionConfig({ teamEntryFee: -1 }).teamEntryFee).toBe(900)
+    })
+
+    it("keeps valid category prizes and ignores malformed prize rows", () => {
+        const event = defaultCompetitionConfig.events.find((candidate) => candidate.id === "nr-air-pistol")!
+        const config = normalizeCompetitionConfig({
+            ...defaultCompetitionConfig,
+            cashPrizeMode: "category-specific",
+            teamEntryFee: 1200,
+            events: [{
+                ...event,
+                categoryPrizes: {
+                    "S-19": [5000, 3000, 1000],
+                    "S-20": [1000, 500],
+                    "S-21": [-1, 500, 250],
+                },
+            }],
+        })
+
+        expect(config.teamEntryFee).toBe(1200)
+        expect(config.events[0].categoryPrizes).toEqual({ "S-19": [5000, 3000, 1000] })
+    })
+
+    it("lists generated Little Champ categories and preserves custom categories", () => {
+        const nrEvent = defaultCompetitionConfig.events.find((candidate) => candidate.id === "nr-air-rifle")!
+        const nrCategories = getCompetitionCategories(nrEvent)
+        expect(nrCategories.map((category) => category.code)).toEqual(expect.arrayContaining(["R-19", "R-20", "R-21", "R-22"]))
+        expect(nrCategories.filter((category) => category.bracket.startsWith("little"))).toHaveLength(4)
+
+        const customCategories = getCompetitionCategories({
+            ...nrEvent,
+            categories: [{ code: "LC-OPEN", label: "Little Champ Open", bracket: "little-standing", gender: "open" }],
+        })
+        expect(customCategories).toEqual([
+            { code: "LC-OPEN", label: "Little Champ Open", bracket: "little-standing", gender: "open" },
+        ])
+    })
+
+    it("resolves event-wide, selected-category, and disabled cash prizes", () => {
+        const event = {
+            ...defaultCompetitionConfig.events[1],
+            categoryPrizes: { "S-19": [9000, 6000, 3000] as [number, number, number] },
+        }
+
+        expect(getCategoryCashPrizes(event, "S-20", { cashPrizeMode: "event-wide" })).toEqual(event.prizes)
+        expect(getCategoryCashPrizes(event, "S-19", { cashPrizeMode: "category-specific" })).toEqual([9000, 6000, 3000])
+        expect(getCategoryCashPrizes(event, "S-20", { cashPrizeMode: "category-specific" })).toBeNull()
+        expect(getCategoryCashPrizes(event, "S-19", { cashPrizeMode: "none" })).toBeNull()
     })
 })

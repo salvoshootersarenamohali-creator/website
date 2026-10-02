@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy } from "lucide-react"
-import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
+import { formatCompetitionDateRange, formatCurrency, getCategoryCashPrizes, getCompetitionCategories, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 
@@ -191,9 +191,9 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                                     <p className="mt-3 text-sm font-bold text-white">
                                         Entry fee: {formatCurrency(competition.config.feesByRuleSet[event.ruleSet] ?? competition.config.entryFee)}
                                     </p>
-                                    {competition.config.noCashPrizes ? (
+                                    {competition.config.cashPrizeMode === "none" ? (
                                         <p className="mt-3 text-sm text-white/55">{competition.config.awardsNote}</p>
-                                    ) : (
+                                    ) : competition.config.cashPrizeMode === "event-wide" ? (
                                         <ol className="mt-3 grid grid-cols-3 gap-2" aria-label={`${event.title} cash prizes`}>
                                             {event.prizes.map((prize, index) => (
                                                 <li key={index} className="rounded border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] px-2 py-2 text-center">
@@ -202,6 +202,26 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                                                 </li>
                                             ))}
                                         </ol>
+                                    ) : (
+                                        <div className="mt-3 space-y-2">
+                                            {getCompetitionCategories(event)
+                                                .filter((category) => getCategoryCashPrizes(event, category.code, competition.config))
+                                                .map((category) => {
+                                                    const prizes = getCategoryCashPrizes(event, category.code, competition.config)
+                                                    if (!prizes) return null
+                                                    return (
+                                                        <div key={category.code} className="rounded border border-[#D4AF37]/20 bg-[#D4AF37]/[0.06] p-3">
+                                                            <p className="text-xs font-bold text-white/70">{category.code} - {category.label}</p>
+                                                            <p className="mt-1 text-xs font-bold text-[#E5C558]">
+                                                                {prizes.map((prize, index) => `${["1st", "2nd", "3rd"][index]} ${formatCurrency(prize)}`).join(" | ")}
+                                                            </p>
+                                                        </div>
+                                                    )
+                                                })}
+                                            {!getCompetitionCategories(event).some((category) => getCategoryCashPrizes(event, category.code, competition.config)) && (
+                                                <p className="text-sm text-white/45">No cash prizes configured for this event.</p>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             ))}

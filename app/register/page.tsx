@@ -14,6 +14,7 @@ import {
     defaultCompetitionConfig,
     formatCurrency,
     getAgeFromDobYear,
+    getCategoryCashPrizes,
     getEligibleCategories,
     getEntryFee,
     getEventById,
@@ -473,7 +474,7 @@ export default function RegisterPage() {
                                             <p className="font-black uppercase tracking-[0.16em]">Submit through your coach</p>
                                         </div>
                                         <p>
-                                            Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(900)}</span> per team.
+                                            Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(config.teamEntryFee)}</span> per team.
                                         </p>
                                         <ul className="mt-3 list-disc space-y-1 pl-5">
                                             <li>Each team must have exactly 3 shooters.</li>
@@ -521,34 +522,46 @@ export default function RegisterPage() {
                                                         <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100">
                                                             Fee {formatCurrency(config.feesByRuleSet[event.ruleSet] ?? config.entryFee)}
                                                         </span>
-                                                        {config.noCashPrizes ? (
+                                                        {config.cashPrizeMode === "none" ? (
                                                             <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
                                                                 Medals for top 3
                                                             </span>
-                                                        ) : event.prizes.map((prize, index) => (
+                                                        ) : config.cashPrizeMode === "event-wide" ? event.prizes.map((prize, index) => (
                                                             <span key={prize} className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
                                                                 {index + 1}: Rs. {prize.toLocaleString("en-IN")}
                                                             </span>
-                                                        ))}
+                                                        )) : (
+                                                            <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
+                                                                Category-specific prizes
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="mt-5 flex flex-wrap gap-2">
                                                     {!form.gender || age === null ? (
                                                         <p className="text-sm text-white/45">Enter gender and date of birth to unlock eligible categories.</p>
                                                     ) : categories.length ? (
-                                                        categories.map((category) => (
-                                                            <button
-                                                                key={category.code}
-                                                                type="button"
-                                                                disabled={disabled}
-                                                                onClick={() => toggleEntry(event.id, category.code)}
-                                                                className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60 hover:text-white"}`}
-                                                            >
-                                                                <span className="block font-bold">{category.code}</span>
-                                                                <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
-                                                                <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
-                                                            </button>
-                                                        ))
+                                                        categories.map((category) => {
+                                                            const categoryPrizes = getCategoryCashPrizes(event, category.code, config)
+                                                            return (
+                                                                <button
+                                                                    key={category.code}
+                                                                    type="button"
+                                                                    disabled={disabled}
+                                                                    onClick={() => toggleEntry(event.id, category.code)}
+                                                                    className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60 hover:text-white"}`}
+                                                                >
+                                                                    <span className="block font-bold">{category.code}</span>
+                                                                    <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
+                                                                    <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
+                                                                    {config.cashPrizeMode === "category-specific" && categoryPrizes && (
+                                                                        <span className="mt-1 block text-[11px] font-bold">
+                                                                            Cash: {categoryPrizes.map((prize) => formatCurrency(prize)).join(" / ")}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            )
+                                                        })
                                                     ) : (
                                                         <p className="text-sm text-white/45">No eligible categories for this event.</p>
                                                     )}

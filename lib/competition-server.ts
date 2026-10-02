@@ -130,6 +130,10 @@ export function cloneDefaultConfigForYear(year: number, startDate?: string | Dat
         events: defaultCompetitionConfig.events.map((event) => ({
             ...event,
             prizes: [...event.prizes] as [number, number, number],
+            categoryPrizes: Object.fromEntries(
+                Object.entries(event.categoryPrizes).map(([code, prizes]) => [code, [...prizes] as [number, number, number]]),
+            ),
+            ...(event.categories ? { categories: event.categories.map((category) => ({ ...category })) } : {}),
         })),
     }
 }

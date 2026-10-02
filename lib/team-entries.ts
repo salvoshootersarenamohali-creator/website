@@ -1,7 +1,7 @@
-import { Discipline, PaymentMode } from "@/lib/competition"
+import { DEFAULT_TEAM_ENTRY_FEE, Discipline, PaymentMode } from "@/lib/competition"
 import { toProperCase } from "@/lib/registration-validation"
 
-export const TEAM_ENTRY_FEE = 900
+export const TEAM_ENTRY_FEE = DEFAULT_TEAM_ENTRY_FEE
 
 export type IncomingTeamEntryMember = {
     registrationId: string
@@ -69,7 +69,8 @@ export function isTeamPaymentMode(value: string): value is PaymentMode {
 export function resolveTeamEntry(
     data: IncomingTeamEntryData,
     competitionId: string,
-    registrations: TeamValidationRegistration[]
+    registrations: TeamValidationRegistration[],
+    teamEntryFee = DEFAULT_TEAM_ENTRY_FEE,
 ) {
     if (data.discipline !== "pistol" && data.discipline !== "rifle") {
         validationError("Select pistol or rifle for the team entry.")
@@ -119,7 +120,7 @@ export function resolveTeamEntry(
         name,
         academy,
         discipline,
-        amount: TEAM_ENTRY_FEE,
+        amount: teamEntryFee,
         paymentMode: data.paymentMode,
         paymentStatus: data.paymentStatus,
         members: resolvedMembers,

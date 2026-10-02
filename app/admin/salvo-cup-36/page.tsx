@@ -40,7 +40,7 @@ import {
     rankRows,
 } from "@/lib/results"
 import { toProperCase } from "@/lib/registration-validation"
-import { TEAM_ENTRY_FEE, getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
+import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 type PaymentMode = "cash" | "upi"
@@ -545,6 +545,7 @@ export default function SalvoCupAdminPage() {
                                 teamEntries={teamEntries}
                                 adminPin={activePin}
                                 competitionSlug={competitionSlug}
+                                teamEntryFee={competitionConfig.teamEntryFee}
                                 onChanged={() => loadTeamEntries()}
                             />
                         ) : view === "results" ? (
@@ -643,12 +644,14 @@ function TeamEntriesView({
     teamEntries,
     adminPin,
     competitionSlug,
+    teamEntryFee,
     onChanged,
 }: {
     registrations: AdminRegistration[]
     teamEntries: AdminTeamEntry[]
     adminPin: string
     competitionSlug: string
+    teamEntryFee: number
     onChanged: () => void
 }) {
     const [teamName, setTeamName] = React.useState("")
@@ -774,7 +777,7 @@ function TeamEntriesView({
                         <p className="mt-1 text-sm text-white/50">Select 3 students from the same club and same discipline.</p>
                     </div>
                     <p className="rounded-md border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-2 text-sm font-bold text-[#E5C558]">
-                        {formatCurrency(TEAM_ENTRY_FEE)}
+                        {formatCurrency(teamEntryFee)}
                     </p>
                 </div>
 
