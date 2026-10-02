@@ -61,7 +61,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
             },
         })
 
-        return Response.json({ competition: serializeCompetition(updated), imageUrl })
+        return Response.json({
+            competition: {
+                ...serializeCompetition(updated),
+                hasAdminPin: Boolean(updated.adminPinDigest),
+            },
+            imageUrl,
+        })
     } catch (error) {
         if (error instanceof ImageUploadError) {
             return Response.json({ error: error.message }, { status: error.status })

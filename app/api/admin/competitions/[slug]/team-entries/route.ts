@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { normalizeCompetitionConfig } from "@/lib/competition"
 import { getCompetitionBySlugOrActive } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
@@ -25,7 +25,7 @@ const teamEntryInclude = {
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const { slug } = await context.params
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const { slug } = await context.params

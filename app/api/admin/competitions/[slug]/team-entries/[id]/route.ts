@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { getCompetitionBySlugOrActive } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -8,7 +8,7 @@ type RouteContext = {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const { slug, id } = await context.params

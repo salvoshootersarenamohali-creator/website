@@ -11,6 +11,7 @@ The app expects:
 ```env
 DATABASE_URL="postgres://USER:PASSWORD@HOST:PORT/defaultdb?sslmode=require"
 ADMIN_PIN="choose-a-private-pin"
+COMPETITION_PIN_SECRET="use-a-long-random-secret-and-do-not-rotate-it"
 NEXT_TURBOPACK_EXPERIMENTAL_USE_SYSTEM_TLS_CERTS="1"
 ```
 
@@ -23,6 +24,7 @@ Set these Vercel production environment variables:
 ```env
 DATABASE_URL="postgres://USER:PASSWORD@HOST:PORT/defaultdb?sslmode=require"
 ADMIN_PIN="choose-a-private-pin"
+COMPETITION_PIN_SECRET="use-a-long-random-secret-and-do-not-rotate-it"
 NEXT_TURBOPACK_EXPERIMENTAL_USE_SYSTEM_TLS_CERTS="1"
 SMTP_HOST="smtp.example.com"
 SMTP_PORT="587"
@@ -50,6 +52,8 @@ The workflow in `.github/workflows/deploy.yml` runs on pushes to `main`. It inst
 ## Notes
 
 - Coach admin is at `/admin/salvo-cup-36` and uses `ADMIN_PIN`.
+- `ADMIN_PIN` is the master credential for the competition manager and all competition dashboards. Each competition can also use its own 4-8 digit PIN for its scoped dashboard.
+- `COMPETITION_PIN_SECRET` protects competition PIN digests. Generate a long random value, configure the same value in every environment that shares the database, and do not rotate it unless all competition PINs will be reassigned.
 - Contact form submissions are sent through SMTP from `/api/contact`. Configure the SMTP variables above before testing email delivery in production.
 - Payment screenshots currently write to `public/uploads/payments`. This is enough to test the form, but on Vercel those files should later move to object storage such as Cloudflare R2, S3, UploadThing, or Vercel Blob.
 - Replace `public/upi-scanner.png` with the real UPI QR scanner before opening registrations.

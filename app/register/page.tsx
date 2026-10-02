@@ -329,7 +329,7 @@ export default function RegisterPage() {
                             alt="Shooters at Salvo range"
                             width={760}
                             height={520}
-                            className="h-80 w-full rounded-md object-cover"
+                            className="h-auto w-full rounded-md object-contain lg:h-80 lg:object-cover"
                             priority
                         />
                     </div>

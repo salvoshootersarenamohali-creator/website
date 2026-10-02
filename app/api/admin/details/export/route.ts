@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import {
     buildDetailSchedule,
@@ -109,7 +109,7 @@ function buildRuleSetSheet(schedule: ReturnType<typeof buildDetailSchedule>, rul
 }
 
 export async function POST(request: NextRequest) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const competition = await getCompetitionBySlugOrActive(getCompetitionSlugFromRequest(request))

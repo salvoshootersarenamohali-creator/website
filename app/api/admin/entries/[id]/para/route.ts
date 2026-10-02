@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { normalizeCompetitionConfig } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { setRegistrationParaStatus } from "@/lib/para-registration-server"
@@ -10,7 +10,7 @@ type RouteContext = {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const { id } = await context.params

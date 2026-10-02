@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { adminUnauthorized, isAdminRequest, isCoachName, isValidCoachCode } from "@/lib/admin"
+import { adminUnauthorized, isCoachName, isCompetitionAdminRequest, isValidCoachCode } from "@/lib/admin"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -11,7 +11,7 @@ const allowedStatuses = new Set(["Paid", "Sponsored"])
 const allowedPaymentModes = new Set(["cash", "upi"])
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     const { id } = await context.params
     const body = await request.json()

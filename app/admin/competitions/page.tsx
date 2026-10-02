@@ -17,6 +17,7 @@ import { toProperCase } from "@/lib/registration-validation"
 
 type AdminCompetition = PublicCompetition & {
     registrations: number
+    hasAdminPin: boolean
 }
 
 type CompetitionAssetType = "hero" | "paymentQr"
@@ -49,6 +50,7 @@ function createDefaultForm() {
         startDate: today,
         endDate: today,
         competitionYear: Number(today.slice(0, 4)),
+        adminPin: "",
         isPublished: true,
         registrationOpen: false,
     }
@@ -61,6 +63,7 @@ const emptyCreateForm = {
     startDate: "",
     endDate: "",
     competitionYear: new Date().getUTCFullYear(),
+    adminPin: "",
     isPublished: true,
     registrationOpen: false,
 }
@@ -245,6 +248,22 @@ export default function AdminCompetitionsPage() {
                                     <CreateField label="Competition year">
                                         <input required min={1900} max={2200} type="number" value={createForm.competitionYear} onChange={(event) => setCreateForm({ ...createForm, competitionYear: Number(event.target.value) })} className="field" />
                                     </CreateField>
+                                    <CreateField label="Competition admin PIN">
+                                        <input
+                                            required
+                                            type="password"
+                                            inputMode="numeric"
+                                            autoComplete="new-password"
+                                            pattern="[0-9]{4,8}"
+                                            minLength={4}
+                                            maxLength={8}
+                                            value={createForm.adminPin}
+                                            onChange={(event) => setCreateForm({ ...createForm, adminPin: event.target.value })}
+                                            className="field"
+                                            placeholder="4 to 8 digits"
+                                            title="Enter 4 to 8 digits."
+                                        />
+                                    </CreateField>
                                 </div>
                                 <div className="mt-4 grid gap-2">
                                     <Toggle
@@ -289,6 +308,7 @@ export default function AdminCompetitionsPage() {
                                                 <span className="text-[#D4AF37]">{competition.registrations} registrations</span>
                                                 <span className={competition.isPublished ? "text-emerald-300" : "text-white/35"}>{competition.isPublished ? "Public" : "Draft"}</span>
                                                 <span className={competition.registrationOpen ? "text-cyan-200" : "text-white/35"}>{competition.registrationOpen ? "Registration open" : "Registration closed"}</span>
+                                                <span className={competition.hasAdminPin ? "text-violet-200" : "text-amber-200"}>{competition.hasAdminPin ? "PIN set" : "Master PIN only"}</span>
                                             </div>
                                         </button>
                                     ))}
@@ -320,6 +340,7 @@ export default function AdminCompetitionsPage() {
 
 function CompetitionEditor({ competition, adminPin, onSaved }: { competition: AdminCompetition; adminPin: string; onSaved: (competition: AdminCompetition) => void }) {
     const [form, setForm] = React.useState(() => prepareCompetitionForEditing(competition))
+    const [replacementPin, setReplacementPin] = React.useState("")
     const [saving, setSaving] = React.useState(false)
     const [message, setMessage] = React.useState("")
     const previousCompetitionId = React.useRef(competition.id)
@@ -328,6 +349,7 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
         if (previousCompetitionId.current !== competition.id) {
             previousCompetitionId.current = competition.id
             setForm(prepareCompetitionForEditing(competition))
+            setReplacementPin("")
             setMessage("")
         }
     }, [competition])
@@ -360,19 +382,29 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
     }
 
     const save = async () => {
+        const nextAdminPin = replacementPin.trim()
+        if (nextAdminPin && !/^\d{4,8}$/.test(nextAdminPin)) {
+            setMessage("Competition admin PIN must contain 4 to 8 digits.")
+            return
+        }
+
         setSaving(true)
         setMessage("")
         try {
             const response = await fetch(`/api/admin/competitions/${competition.slug}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify(form),
+                body: JSON.stringify({
+                    ...form,
+                    ...(nextAdminPin ? { adminPin: nextAdminPin } : {}),
+                }),
             })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save competition.")
             const saved = data.competition as AdminCompetition
             const normalized = { ...saved, config: normalizeCompetitionConfig(saved.config), registrations: form.registrations }
             setForm(normalized)
+            setReplacementPin("")
             onSaved(normalized)
             setMessage("Saved.")
         } catch (saveError) {
@@ -438,6 +470,26 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
                 <Field label="End Date"><input type="date" min={form.startDate.slice(0, 10)} value={form.endDate.slice(0, 10)} onChange={(event) => updateDateRange("endDate", event.target.value)} className="field" /></Field>
                 <Field label="Competition Year"><input type="number" value={form.config.competitionYear} onChange={(event) => updateConfig({ ...form.config, competitionYear: Number(event.target.value) })} className="field" /></Field>
                 <Field label="Venue"><input value={form.venue ?? ""} onChange={(event) => setForm({ ...form, venue: toProperCase(event.target.value) })} className="field" /></Field>
+                <Field label="Replace Competition Admin PIN">
+                    <input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        pattern="[0-9]{4,8}"
+                        minLength={4}
+                        maxLength={8}
+                        value={replacementPin}
+                        onChange={(event) => setReplacementPin(event.target.value)}
+                        className="field"
+                        placeholder={form.hasAdminPin ? "Leave blank to keep current PIN" : "Set a 4 to 8 digit PIN"}
+                        title="Enter 4 to 8 digits, or leave blank to keep the current PIN."
+                    />
+                    <span className={`mt-2 block text-xs ${form.hasAdminPin ? "text-emerald-300/75" : "text-amber-200/80"}`}>
+                        {form.hasAdminPin
+                            ? "A competition PIN is configured. Enter a new PIN only when replacing it."
+                            : "No competition PIN is configured. This dashboard currently requires the master PIN."}
+                    </span>
+                </Field>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">

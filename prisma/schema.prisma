@@ -58,6 +58,7 @@ model Competition {
   resultsPublished  Boolean        @default(false)
   paymentQrPath     String?
   heroImagePath     String?
+  adminPinDigest    String?        @unique
   config            Json
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt

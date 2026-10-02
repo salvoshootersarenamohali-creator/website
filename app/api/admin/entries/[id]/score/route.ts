@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { Prisma } from "@prisma/client"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { getScoringSeriesCount } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
@@ -10,7 +10,7 @@ type RouteContext = {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const { id } = await context.params
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const { id } = await context.params

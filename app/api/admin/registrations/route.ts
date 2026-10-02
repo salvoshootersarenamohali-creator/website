@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(request: NextRequest) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const slug = getCompetitionSlugFromRequest(request)

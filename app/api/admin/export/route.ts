@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
-import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
+import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { formatCurrency } from "@/lib/competition"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
@@ -29,7 +29,7 @@ function formatScore(score: unknown, ruleSet: "NR" | "ISSF") {
 }
 
 export async function GET(request: NextRequest) {
-    if (!isAdminRequest(request)) return adminUnauthorized()
+    if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
 
     try {
         const competition = await getCompetitionBySlugOrActive(getCompetitionSlugFromRequest(request))
