@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
         const registrations = await prisma.registration.findMany({
             where: { competitionId: competition.id },
             orderBy: { createdAt: "desc" },
-            include: { entries: { orderBy: { createdAt: "asc" } } },
+            include: {
+                entries: { orderBy: { createdAt: "asc" } },
+                documents: { orderBy: { position: "asc" } },
+            },
         })
 
         return Response.json({ competition: serializeCompetition(competition), registrations })

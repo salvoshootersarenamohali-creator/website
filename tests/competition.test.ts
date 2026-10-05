@@ -3,6 +3,7 @@ import {
     buildCompetitionSlotsForDateRange,
     defaultCompetitionConfig,
     formatCompetitionDateLabel,
+    getCompetitionBoundaryDates,
     getCompetitionCategories,
     getEntryFee,
     getRegistrationEntryFee,
@@ -11,6 +12,7 @@ import {
     parseCompetitionDate,
     validateCashPrizeConfiguration,
     validateParaEntryConfiguration,
+    validateRequiredDocuments,
 } from "@/lib/competition"
 
 describe("competition scoring format", () => {
@@ -28,6 +30,12 @@ describe("competition scoring format", () => {
 })
 
 describe("competition schedule", () => {
+    it("shows only the start and end boundaries, with one card for a single-day competition", () => {
+        expect(getCompetitionBoundaryDates("2026-11-12", "2026-11-15")).toEqual(["2026-11-12", "2026-11-15"])
+        expect(getCompetitionBoundaryDates("2026-11-12", "2026-11-12")).toEqual(["2026-11-12"])
+        expect(getCompetitionBoundaryDates("invalid", "2026-11-12")).toEqual([])
+    })
+
     it("builds one relay day for every day in the selected range", () => {
         const slots = buildCompetitionSlotsForDateRange("2027-02-27", "2027-03-01")
 
@@ -60,6 +68,43 @@ describe("competition schedule", () => {
         expect(parseCompetitionDate("2026-02-30")).toBeNull()
         expect(formatCompetitionDateLabel("not-a-date")).toBe("")
         expect(buildCompetitionSlotsForDateRange("2026-09-27", "2026-09-25")).toEqual([])
+    })
+})
+
+describe("competition required documents", () => {
+    it("normalizes ordered custom document definitions", () => {
+        const config = normalizeCompetitionConfig({
+            requiredDocuments: [
+                { id: "medical-certificate", label: "Medical Certificate" },
+                { id: "association-card", label: "Association Card" },
+            ],
+        })
+
+        expect(config.requiredDocuments).toEqual([
+            { id: "medical-certificate", label: "Medical Certificate" },
+            { id: "association-card", label: "Association Card" },
+        ])
+        expect(validateRequiredDocuments(config)).toBeNull()
+    })
+
+    it("converts legacy document flags without losing their order", () => {
+        expect(normalizeCompetitionConfig({
+            requiredDocuments: { birthCertificate: true, aadhaarCard: true },
+        }).requiredDocuments).toEqual([
+            { id: "birth-certificate", label: "Date of Birth Certificate" },
+            { id: "aadhaar-card", label: "Aadhaar Card Copy" },
+        ])
+    })
+
+    it("rejects duplicate, blank, and oversized required-document lists", () => {
+        expect(validateRequiredDocuments({ requiredDocuments: [
+            { id: "medical", label: "Medical Certificate" },
+            { id: "medical-copy", label: "medical certificate" },
+        ] })).toBe("Required document names must be unique.")
+        expect(validateRequiredDocuments({ requiredDocuments: [{ id: "medical", label: "" }] })).toBe("Every required document must have a label.")
+        expect(validateRequiredDocuments({
+            requiredDocuments: Array.from({ length: 11 }, (_, index) => ({ id: `document-${index}`, label: `Document ${index}` })),
+        })).toBe("Add no more than 10 required documents.")
     })
 })
 

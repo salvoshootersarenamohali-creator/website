@@ -5,7 +5,7 @@ import {
     isAdminRequest,
     validateCompetitionAdminPin,
 } from "@/lib/admin"
-import { parseCompetitionDate } from "@/lib/competition"
+import { normalizeCompetitionConfig, parseCompetitionDate, validateRequiredDocuments } from "@/lib/competition"
 import { cloneDefaultConfigForYear, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json() as Record<string, unknown>
+        const requiredDocumentsError = validateRequiredDocuments(body)
+        if (requiredDocumentsError) return Response.json({ error: requiredDocumentsError }, { status: 400 })
         const title = String(body.title ?? "").trim() || "New Salvo Competition"
         const shortTitle = String(body.shortTitle ?? "").trim() || title
         const adminPin = typeof body.adminPin === "string" ? body.adminPin.trim() : ""
@@ -99,6 +101,10 @@ export async function POST(request: NextRequest) {
         const isPublished = readBoolean(body.isPublished)
         const registrationOpen = isPublished && readBoolean(body.registrationOpen)
 
+        const config = normalizeCompetitionConfig({
+            ...cloneDefaultConfigForYear(competitionYear, startDate, endDate),
+            requiredDocuments: body.requiredDocuments ?? [],
+        })
         const competition = await prisma.competition.create({
             data: {
                 slug,
@@ -116,7 +122,7 @@ export async function POST(request: NextRequest) {
                 paymentQrPath: String(body.paymentQrPath ?? "").trim() || "/upi-scanner.png",
                 heroImagePath: String(body.heroImagePath ?? "").trim() || "/competition-range.JPG",
                 adminPinDigest,
-                config: cloneDefaultConfigForYear(competitionYear, startDate, endDate),
+                config,
             },
         })
 

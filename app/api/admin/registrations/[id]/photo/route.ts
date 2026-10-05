@@ -39,7 +39,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const registration = await prisma.registration.update({
             where: { id },
             data: { studentPhotoPath },
-            include: { entries: { orderBy: { createdAt: "asc" } } },
+            include: {
+                entries: { orderBy: { createdAt: "asc" } },
+                documents: { orderBy: { position: "asc" } },
+            },
         })
 
         return Response.json({ registration })

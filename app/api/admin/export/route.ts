@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
-import { formatCurrency } from "@/lib/competition"
+import { formatCurrency, normalizeCompetitionConfig } from "@/lib/competition"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import { getDisciplineLabel } from "@/lib/team-entries"
@@ -38,8 +38,19 @@ export async function GET(request: NextRequest) {
         const registrations = await prisma.registration.findMany({
             where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
-            include: { entries: { orderBy: { createdAt: "asc" } } },
+            include: {
+                entries: { orderBy: { createdAt: "asc" } },
+                documents: { orderBy: { position: "asc" } },
+            },
         })
+        const configuredDocuments = normalizeCompetitionConfig(competition.config).requiredDocuments
+        const configuredDocumentIds = new Set(configuredDocuments.map((document) => document.id))
+        const historicalDocuments = registrations.flatMap((registration) => registration.documents).reduce<{ id: string; label: string }[]>((documents, document) => {
+            if (configuredDocumentIds.has(document.documentKey) || documents.some((item) => item.id === document.documentKey)) return documents
+            documents.push({ id: document.documentKey, label: document.label })
+            return documents
+        }, [])
+        const exportDocuments = [...configuredDocuments, ...historicalDocuments]
         const teamEntries = await prisma.teamEntry.findMany({
             where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
@@ -84,32 +95,34 @@ export async function GET(request: NextRequest) {
             })
         )
 
-        const cardRows = registrations.map((registration, index) => ({
-            "Card No.": index + 1,
-            Name: registration.name,
-            "Club Name": registration.academy,
-            "Mother's Name": registration.motherName ?? "",
-            "Father's Name": registration.fatherName ?? "",
-            Contact: registration.phone,
-            Address: registration.address ?? "",
-            DOB: formatDate(registration.dateOfBirth),
-            Gender: registration.gender,
-            Date: formatDate(registration.preferredDate),
-            Slot: registration.preferredSlot,
-            "Payment Mode": registration.paymentMode,
-            "Payment Status": registration.paymentStatus,
-            "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
-            "Payment Confirmed At": formatOptionalDate(registration.paymentConfirmedAt),
-            UTR: registration.utrNumber ?? "",
-            "Student Photo": registration.studentPhotoPath ?? "",
-            "DOB Certificate": registration.birthCertificatePath ?? "",
-            "Aadhaar Copy": registration.aadhaarCardPath ?? "",
-            "Category/Event a": registration.entries[0] ? `${registration.entries[0].categoryCode} - ${registration.entries[0].categoryLabel}` : "",
-            "Category/Event b": registration.entries[1] ? `${registration.entries[1].categoryCode} - ${registration.entries[1].categoryLabel}` : "",
-            "Category/Event c": registration.entries[2] ? `${registration.entries[2].categoryCode} - ${registration.entries[2].categoryLabel}` : "",
-            "Other Entries": registration.entries.slice(3).map((entry) => `${entry.categoryCode} - ${entry.categoryLabel}`).join("; "),
-            "Amount Paid": formatPaymentAmount(registration),
-        }))
+        const cardRows = registrations.map((registration, index) => {
+            const documentsByKey = new Map(registration.documents.map((document) => [document.documentKey, document.path]))
+            return {
+                "Card No.": index + 1,
+                Name: registration.name,
+                "Club Name": registration.academy,
+                "Mother's Name": registration.motherName ?? "",
+                "Father's Name": registration.fatherName ?? "",
+                Contact: registration.phone,
+                Address: registration.address ?? "",
+                DOB: formatDate(registration.dateOfBirth),
+                Gender: registration.gender,
+                Date: formatDate(registration.preferredDate),
+                Slot: registration.preferredSlot,
+                "Payment Mode": registration.paymentMode,
+                "Payment Status": registration.paymentStatus,
+                "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
+                "Payment Confirmed At": formatOptionalDate(registration.paymentConfirmedAt),
+                UTR: registration.utrNumber ?? "",
+                "Student Photo": registration.studentPhotoPath ?? "",
+                ...Object.fromEntries(exportDocuments.map((document) => [`Document: ${document.label}`, documentsByKey.get(document.id) ?? ""])),
+                "Category/Event a": registration.entries[0] ? `${registration.entries[0].categoryCode} - ${registration.entries[0].categoryLabel}` : "",
+                "Category/Event b": registration.entries[1] ? `${registration.entries[1].categoryCode} - ${registration.entries[1].categoryLabel}` : "",
+                "Category/Event c": registration.entries[2] ? `${registration.entries[2].categoryCode} - ${registration.entries[2].categoryLabel}` : "",
+                "Other Entries": registration.entries.slice(3).map((entry) => `${entry.categoryCode} - ${entry.categoryLabel}`).join("; "),
+                "Amount Paid": formatPaymentAmount(registration),
+            }
+        })
 
         const teamRows = teamEntries.map((teamEntry, index) => {
             const members = teamEntry.members

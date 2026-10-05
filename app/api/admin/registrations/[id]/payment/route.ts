@@ -57,7 +57,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             paymentConfirmedBy: coachName,
             paymentConfirmedAt: new Date(),
         },
-        include: { entries: { orderBy: { createdAt: "asc" } } },
+        include: {
+            entries: { orderBy: { createdAt: "asc" } },
+            documents: { orderBy: { position: "asc" } },
+        },
     })
 
     return Response.json({ registration: updated })

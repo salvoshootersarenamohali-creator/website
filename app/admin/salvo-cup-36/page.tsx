@@ -85,6 +85,13 @@ type AdminRegistration = {
     studentPhotoPath: string | null
     birthCertificatePath: string | null
     aadhaarCardPath: string | null
+    documents: {
+        id: string
+        documentKey: string
+        label: string
+        path: string
+        mimeType: string
+    }[]
     createdAt: string
     entries: AdminEntry[]
 }
@@ -315,6 +322,7 @@ function buildDemoRegistrations(): AdminRegistration[] {
             studentPhotoPath: null,
             birthCertificatePath: null,
             aadhaarCardPath: null,
+            documents: [],
             createdAt: `2026-06-03T10:${String(index).padStart(2, "0")}:00.000Z`,
             entries,
         }
@@ -1627,6 +1635,12 @@ function RegistrationDetail({
     const paraState = getRegistrationParaState(registration.entries)
     const isParaShooter = paraState === "para"
     const hasParaEntries = paraState !== "regular"
+    const registrationDocuments = registration.documents.length
+        ? registration.documents
+        : [
+            registration.birthCertificatePath ? { id: "legacy-birth-certificate", documentKey: "birth-certificate", label: "Date of Birth Certificate", path: registration.birthCertificatePath, mimeType: "application/octet-stream" } : null,
+            registration.aadhaarCardPath ? { id: "legacy-aadhaar-card", documentKey: "aadhaar-card", label: "Aadhaar Card Copy", path: registration.aadhaarCardPath, mimeType: "application/octet-stream" } : null,
+        ].filter((document): document is NonNullable<typeof document> => document !== null)
 
     React.useEffect(() => {
         setDeleting(false)
@@ -1770,18 +1784,13 @@ function RegistrationDetail({
                     View payment screenshot
                 </a>
             )}
-            {(registration.birthCertificatePath || registration.aadhaarCardPath) && (
+            {registrationDocuments.length > 0 && (
                 <div className="mb-6 flex flex-wrap gap-3">
-                    {registration.birthCertificatePath && (
-                        <a href={registration.birthCertificatePath} target="_blank" rel="noreferrer" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#D4AF37] underline">
-                            View DOB Certificate
+                    {registrationDocuments.map((document) => (
+                        <a key={document.id} href={document.path} target="_blank" rel="noreferrer" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#D4AF37] underline">
+                            View {document.label}
                         </a>
-                    )}
-                    {registration.aadhaarCardPath && (
-                        <a href={registration.aadhaarCardPath} target="_blank" rel="noreferrer" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-bold text-[#D4AF37] underline">
-                            View Aadhaar Copy
-                        </a>
-                    )}
+                    ))}
                 </div>
             )}
 

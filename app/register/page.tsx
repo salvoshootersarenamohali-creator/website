@@ -13,12 +13,14 @@ import {
     SelectedEntry,
     buildCategoryLabel,
     defaultCompetitionConfig,
+    formatCompetitionDateLabel,
     formatCurrency,
     getAgeFromDobYear,
     getEligibleCategories,
     getEntryFee,
     getEventById,
     getCompetitionStatusLabel,
+    getCompetitionBoundaryDates,
     isCompetitionRegistrationAvailable,
     normalizeCompetitionConfig,
     slotOptions,
@@ -51,6 +53,13 @@ type SavedRegistration = {
     studentPhotoPath: string | null
     birthCertificatePath: string | null
     aadhaarCardPath: string | null
+    documents: {
+        id: string
+        documentKey: string
+        label: string
+        path: string
+        mimeType: string
+    }[]
     entries: SavedEntry[]
 }
 
@@ -88,8 +97,7 @@ export default function RegisterPage() {
     const [form, setForm] = React.useState(initialForm)
     const [entries, setEntries] = React.useState<SelectedEntry[]>([])
     const [studentPhoto, setStudentPhoto] = React.useState<File | null>(null)
-    const [birthCertificate, setBirthCertificate] = React.useState<File | null>(null)
-    const [aadhaarCard, setAadhaarCard] = React.useState<File | null>(null)
+    const [documentFiles, setDocumentFiles] = React.useState<Record<string, File | null>>({})
     const [paymentScreenshot, setPaymentScreenshot] = React.useState<File | null>(null)
     const [error, setError] = React.useState("")
     const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -101,6 +109,8 @@ export default function RegisterPage() {
     const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
     const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
     const requiredDocuments = config.requiredDocuments
+    const boundaryDates = competition ? getCompetitionBoundaryDates(competition.startDate, competition.endDate) : []
+    const documentSummary = ["Shooter photo", ...requiredDocuments.map((document) => document.label)].join(", ")
 
     const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
     const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
@@ -227,13 +237,11 @@ export default function RegisterPage() {
             setError("Please upload the shooter photo.")
             return
         }
-        if (requiredDocuments.birthCertificate && !birthCertificate) {
-            setError("Please upload the date of birth certificate.")
-            return
-        }
-        if (requiredDocuments.aadhaarCard && !aadhaarCard) {
-            setError("Please upload the Aadhaar card copy.")
-            return
+        for (const document of requiredDocuments) {
+            if (!documentFiles[document.id]) {
+                setError(`Please upload ${document.label}.`)
+                return
+            }
         }
         if (form.paymentMode === "upi" && !/^\d{12}$/.test(form.utrNumber)) {
             setError("Please enter a 12-digit UTR/UPI reference number.")
@@ -244,8 +252,10 @@ export default function RegisterPage() {
         Object.entries(form).forEach(([key, value]) => body.append(key, value))
         body.append("entries", JSON.stringify(entries))
         body.append("studentPhoto", studentPhoto)
-        if (birthCertificate) body.append("birthCertificate", birthCertificate)
-        if (aadhaarCard) body.append("aadhaarCard", aadhaarCard)
+        requiredDocuments.forEach((document) => {
+            const file = documentFiles[document.id]
+            if (file) body.append(`requiredDocument:${document.id}`, file)
+        })
         if (paymentScreenshot) body.append("paymentScreenshot", paymentScreenshot)
 
         setIsSubmitting(true)
@@ -303,24 +313,23 @@ export default function RegisterPage() {
                             )}
                         </div>
                         <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
-                            Register for {competition?.title ?? "Competition"}
+                            Registeration for {competition?.title ?? "Competition"}
                         </h1>
                         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/70">
                             Select your event categories, choose a relay slot, complete payment, and generate your competitor card.
                         </p>
                         <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                            {availableSlots.map((day) => (
-                                <div key={day.date} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                            {boundaryDates.map((date) => (
+                                <div key={date} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
                                     <CalendarDays className="mb-3 h-5 w-5 text-[#D4AF37]" />
-                                    <p className="text-xl font-bold">{day.label.replace(`, ${config.competitionYear}`, "")}</p>
-                                    <p className="text-sm text-white/55">{config.competitionYear}</p>
+                                    <p className="text-xl font-bold">{formatCompetitionDateLabel(date)}</p>
                                 </div>
                             ))}
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
                             <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={isCashOnly ? "Cash only" : "Cash or UPI"} />
                             <TopNote icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition?.venue ?? "Competition venue"} />
-                            <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={requiredDocuments.birthCertificate || requiredDocuments.aadhaarCard ? "Uploads required" : "Photo required"} />
+                            <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={documentSummary} />
                         </div>
                     </div>
                     <div className="rounded-lg border border-[#D4AF37]/30 bg-neutral-950/80 p-5 shadow-2xl shadow-[#D4AF37]/10">
@@ -345,8 +354,7 @@ export default function RegisterPage() {
                         setSelectionStartedWith(null)
                         setForm(initialForm)
                         setStudentPhoto(null)
-                        setBirthCertificate(null)
-                        setAadhaarCard(null)
+                        setDocumentFiles({})
                         setPaymentScreenshot(null)
                     }} />
                 ) : !registrationAvailable ? (
@@ -358,7 +366,7 @@ export default function RegisterPage() {
                                 <Field label="Full Name" required>
                                     <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                                 </Field>
-                                <Field label="Shooting Academy" required>
+                                <Field label="Academy name/ Coach name" required>
                                     <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                                 </Field>
                                 {config.requiresGuardianDetails && (
@@ -394,16 +402,17 @@ export default function RegisterPage() {
                                 <Field label="Student Photo" required>
                                     <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setStudentPhoto(event.target.files?.[0] ?? null)} className="field file:text-white" />
                                 </Field>
-                                {requiredDocuments.birthCertificate && (
-                                    <Field label="Date of Birth Certificate" required>
-                                        <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setBirthCertificate(event.target.files?.[0] ?? null)} className="field file:text-white" />
+                                {requiredDocuments.map((document) => (
+                                    <Field key={document.id} label={document.label} required>
+                                        <input
+                                            required
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp,application/pdf"
+                                            onChange={(event) => setDocumentFiles((current) => ({ ...current, [document.id]: event.target.files?.[0] ?? null }))}
+                                            className="field file:text-white"
+                                        />
                                     </Field>
-                                )}
-                                {requiredDocuments.aadhaarCard && (
-                                    <Field label="Aadhaar Card Copy" required>
-                                        <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setAadhaarCard(event.target.files?.[0] ?? null)} className="field file:text-white" />
-                                    </Field>
-                                )}
+                                ))}
                                 {age !== null && (
                                     <p className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
                                         Category age for this competition: <span className="font-bold text-[#D4AF37]">{age}</span>
@@ -757,7 +766,7 @@ function FaridkotProvisionalForm({ registration, competition }: { registration: 
                     <p>I hereby declare and confirm that all the entries provided in this registration form are correct. I understand that false or incomplete information may lead to cancellation of registration.</p>
                 </div>
                 <div className="mt-6 grid gap-2 text-sm">
-                    <p>Documents uploaded: Shooter photo{registration.birthCertificatePath ? ", date of birth certificate" : ""}{registration.aadhaarCardPath ? ", Aadhaar card copy" : ""}.</p>
+                    <p>Documents uploaded: Shooter photo{registration.documents.map((document) => `, ${document.label}`).join("")}.</p>
                     <p>Payment mode: {registration.paymentMode === "cash" ? "Cash" : "Online"} | Amount: {formatCurrency(registration.amount)} | Status: {registration.paymentStatus}</p>
                     <p>Match starts at {competition?.config.matchStartTime ?? "8:00 AM"}.</p>
                 </div>

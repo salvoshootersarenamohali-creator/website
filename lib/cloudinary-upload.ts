@@ -2,6 +2,8 @@ import { v2 as cloudinary, type UploadApiResponse } from "cloudinary"
 
 const allowedImageTypes = new Set(["image/png", "image/jpeg", "image/webp"])
 const maxImageSize = 5 * 1024 * 1024
+const allowedDocumentTypes = new Set([...allowedImageTypes, "application/pdf"])
+export const MAX_DOCUMENT_FILE_SIZE = 5 * 1024 * 1024
 
 export class ImageUploadError extends Error {
     status: number
@@ -44,6 +46,50 @@ export async function uploadImageToCloudinary(file: File, options: { folder: str
             },
             (error, result) => {
                 if (error || !result) reject(error ?? new Error("Unable to upload image."))
+                else resolve(result)
+            }
+        )
+        stream.end(buffer)
+    })
+
+    return uploadResult.secure_url
+}
+
+export function validateDocumentFile(file: File, label = "Document") {
+    if (!file.size) throw new ImageUploadError(`${label} is required.`)
+    if (!allowedDocumentTypes.has(file.type)) {
+        throw new ImageUploadError(`${label} must be a PNG, JPG, WEBP, or PDF file.`)
+    }
+    if (file.size > MAX_DOCUMENT_FILE_SIZE) {
+        throw new ImageUploadError(`${label} must be smaller than 5MB.`)
+    }
+}
+
+export async function uploadDocumentToCloudinary(file: File, options: { folder: string; publicId?: string; label?: string }) {
+    const label = options.label ?? "Document"
+    validateDocumentFile(file, label)
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+        throw new ImageUploadError("Cloudinary is not configured for document uploads.", 500)
+    }
+
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true,
+    })
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: options.folder,
+                resource_type: "auto",
+                public_id: options.publicId ?? `${Date.now()}-${crypto.randomUUID()}`,
+                overwrite: false,
+            },
+            (error, result) => {
+                if (error || !result) reject(error ?? new Error("Unable to upload document."))
                 else resolve(result)
             }
         )

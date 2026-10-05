@@ -6,7 +6,7 @@ import {
     isCompetitionAdminRequest,
     validateCompetitionAdminPin,
 } from "@/lib/admin"
-import { normalizeCompetitionConfig, parseCompetitionDate, validateCashPrizeConfiguration, validateParaEntryConfiguration } from "@/lib/competition"
+import { normalizeCompetitionConfig, parseCompetitionDate, validateCashPrizeConfiguration, validateParaEntryConfiguration, validateRequiredDocuments } from "@/lib/competition"
 import { serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -93,6 +93,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         if (cashPrizeError) return Response.json({ error: cashPrizeError }, { status: 400 })
         const paraEntryError = validateParaEntryConfiguration(rawConfig)
         if (paraEntryError) return Response.json({ error: paraEntryError }, { status: 400 })
+        const requiredDocumentsError = validateRequiredDocuments(rawConfig)
+        if (requiredDocumentsError) return Response.json({ error: requiredDocumentsError }, { status: 400 })
         const config = normalizeCompetitionConfig(rawConfig)
         const startDate = parseCompetitionDate(String(body.startDate ?? existing.startDate.toISOString()))
         const endDate = parseCompetitionDate(String(body.endDate ?? existing.endDate.toISOString()))

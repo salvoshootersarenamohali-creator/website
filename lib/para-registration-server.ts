@@ -41,7 +41,10 @@ export async function setRegistrationParaStatus({
         return tx.registration.update({
             where: { id: registrationId },
             data: registrationData,
-            include: { entries: { orderBy: { createdAt: "asc" } } },
+            include: {
+                entries: { orderBy: { createdAt: "asc" } },
+                documents: { orderBy: { position: "asc" } },
+            },
         })
     })
 }

@@ -8,6 +8,7 @@ import {
     buildCompetitionSlotsForDateRange,
     CompetitionConfig,
     PublicCompetition,
+    RequiredDocumentDefinition,
     formatCompetitionDateRange,
     formatCompetitionDateLabel,
     getCompetitionCategories,
@@ -21,6 +22,19 @@ type AdminCompetition = PublicCompetition & {
 }
 
 type CompetitionAssetType = "hero" | "paymentQr"
+
+type CreateCompetitionForm = {
+    title: string
+    shortTitle: string
+    slug: string
+    startDate: string
+    endDate: string
+    competitionYear: number
+    adminPin: string
+    isPublished: boolean
+    registrationOpen: boolean
+    requiredDocuments: RequiredDocumentDefinition[]
+}
 
 function prepareCompetitionForEditing(competition: AdminCompetition): AdminCompetition {
     const startDate = competition.startDate.slice(0, 10)
@@ -41,7 +55,7 @@ function getLocalDateInputValue(date = new Date()) {
     return `${year}-${month}-${day}`
 }
 
-function createDefaultForm() {
+function createDefaultForm(): CreateCompetitionForm {
     const today = getLocalDateInputValue()
     return {
         title: "",
@@ -53,10 +67,11 @@ function createDefaultForm() {
         adminPin: "",
         isPublished: true,
         registrationOpen: false,
+        requiredDocuments: [],
     }
 }
 
-const emptyCreateForm = {
+const emptyCreateForm: CreateCompetitionForm = {
     title: "",
     shortTitle: "",
     slug: "",
@@ -66,6 +81,7 @@ const emptyCreateForm = {
     adminPin: "",
     isPublished: true,
     registrationOpen: false,
+    requiredDocuments: [],
 }
 
 function toTimeInputValue(value: string) {
@@ -114,7 +130,7 @@ export default function AdminCompetitionsPage() {
     const [activePin, setActivePin] = React.useState("")
     const [competitions, setCompetitions] = React.useState<AdminCompetition[]>([])
     const [selectedSlug, setSelectedSlug] = React.useState("")
-    const [createForm, setCreateForm] = React.useState(emptyCreateForm)
+    const [createForm, setCreateForm] = React.useState<CreateCompetitionForm>(emptyCreateForm)
     const [isLoading, setIsLoading] = React.useState(false)
     const [isCreating, setIsCreating] = React.useState(false)
     const [error, setError] = React.useState("")
@@ -264,6 +280,10 @@ export default function AdminCompetitionsPage() {
                                             title="Enter 4 to 8 digits."
                                         />
                                     </CreateField>
+                                    <RequiredDocumentsEditor
+                                        documents={createForm.requiredDocuments}
+                                        onChange={(requiredDocuments) => setCreateForm({ ...createForm, requiredDocuments })}
+                                    />
                                 </div>
                                 <div className="mt-4 grid gap-2">
                                     <Toggle
@@ -944,6 +964,13 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
             </div>
 
             <div>
+                <RequiredDocumentsEditor
+                    documents={config.requiredDocuments}
+                    onChange={(requiredDocuments) => onChange({ ...config, requiredDocuments })}
+                />
+            </div>
+
+            <div>
                 <h3 className="text-xl font-black">Relay Dates and Slots</h3>
                 <p className="mb-3 mt-1 text-sm text-white/45">Relay days follow the competition date range. Use the start and end date fields above to add or remove days.</p>
                 <div className="grid gap-3">
@@ -1001,6 +1028,69 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                 </div>
             </div>
         </div>
+    )
+}
+
+function RequiredDocumentsEditor({ documents, onChange }: { documents: RequiredDocumentDefinition[]; onChange: (documents: RequiredDocumentDefinition[]) => void }) {
+    const addDocument = () => {
+        const labels = new Set(documents.map((document) => document.label.toLocaleLowerCase("en")))
+        let nextNumber = 1
+        while (labels.has(`document ${nextNumber}`)) nextNumber += 1
+        const uniquePart = typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        onChange([...documents, { id: `document-${uniquePart}`, label: `Document ${nextNumber}` }])
+    }
+
+    const updateDocument = (index: number, label: string) => {
+        onChange(documents.map((document, documentIndex) => documentIndex === index ? { ...document, label } : document))
+    }
+
+    const moveDocument = (index: number, direction: -1 | 1) => {
+        const destination = index + direction
+        if (destination < 0 || destination >= documents.length) return
+        const nextDocuments = [...documents]
+        const selected = nextDocuments[index]
+        nextDocuments[index] = nextDocuments[destination]
+        nextDocuments[destination] = selected
+        onChange(nextDocuments)
+    }
+
+    return (
+        <section className="rounded-md border border-white/10 bg-black/25 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h3 className="font-black">Required Documents</h3>
+                    <p className="mt-1 text-xs text-white/45">Shooter photo is always required. Add up to 10 additional image or PDF uploads.</p>
+                </div>
+                <button type="button" onClick={addDocument} disabled={documents.length >= 10} className="admin-button disabled:opacity-40">
+                    <Plus className="h-4 w-4" /> Add document
+                </button>
+            </div>
+            <div className="mt-3 space-y-2">
+                {documents.map((document, index) => (
+                    <div key={document.id} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                        <input
+                            required
+                            maxLength={80}
+                            value={document.label}
+                            onChange={(event) => updateDocument(index, event.target.value)}
+                            className="field"
+                            placeholder="Document name"
+                            aria-label={`Required document ${index + 1}`}
+                        />
+                        <div className="flex gap-2">
+                            <button type="button" disabled={index === 0} onClick={() => moveDocument(index, -1)} className="admin-button disabled:opacity-40">Up</button>
+                            <button type="button" disabled={index === documents.length - 1} onClick={() => moveDocument(index, 1)} className="admin-button disabled:opacity-40">Down</button>
+                            <button type="button" onClick={() => onChange(documents.filter((_, documentIndex) => documentIndex !== index))} className="admin-button text-red-200" aria-label={`Remove ${document.label}`}>
+                                <Trash2 className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                {!documents.length && <p className="text-sm text-white/45">No additional documents required.</p>}
+            </div>
+        </section>
     )
 }
 

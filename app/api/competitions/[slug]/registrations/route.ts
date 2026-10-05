@@ -11,6 +11,7 @@ import {
     resolveRegistrationEntries,
 } from "@/lib/registration-validation"
 import { isCompetitionRegistrationAvailable, normalizeCompetitionConfig } from "@/lib/competition"
+import { readRequiredDocumentFiles, uploadRequiredDocuments } from "@/lib/registration-documents"
 
 type RouteContext = {
     params: Promise<{ slug: string }>
@@ -46,17 +47,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
         const studentPhoto = formData.get("studentPhoto")
         const screenshot = formData.get("paymentScreenshot")
-        const birthCertificate = formData.get("birthCertificate")
-        const aadhaarCard = formData.get("aadhaarCard")
+        const requiredDocumentFiles = readRequiredDocumentFiles(formData, config.requiredDocuments)
 
         if (!(studentPhoto instanceof File) || studentPhoto.size <= 0) {
             return Response.json({ error: "Please upload the shooter photo." }, { status: 400 })
-        }
-        if (config.requiredDocuments.birthCertificate && (!(birthCertificate instanceof File) || birthCertificate.size <= 0)) {
-            return Response.json({ error: "Please upload the date of birth certificate." }, { status: 400 })
-        }
-        if (config.requiredDocuments.aadhaarCard && (!(aadhaarCard instanceof File) || aadhaarCard.size <= 0)) {
-            return Response.json({ error: "Please upload the Aadhaar card copy." }, { status: 400 })
         }
         assertPublicPayment(data, config)
         const resolvedEntries = resolveRegistrationEntries(data, config)
@@ -71,18 +65,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 label: "Payment screenshot",
             })
             : null
-        const birthCertificatePath = birthCertificate instanceof File && birthCertificate.size > 0
-            ? await uploadImageToCloudinary(birthCertificate, {
-                folder: `salvo/${competition.slug}/birth-certificates`,
-                label: "Date of birth certificate",
-            })
-            : null
-        const aadhaarCardPath = aadhaarCard instanceof File && aadhaarCard.size > 0
-            ? await uploadImageToCloudinary(aadhaarCard, {
-                folder: `salvo/${competition.slug}/aadhaar-cards`,
-                label: "Aadhaar card copy",
-            })
-            : null
+        const uploadedDocuments = await uploadRequiredDocuments(requiredDocumentFiles, competition.slug)
         const amount = getResolvedRegistrationAmount(resolvedEntries)
 
         const registration = await prisma.registration.create({
@@ -104,8 +87,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 utrNumber: data.paymentMode === "upi" ? data.utrNumber : null,
                 screenshotPath: screenshotFile,
                 studentPhotoPath: studentPhotoFile,
-                birthCertificatePath,
-                aadhaarCardPath,
+                documents: {
+                    create: uploadedDocuments,
+                },
                 entries: {
                     create: resolvedEntries.map((entry) => ({
                         eventId: entry.eventId,
@@ -118,7 +102,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                     })),
                 },
             },
-            include: { entries: true },
+            include: { entries: true, documents: { orderBy: { position: "asc" } } },
         })
 
         return Response.json({ registration })

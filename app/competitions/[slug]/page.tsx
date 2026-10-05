@@ -78,9 +78,8 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
         : "Cash / UPI"
     const requiredDocuments = [
         "Shooter photo",
-        competition.config.requiredDocuments.birthCertificate ? "Date of birth certificate" : null,
-        competition.config.requiredDocuments.aadhaarCard ? "Aadhaar card copy" : null,
-    ].filter(Boolean)
+        ...competition.config.requiredDocuments.map((document) => document.label),
+    ]
 
     return (
         <div className="min-h-screen bg-black text-white">

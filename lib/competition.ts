@@ -46,9 +46,9 @@ export type CompetitionCategoryConfig = {
     appliesToAllEligible?: boolean
 }
 
-export type RequiredDocumentConfig = {
-    birthCertificate: boolean
-    aadhaarCard: boolean
+export type RequiredDocumentDefinition = {
+    id: string
+    label: string
 }
 
 export type DetailDefaultsConfig = {
@@ -74,7 +74,7 @@ export type CompetitionConfig = {
     awardsNote: string
     matchStartTime: string
     minAge: number | null
-    requiredDocuments: RequiredDocumentConfig
+    requiredDocuments: RequiredDocumentDefinition[]
     requiresGuardianDetails: boolean
     requiresAddress: boolean
     teamEntriesEnabled: boolean
@@ -131,6 +131,8 @@ export const DEFAULT_COMPETITION_YEAR = 2026
 export const ENTRY_FEE = 1000
 export const LITTLE_CHAMP_ENTRY_FEE = 800
 export const DEFAULT_TEAM_ENTRY_FEE = 900
+export const MAX_REQUIRED_DOCUMENTS = 10
+export const MAX_DOCUMENT_LABEL_LENGTH = 80
 
 export const competitionEvents: CompetitionEvent[] = [
     {
@@ -272,10 +274,7 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     awardsNote: "All winners receive an official event medal, championship trophy, and premium gift hamper in addition to the listed cash prize.",
     matchStartTime: "8:00 AM",
     minAge: null,
-    requiredDocuments: {
-        birthCertificate: false,
-        aadhaarCard: false,
-    },
+    requiredDocuments: [],
     requiresGuardianDetails: false,
     requiresAddress: false,
     teamEntriesEnabled: true,
@@ -314,12 +313,68 @@ function readPositiveInteger(value: unknown, fallback: number | null) {
     return Number.isInteger(number) && number >= 0 ? number : fallback
 }
 
-function readRequiredDocuments(value: unknown): RequiredDocumentConfig {
-    const raw = typeof value === "object" && value !== null ? value as Partial<RequiredDocumentConfig> : {}
-    return {
-        birthCertificate: raw.birthCertificate === true,
-        aadhaarCard: raw.aadhaarCard === true,
+function slugifyDocumentId(value: string) {
+    return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+}
+
+function readRequiredDocuments(value: unknown): RequiredDocumentDefinition[] {
+    if (!Array.isArray(value)) {
+        const legacy = typeof value === "object" && value !== null
+            ? value as { birthCertificate?: unknown; aadhaarCard?: unknown }
+            : {}
+        return [
+            legacy.birthCertificate === true ? { id: "birth-certificate", label: "Date of Birth Certificate" } : null,
+            legacy.aadhaarCard === true ? { id: "aadhaar-card", label: "Aadhaar Card Copy" } : null,
+        ].filter((document): document is RequiredDocumentDefinition => document !== null)
     }
+
+    const seenIds = new Set<string>()
+    return value.slice(0, MAX_REQUIRED_DOCUMENTS).flatMap((document, index) => {
+        if (typeof document !== "object" || document === null) return []
+        const candidate = document as { id?: unknown; label?: unknown }
+        const label = String(candidate.label ?? "").trim().slice(0, MAX_DOCUMENT_LABEL_LENGTH)
+        const baseId = slugifyDocumentId(String(candidate.id ?? "")) || slugifyDocumentId(label) || `document-${index + 1}`
+        let id = baseId
+        let suffix = 2
+        while (seenIds.has(id)) {
+            id = `${baseId}-${suffix}`
+            suffix += 1
+        }
+        if (!label) return []
+        seenIds.add(id)
+        return [{ id, label }]
+    })
+}
+
+export function validateRequiredDocuments(value: unknown) {
+    if (typeof value !== "object" || value === null) return null
+    const raw = value as Record<string, unknown>
+    if (raw.requiredDocuments === undefined) return null
+    if (!Array.isArray(raw.requiredDocuments)) {
+        const legacy = raw.requiredDocuments
+        if (typeof legacy === "object" && legacy !== null && !Array.isArray(legacy)) return null
+        return "Required documents must be a list."
+    }
+    if (raw.requiredDocuments.length > MAX_REQUIRED_DOCUMENTS) {
+        return `Add no more than ${MAX_REQUIRED_DOCUMENTS} required documents.`
+    }
+
+    const ids = new Set<string>()
+    const labels = new Set<string>()
+    for (const document of raw.requiredDocuments) {
+        if (typeof document !== "object" || document === null) return "Every required document must be valid."
+        const candidate = document as Record<string, unknown>
+        const id = slugifyDocumentId(String(candidate.id ?? ""))
+        const label = String(candidate.label ?? "").trim()
+        if (!id) return "Every required document must have a stable ID."
+        if (!label) return "Every required document must have a label."
+        if (label.length > MAX_DOCUMENT_LABEL_LENGTH) return `Document labels must be ${MAX_DOCUMENT_LABEL_LENGTH} characters or fewer.`
+        const normalizedLabel = label.toLocaleLowerCase("en")
+        if (ids.has(id) || labels.has(normalizedLabel)) return "Required document names must be unique."
+        ids.add(id)
+        labels.add(normalizedLabel)
+    }
+    return null
 }
 
 function readDetailDefaults(value: unknown): DetailDefaultsConfig {
@@ -874,4 +929,13 @@ export function formatCompetitionDateRange(startDate: string | Date, endDate: st
 
     const formatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: sameYear ? undefined : "numeric", timeZone: "UTC" })
     return `${formatter.format(start)} - ${formatter.format(end)}${sameYear ? ` ${start.getUTCFullYear()}` : ""}`
+}
+
+export function getCompetitionBoundaryDates(startDate: string | Date, endDate: string | Date) {
+    const start = parseCompetitionDate(startDate)
+    const end = parseCompetitionDate(endDate)
+    if (!start || !end) return []
+    const startValue = start.toISOString().slice(0, 10)
+    const endValue = end.toISOString().slice(0, 10)
+    return startValue === endValue ? [startValue] : [startValue, endValue]
 }

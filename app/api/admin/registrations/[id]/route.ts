@@ -169,7 +169,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     amount,
                     utrNumber: nextPaymentStatus === "Paid" && nextPaymentMode === "upi" ? data.utrNumber : null,
                 },
-                include: { entries: { orderBy: { createdAt: "asc" } } },
+                include: {
+                    entries: { orderBy: { createdAt: "asc" } },
+                    documents: { orderBy: { position: "asc" } },
+                },
             })
         })
 

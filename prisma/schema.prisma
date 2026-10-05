@@ -35,11 +35,27 @@ model Registration {
   updatedAt      DateTime            @updatedAt
   competition    Competition          @relation(fields: [competitionId], references: [id], onDelete: Restrict)
   entries        RegistrationEntry[]
+  documents      RegistrationDocument[]
   teamMemberships TeamEntryMember[]
 
   @@index([competitionId])
   @@index([preferredDate])
   @@index([paymentStatus])
+}
+
+model RegistrationDocument {
+  id             String       @id @default(cuid())
+  registrationId String
+  documentKey    String
+  label          String
+  path           String
+  mimeType       String
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@unique([registrationId, documentKey])
+  @@index([registrationId])
 }
 
 model Competition {
