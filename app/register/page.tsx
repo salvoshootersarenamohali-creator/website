@@ -362,7 +362,7 @@ export default function RegisterPage() {
                 ) : (
                     <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[0.95fr_1.4fr]">
                         <section className="space-y-6">
-                            <Panel title="Shooter Details">
+                            <Panel title={competition?.title ?? "Shooter Details"}>
                                 <Field label="Full Name" required>
                                     <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                                 </Field>
