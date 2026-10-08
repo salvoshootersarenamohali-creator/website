@@ -313,7 +313,7 @@ export default function RegisterPage() {
                             )}
                         </div>
                         <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
-                            Registeration for {competition?.title ?? "Competition"}
+                            Registration for {competition?.title ?? "Competition"}
                         </h1>
                         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/70">
                             Select your event categories, choose a relay slot, complete payment, and generate your competitor card.
@@ -362,7 +362,7 @@ export default function RegisterPage() {
                 ) : (
                     <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[0.95fr_1.4fr]">
                         <section className="space-y-6">
-                            <Panel title={competition ? `${competition.title} Registeration` : "Shooter Details"}>
+                            <Panel title={competition ? `${competition.title} Registration` : "Shooter Details"}>
                                 <Field label="Full Name" required>
                                     <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                                 </Field>
