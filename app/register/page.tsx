@@ -88,6 +88,19 @@ function formatDateLabel(value: string, competition: PublicCompetition | null) {
     return option?.label ?? value
 }
 
+function formatCompetitionDateRangeLabel(dates: string[]) {
+    if (dates.length === 0) return ""
+    if (dates.length === 1) return formatCompetitionDateLabel(dates[0])
+
+    const [startDate, endDate] = dates
+    const startLabel = formatCompetitionDateLabel(startDate)
+    const endLabel = formatCompetitionDateLabel(endDate)
+    const startYear = startDate.slice(0, 4)
+    const endYear = endDate.slice(0, 4)
+
+    return `${startYear === endYear ? startLabel.replace(/\s+\d{4}$/, "") : startLabel} - ${endLabel}`
+}
+
 export default function RegisterPage() {
     const pathname = usePathname()
     const competitionSlug = getCompetitionSlugFromPath(pathname)
@@ -319,12 +332,12 @@ export default function RegisterPage() {
                             Select your event categories, choose a relay slot, complete payment, and generate your competitor card.
                         </p>
                         <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                            {boundaryDates.map((date) => (
-                                <div key={date} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                            {boundaryDates.length > 0 && (
+                                <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4 sm:col-span-2">
                                     <CalendarDays className="mb-3 h-5 w-5 text-[#D4AF37]" />
-                                    <p className="text-xl font-bold">{formatCompetitionDateLabel(date)}</p>
+                                    <p className="text-xl font-bold">{formatCompetitionDateRangeLabel(boundaryDates)}</p>
                                 </div>
-                            ))}
+                            )}
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
                             <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={isCashOnly ? "Cash only" : "Cash or UPI"} />
