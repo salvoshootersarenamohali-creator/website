@@ -115,6 +115,8 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
     if (!isPaymentMode(data.paymentMode) || !config.allowedPaymentModes.includes(data.paymentMode)) {
         validationError(config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
             ? "Only cash payments are accepted for this competition."
+            : config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "upi"
+                ? "Only UPI/online payments are accepted for this competition."
             : "Please select a valid payment mode.")
     }
     const selectedDay = config.slotOptions.find((slot) => slot.date === data.preferredDate)
@@ -173,6 +175,8 @@ export function assertPublicPayment(data: Pick<IncomingRegistrationData, "paymen
     if (!isPaymentMode(data.paymentMode) || !config.allowedPaymentModes.includes(data.paymentMode)) {
         validationError(config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
             ? "Only cash payments are accepted for this competition."
+            : config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "upi"
+                ? "Only UPI/online payments are accepted for this competition."
             : "Please select a valid payment mode.")
     }
     if (data.paymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {

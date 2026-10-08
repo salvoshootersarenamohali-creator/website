@@ -121,6 +121,7 @@ export default function RegisterPage() {
     const availableSlots = config.slotOptions
     const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
     const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
+    const isUpiOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "upi"
     const requiredDocuments = config.requiredDocuments
     const boundaryDates = competition ? getCompetitionBoundaryDates(competition.startDate, competition.endDate) : []
     const documentSummary = ["Shooter photo", ...requiredDocuments.map((document) => document.label)].join(", ")
@@ -340,7 +341,7 @@ export default function RegisterPage() {
                             )}
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={isCashOnly ? "Cash only" : "Cash or UPI"} />
+                            <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={isCashOnly ? "Cash only" : isUpiOnly ? "UPI only" : "Cash or UPI"} />
                             <TopNote icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition?.venue ?? "Competition venue"} />
                             <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={documentSummary} />
                         </div>
@@ -466,7 +467,7 @@ export default function RegisterPage() {
                                             : "Para shooters should contact the organizer before making the required online payment."}
                                     </p>
                                 </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
+                                <div className={`grid gap-3 ${config.allowedPaymentModes.length > 1 ? "sm:grid-cols-2" : ""}`}>
                                     {config.allowedPaymentModes.map((mode) => (
                                         <button
                                             type="button"

@@ -73,8 +73,8 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
     const registrationAvailable = isCompetitionRegistrationAvailable(competition)
     const statusLabel = getCompetitionStatusLabel(competition)
     const adminHref = competition.slug === "faridkot-2026-27" ? "/admin/faridkot" : null
-    const paymentLabel = competition.config.allowedPaymentModes.length === 1 && competition.config.allowedPaymentModes[0] === "cash"
-        ? "Cash only"
+    const paymentLabel = competition.config.allowedPaymentModes.length === 1
+        ? competition.config.allowedPaymentModes[0] === "cash" ? "Cash only" : "UPI only"
         : "Cash / UPI"
     const requiredDocuments = [
         "Shooter photo",
