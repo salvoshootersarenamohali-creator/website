@@ -1,7 +1,7 @@
 export type Discipline = "pistol" | "rifle"
 export type RuleSet = "NR" | "ISSF"
 export type Gender = "male" | "female"
-export type PaymentMode = "cash" | "upi"
+export type PaymentMode = "cash" | "upi" | "neft" | "imps" | "rtgs"
 export type CategoryGender = Gender | "open"
 export type PaymentStatus = "Pending" | "Paid"
 export type CashPrizeMode = "event-wide" | "custom-groups" | "none"
@@ -55,6 +55,14 @@ export type DetailDefaultsConfig = {
     firstSightingTimes: Record<RuleSet, string>
 }
 
+export type PaymentDetails = {
+    upiId: string
+    accountName: string
+    accountNumber: string
+    ifsc: string
+    bankName: string
+}
+
 export type CompetitionConfig = {
     competitionYear: number
     entryFee: number
@@ -66,6 +74,7 @@ export type CompetitionConfig = {
     slotOptions: SlotOption[]
     feesByRuleSet: Record<RuleSet, number | null>
     allowedPaymentModes: PaymentMode[]
+    paymentDetails: PaymentDetails | null
     cashPrizeMode: CashPrizeMode
     cashPrizeTitle: string
     cashPrizeNote: string
@@ -267,6 +276,7 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     slotOptions,
     feesByRuleSet: { NR: null, ISSF: null },
     allowedPaymentModes: ["upi", "cash"],
+    paymentDetails: null,
     cashPrizeMode: "event-wide",
     cashPrizeTitle: "Cash Prize Schedule",
     cashPrizeNote: "",
@@ -566,10 +576,36 @@ function readSlots(value: unknown) {
 
 function readPaymentModes(value: unknown) {
     const modes = Array.isArray(value)
-        ? value.filter((mode): mode is PaymentMode => mode === "cash" || mode === "upi")
+        ? value.filter((mode): mode is PaymentMode => mode === "cash" || mode === "upi" || mode === "neft" || mode === "imps" || mode === "rtgs")
         : []
     const unique = Array.from(new Set(modes))
     return unique.length ? unique : defaultCompetitionConfig.allowedPaymentModes
+}
+
+function readPaymentDetails(value: unknown): PaymentDetails | null {
+    if (typeof value !== "object" || value === null) return null
+    const raw = value as Partial<Record<keyof PaymentDetails, unknown>>
+    const details = {
+        upiId: String(raw.upiId ?? "").trim(),
+        accountName: String(raw.accountName ?? "").trim(),
+        accountNumber: String(raw.accountNumber ?? "").trim(),
+        ifsc: String(raw.ifsc ?? "").trim(),
+        bankName: String(raw.bankName ?? "").trim(),
+    }
+    return Object.values(details).some(Boolean) ? details : null
+}
+
+export function isOnlinePaymentMode(mode: string): mode is Exclude<PaymentMode, "cash"> {
+    return mode === "upi" || mode === "neft" || mode === "imps" || mode === "rtgs"
+}
+
+export function getPaymentModeLabel(mode: string) {
+    if (mode === "upi") return "UPI"
+    if (mode === "neft") return "NEFT"
+    if (mode === "imps") return "IMPS"
+    if (mode === "rtgs") return "RTGS"
+    if (mode === "cash") return "Cash"
+    return mode
 }
 
 function readFeesByRuleSet(value: unknown): Record<RuleSet, number | null> {
@@ -607,6 +643,7 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
         slotOptions: slots.length ? slots : slotOptions,
         feesByRuleSet: readFeesByRuleSet(raw.feesByRuleSet),
         allowedPaymentModes: readPaymentModes(raw.allowedPaymentModes),
+        paymentDetails: readPaymentDetails(raw.paymentDetails),
         cashPrizeMode,
         cashPrizeTitle: String(raw.cashPrizeTitle ?? defaultCompetitionConfig.cashPrizeTitle).trim() || defaultCompetitionConfig.cashPrizeTitle,
         cashPrizeNote: String(raw.cashPrizeNote ?? "").trim(),

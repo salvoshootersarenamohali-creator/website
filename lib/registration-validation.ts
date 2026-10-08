@@ -7,6 +7,7 @@ import {
     getEligibleCategories,
     getEntryFee,
     getEventById,
+    isOnlinePaymentMode,
 } from "@/lib/competition"
 
 export type IncomingRegistrationEntry = {
@@ -184,11 +185,21 @@ export function assertPublicPayment(data: Pick<IncomingRegistrationData, "paymen
                 ? "Only UPI/online payments are accepted for this competition."
             : "Please select a valid payment mode.")
     }
-    if (data.paymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
-        validationError("UPI payments require a 12-digit UTR/UPI reference number.")
-    }
+    const referenceError = getPaymentReferenceError(data.paymentMode, data.utrNumber)
+    if (referenceError) validationError(referenceError)
 }
 
 export function isPaymentMode(value: string): value is PaymentMode {
-    return value === "cash" || value === "upi"
+    return value === "cash" || isOnlinePaymentMode(value)
+}
+
+export function getPaymentReferenceError(mode: string, reference: string): string | null {
+    const value = reference.trim()
+    if (mode === "upi" && !/^\d{12}$/.test(value)) {
+        return "UPI payments require a 12-digit UTR/UPI reference number."
+    }
+    if (mode !== "upi" && isOnlinePaymentMode(mode) && (!value || value.length > 64)) {
+        return "Bank transfers require a transaction reference/UTR of up to 64 characters."
+    }
+    return null
 }

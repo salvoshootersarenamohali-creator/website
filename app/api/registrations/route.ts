@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { ImageUploadError, uploadImageToCloudinary } from "@/lib/cloudinary-upload"
-import { isCompetitionRegistrationAvailable, normalizeCompetitionConfig } from "@/lib/competition"
+import { isCompetitionRegistrationAvailable, isOnlinePaymentMode, normalizeCompetitionConfig } from "@/lib/competition"
 import { getActiveCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import {
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
             folder: "salvo/student-photos",
             label: "Student photo",
         })
-        const screenshotFile = data.paymentMode === "upi" && screenshot instanceof File && screenshot.size > 0
+        const screenshotFile = isOnlinePaymentMode(data.paymentMode) && screenshot instanceof File && screenshot.size > 0
             ? await uploadImageToCloudinary(screenshot, {
                 folder: "salvo/payment-screenshots",
                 label: "Payment screenshot",
@@ -76,9 +76,9 @@ export async function POST(request: NextRequest) {
                 preferredDate: new Date(`${data.preferredDate}T00:00:00`),
                 preferredSlot: data.preferredSlot,
                 paymentMode: data.paymentMode,
-                paymentStatus: data.paymentMode === "upi" ? "Paid" : "Pending",
+                paymentStatus: isOnlinePaymentMode(data.paymentMode) ? "Paid" : "Pending",
                 amount,
-                utrNumber: data.paymentMode === "upi" ? data.utrNumber : null,
+                utrNumber: isOnlinePaymentMode(data.paymentMode) ? data.utrNumber : null,
                 screenshotPath: screenshotFile,
                 studentPhotoPath: studentPhotoFile,
                 documents: {

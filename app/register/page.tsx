@@ -21,11 +21,13 @@ import {
     getEventById,
     getCompetitionStatusLabel,
     getCompetitionBoundaryDates,
+    getPaymentModeLabel,
     isCompetitionRegistrationAvailable,
+    isOnlinePaymentMode,
     normalizeCompetitionConfig,
     slotOptions,
 } from "@/lib/competition"
-import { toProperCase } from "@/lib/registration-validation"
+import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 
 type SavedEntry = {
     id: string
@@ -123,7 +125,8 @@ export default function RegisterPage() {
     const availableSlots = config.slotOptions
     const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
     const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
-    const isUpiOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "upi"
+    const paymentSummary = config.allowedPaymentModes.map(getPaymentModeLabel).join(" / ")
+        + (config.allowedPaymentModes.length === 1 ? " only" : "")
     const requiredDocuments = config.requiredDocuments
     const boundaryDates = competition ? getCompetitionBoundaryDates(competition.startDate, competition.endDate) : []
     const documentSummary = ["Shooter photo", ...requiredDocuments.map((document) => document.label)].join(", ")
@@ -152,7 +155,7 @@ export default function RegisterPage() {
                         preferredDate: firstSlot?.date ?? current.preferredDate,
                         preferredSlot: firstSlot?.slots[0] ?? current.preferredSlot,
                         paymentMode: firstPaymentMode,
-                        utrNumber: firstPaymentMode === "upi" ? current.utrNumber : "",
+                        utrNumber: "",
                     }))
                     if (!competitionSlug) window.location.replace(`/competitions/${normalized.slug}/register`)
                 }
@@ -183,7 +186,7 @@ export default function RegisterPage() {
     React.useEffect(() => {
         if (!config.allowedPaymentModes.includes(form.paymentMode)) {
             const nextMode = config.allowedPaymentModes[0] ?? "cash"
-            setForm((current) => ({ ...current, paymentMode: nextMode, utrNumber: nextMode === "upi" ? current.utrNumber : "" }))
+            setForm((current) => ({ ...current, paymentMode: nextMode, utrNumber: "" }))
         }
     }, [config.allowedPaymentModes, form.paymentMode])
 
@@ -259,8 +262,9 @@ export default function RegisterPage() {
                 return
             }
         }
-        if (form.paymentMode === "upi" && !/^\d{12}$/.test(form.utrNumber)) {
-            setError("Please enter a 12-digit UTR/UPI reference number.")
+        const referenceError = getPaymentReferenceError(form.paymentMode, form.utrNumber)
+        if (referenceError) {
+            setError(referenceError)
             return
         }
 
@@ -343,7 +347,7 @@ export default function RegisterPage() {
                             )}
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={isCashOnly ? "Cash only" : isUpiOnly ? "UPI only" : "Cash or UPI"} />
+                            <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={paymentSummary} />
                             <TopNote icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition?.venue ?? "Competition venue"} />
                             <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={documentSummary} />
                         </div>
@@ -479,12 +483,12 @@ export default function RegisterPage() {
                                         <button
                                             type="button"
                                             key={mode}
-                                            onClick={() => setForm({ ...form, paymentMode: mode })}
+                                            onClick={() => setForm({ ...form, paymentMode: mode, utrNumber: mode === form.paymentMode ? form.utrNumber : "" })}
                                             className={`rounded-md border px-4 py-3 text-left transition ${form.paymentMode === mode ? "border-[#D4AF37] bg-[#D4AF37]/15 text-[#E5C558]" : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/30"}`}
                                         >
                                             <CreditCard className="mb-2 h-5 w-5" />
-                                            <span className="font-bold uppercase">{mode === "upi" ? "UPI / Online" : "Cash"}</span>
-                                            <span className="mt-1 block text-xs text-white/55">{mode === "cash" ? "Marked pending" : "Requires UTR"}</span>
+                                            <span className="font-bold uppercase">{getPaymentModeLabel(mode)}</span>
+                                            <span className="mt-1 block text-xs text-white/55">{mode === "cash" ? "Marked pending" : mode === "upi" ? "Requires 12-digit UTR" : mode === "rtgs" ? "Minimum transfer ₹2,00,000" : "Requires transfer reference"}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -493,15 +497,42 @@ export default function RegisterPage() {
                                         Only cash payments are accepted for this public registration. Admins can reconcile payment later from the competition dashboard.
                                     </div>
                                 )}
+                                {form.paymentMode === "rtgs" && (
+                                    <p className="mt-4 text-sm text-amber-200">RTGS transfers require a minimum of ₹2,00,000. For smaller payments, use UPI, NEFT, or IMPS.</p>
+                                )}
 
-                                {form.paymentMode === "upi" && (
-                                    <div className="mt-5 grid gap-5 sm:grid-cols-[180px_1fr]">
-                                        <div className="rounded-md border border-white/10 bg-white p-3">
-                                            <Image src={competition?.paymentQrPath || "/upi-scanner.png"} alt="UPI payment QR scanner" width={180} height={220} className="h-auto w-full" />
-                                        </div>
+                                {config.paymentDetails && (
+                                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                                        {config.paymentDetails.upiId && (
+                                            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#D4AF37]">UPI ID</p>
+                                                <p className="mt-2 break-all font-mono text-base font-bold text-white select-all">{config.paymentDetails.upiId}</p>
+                                            </div>
+                                        )}
+                                        {config.paymentDetails.accountNumber && (
+                                            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#D4AF37]">NEFT / IMPS / RTGS Account Details</p>
+                                                <dl className="mt-3 space-y-2 text-sm">
+                                                    <div><dt className="text-white/50">Account Name</dt><dd className="font-semibold text-white select-all">{config.paymentDetails.accountName}</dd></div>
+                                                    <div><dt className="text-white/50">Account No.</dt><dd className="break-all font-mono font-semibold text-white select-all">{config.paymentDetails.accountNumber}</dd></div>
+                                                    <div><dt className="text-white/50">IFSC</dt><dd className="font-mono font-semibold text-white select-all">{config.paymentDetails.ifsc}</dd></div>
+                                                    <div><dt className="text-white/50">Bank</dt><dd className="font-semibold text-white">{config.paymentDetails.bankName}</dd></div>
+                                                </dl>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {isOnlinePaymentMode(form.paymentMode) && (
+                                    <div className={`mt-5 grid gap-5 ${form.paymentMode === "upi" ? "sm:grid-cols-[180px_1fr]" : ""}`}>
+                                        {form.paymentMode === "upi" && (
+                                            <div className="rounded-md border border-white/10 bg-white p-3">
+                                                <Image src={competition?.paymentQrPath || "/upi-scanner.png"} alt="UPI payment QR scanner" width={180} height={220} className="h-auto w-full" />
+                                            </div>
+                                        )}
                                         <div className="space-y-4">
-                                            <Field label="12-digit UTR / UPI Reference" required>
-                                                <input required inputMode="numeric" maxLength={12} value={form.utrNumber} onChange={(event) => setForm({ ...form, utrNumber: event.target.value.replace(/\D/g, "") })} className="field" />
+                                            <Field label={form.paymentMode === "upi" ? "12-digit UTR / UPI Reference" : `${getPaymentModeLabel(form.paymentMode)} Transaction Reference / UTR`} required>
+                                                <input required inputMode={form.paymentMode === "upi" ? "numeric" : "text"} maxLength={form.paymentMode === "upi" ? 12 : 64} value={form.utrNumber} onChange={(event) => setForm({ ...form, utrNumber: form.paymentMode === "upi" ? event.target.value.replace(/\D/g, "") : event.target.value })} className="field" />
                                             </Field>
                                             <Field label="Payment Screenshot (optional)">
                                                 <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setPaymentScreenshot(event.target.files?.[0] ?? null)} className="field file:text-white" />
@@ -789,7 +820,7 @@ function FaridkotProvisionalForm({ registration, competition }: { registration: 
                 </div>
                 <div className="mt-6 grid gap-2 text-sm">
                     <p>Documents uploaded: Shooter photo{registration.documents.map((document) => `, ${document.label}`).join("")}.</p>
-                    <p>Payment mode: {registration.paymentMode === "cash" ? "Cash" : "Online"} | Amount: {formatCurrency(registration.amount)} | Status: {registration.paymentStatus}</p>
+                    <p>Payment mode: {getPaymentModeLabel(registration.paymentMode)} | Amount: {formatCurrency(registration.amount)} | Status: {registration.paymentStatus}</p>
                     <p>Match starts at {competition?.config.matchStartTime ?? "8:00 AM"}.</p>
                 </div>
                 <div className="mt-16 flex justify-between text-lg">
@@ -840,7 +871,7 @@ function CardBody({ registration, competition, title }: { registration: SavedReg
                     </div>
                 </div>
                 <CardLine label="5. Slot" value={registration.preferredSlot} />
-                <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${registration.paymentMode === "cash" ? "Cash - Pending" : "Online - Paid"})`} />
+                <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${getPaymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`} />
             </div>
             <div className="mt-12 flex justify-between">
                 <p>Official Signature</p>

@@ -9,15 +9,18 @@ import {
     CompetitionConfig,
     Discipline,
     Gender,
+    PaymentMode,
     PublicCompetition,
     SelectedEntry,
     defaultCompetitionConfig,
     formatCurrency,
+    getPaymentModeLabel,
     getAgeFromDobYear,
     getEligibleCategories,
     getEntryFee,
     getEventById,
     getScoringSeriesCount,
+    isOnlinePaymentMode,
     normalizeCompetitionConfig,
     LITTLE_CHAMP_ENTRY_FEE,
 } from "@/lib/competition"
@@ -39,12 +42,11 @@ import {
     isTopResultCategory,
     rankRows,
 } from "@/lib/results"
-import { toProperCase } from "@/lib/registration-validation"
+import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { getRegistrationParaState } from "@/lib/para-registration"
 import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
-type PaymentMode = "cash" | "upi"
 
 type AdminEntry = {
     id: string
@@ -172,7 +174,7 @@ function paymentBadgeClass(status: PaymentStatus) {
 }
 
 function paymentModeLabel(mode: PaymentMode) {
-    return mode === "upi" ? "Online" : "Cash"
+    return getPaymentModeLabel(mode)
 }
 
 function formatPaymentAmount(registration: AdminRegistration) {
@@ -1766,7 +1768,7 @@ function RegistrationDetail({
             <div className="mb-6 grid gap-3 md:grid-cols-4">
                 <Stat label="Amount" value={formatCurrency(registration.amount)} />
                 <Stat label="Payment" value={`${registration.paymentMode} / ${registration.paymentStatus}`} />
-                <Stat label="UTR" value={registration.utrNumber ?? "-"} />
+                <Stat label="Payment Reference" value={registration.utrNumber ?? "-"} />
                 <Stat label="Confirmed By" value={registration.paymentConfirmedBy ?? "-"} />
             </div>
             {(config.requiresGuardianDetails || config.requiresAddress) && (
@@ -2014,7 +2016,7 @@ function RegistrationEditForm({
         const category = categories.find((item) => item.code === entry.categoryCode)
         return sum + (category ? getEntryFee(category, config, isSelectedEntryPara(entry)) : 0)
     }, 0)
-    const isOnlinePaid = form.paymentMode === "upi" && form.paymentStatus === "Paid"
+    const isOnlinePaid = isOnlinePaymentMode(form.paymentMode) && form.paymentStatus === "Paid"
 
     React.useEffect(() => {
         if (!selectedSlots.includes(form.preferredSlot)) {
@@ -2064,8 +2066,9 @@ function RegistrationEditForm({
             setError("Remove or replace categories that are no longer eligible for this shooter.")
             return
         }
-        if (isOnlinePaid && !/^\d{12}$/.test(form.utrNumber)) {
-            setError("Online paid registrations require a 12-digit UTR number.")
+        const referenceError = isOnlinePaid ? getPaymentReferenceError(form.paymentMode, form.utrNumber) : null
+        if (referenceError) {
+            setError(referenceError)
             return
         }
         if (removedScoredEntries.length && !allowScoredEntryRemoval) {
@@ -2171,9 +2174,12 @@ function RegistrationEditForm({
                 </label>
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Payment Mode</span>
-                    <select value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value as PaymentMode })} className="field">
+                    <select value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value as PaymentMode, utrNumber: "" })} className="field">
                         <option value="cash">Cash</option>
-                        <option value="upi">Online</option>
+                        <option value="upi">UPI</option>
+                        <option value="neft">NEFT</option>
+                        <option value="imps">IMPS</option>
+                        <option value="rtgs">RTGS</option>
                     </select>
                 </label>
                 <label>
@@ -2186,12 +2192,12 @@ function RegistrationEditForm({
                 </label>
                 {isOnlinePaid && (
                     <label>
-                        <span className="mb-2 block text-sm font-semibold text-white/70">12-digit UTR</span>
+                        <span className="mb-2 block text-sm font-semibold text-white/70">{form.paymentMode === "upi" ? "12-digit UTR" : "Transaction Reference / UTR"}</span>
                         <input
                             value={form.utrNumber}
-                            onChange={(event) => setForm({ ...form, utrNumber: event.target.value.replace(/\D/g, "").slice(0, 12) })}
+                            onChange={(event) => setForm({ ...form, utrNumber: form.paymentMode === "upi" ? event.target.value.replace(/\D/g, "").slice(0, 12) : event.target.value.slice(0, 64) })}
                             className="field"
-                            inputMode="numeric"
+                            inputMode={form.paymentMode === "upi" ? "numeric" : "text"}
                         />
                     </label>
                 )}
@@ -2266,8 +2272,8 @@ function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onChan
     const [utrNumber, setUtrNumber] = React.useState("")
     const [savingStatus, setSavingStatus] = React.useState<PaymentStatus | "">("")
     const [error, setError] = React.useState("")
-    const isOnline = paymentMode === "upi"
-    const canSubmit = Boolean(coachCode) && (!isOnline || /^\d{12}$/.test(utrNumber))
+    const isOnline = isOnlinePaymentMode(paymentMode)
+    const canSubmit = Boolean(coachCode) && (!isOnline || !getPaymentReferenceError(paymentMode, utrNumber))
 
     const updatePayment = async (paymentStatus: Exclude<PaymentStatus, "Pending">) => {
         setSavingStatus(paymentStatus)
@@ -2302,9 +2308,12 @@ function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onChan
                         <option key={name} value={name}>{name}</option>
                     ))}
                 </select>
-                <select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="field">
+                <select value={paymentMode} onChange={(event) => { setPaymentMode(event.target.value as PaymentMode); setUtrNumber("") }} className="field">
                     <option value="cash">Cash</option>
-                    <option value="upi">Online</option>
+                    <option value="upi">UPI</option>
+                    <option value="neft">NEFT</option>
+                    <option value="imps">IMPS</option>
+                    <option value="rtgs">RTGS</option>
                 </select>
                 <input
                     value={coachCode}
@@ -2316,10 +2325,10 @@ function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onChan
                 {isOnline && (
                     <input
                         value={utrNumber}
-                        onChange={(event) => setUtrNumber(event.target.value.replace(/\D/g, "").slice(0, 12))}
+                        onChange={(event) => setUtrNumber(paymentMode === "upi" ? event.target.value.replace(/\D/g, "").slice(0, 12) : event.target.value.slice(0, 64))}
                         className="field md:col-span-3"
-                        inputMode="numeric"
-                        placeholder="12-digit UTR number"
+                        inputMode={paymentMode === "upi" ? "numeric" : "text"}
+                        placeholder={paymentMode === "upi" ? "12-digit UTR number" : "Transaction reference / UTR"}
                     />
                 )}
             </div>

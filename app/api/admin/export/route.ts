@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
-import { formatCurrency, normalizeCompetitionConfig } from "@/lib/competition"
+import { formatCurrency, getPaymentModeLabel, normalizeCompetitionConfig } from "@/lib/competition"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import { getDisciplineLabel } from "@/lib/team-entries"
@@ -15,7 +15,7 @@ function formatOptionalDate(value: Date | null) {
 }
 
 function formatPaymentMode(mode: string) {
-    return mode === "upi" ? "Online" : "Cash"
+    return getPaymentModeLabel(mode)
 }
 
 function formatPaymentAmount(record: { amount: number; paymentStatus: string; paymentMode?: string }) {

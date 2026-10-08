@@ -5,7 +5,7 @@ import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy } from "lucide-react"
 import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
-import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
+import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, getPaymentModeLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 
@@ -73,9 +73,8 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
     const registrationAvailable = isCompetitionRegistrationAvailable(competition)
     const statusLabel = getCompetitionStatusLabel(competition)
     const adminHref = competition.slug === "faridkot-2026-27" ? "/admin/faridkot" : null
-    const paymentLabel = competition.config.allowedPaymentModes.length === 1
-        ? competition.config.allowedPaymentModes[0] === "cash" ? "Cash only" : "UPI only"
-        : "Cash / UPI"
+    const paymentLabel = competition.config.allowedPaymentModes.map(getPaymentModeLabel).join(" / ")
+        + (competition.config.allowedPaymentModes.length === 1 ? " only" : "")
     const requiredDocuments = [
         "Shooter photo",
         ...competition.config.requiredDocuments.map((document) => document.label),

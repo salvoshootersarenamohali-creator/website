@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
-import { getRegistrationEntryFee, normalizeCompetitionConfig } from "@/lib/competition"
+import { getRegistrationEntryFee, isOnlinePaymentMode, normalizeCompetitionConfig } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { AUTOMATIC_PARA_SPONSOR } from "@/lib/para-registration"
 import { prisma } from "@/lib/prisma"
 import {
     RegistrationValidationError,
     getErrorMessage,
+    getPaymentReferenceError,
     getResolvedRegistrationAmount,
     normalizeRegistrationData,
     resolveRegistrationEntries,
@@ -60,7 +61,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             entries: body.entries,
         })
 
-        const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi"], requiresCoachName: false })
+        const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi", "neft", "imps", "rtgs"], requiresCoachName: false })
 
         const existing = await prisma.registration.findUnique({
             where: { id },
@@ -82,10 +83,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const nextPaymentMode = automaticallySponsored ? "cash" : data.paymentMode
         const nextPaymentStatus = automaticallySponsored ? "Sponsored" : paymentStatus
 
-        if (nextPaymentStatus === "Paid" && nextPaymentMode === "upi" && !/^\d{12}$/.test(data.utrNumber)) {
-            return Response.json({ error: "Online paid registrations require a 12-digit UTR number." }, { status: 400 })
+        const referenceError = nextPaymentStatus === "Paid" ? getPaymentReferenceError(nextPaymentMode, data.utrNumber) : null
+        if (referenceError) {
+            return Response.json({ error: referenceError }, { status: 400 })
         }
-        if (nextPaymentStatus === "Sponsored" && nextPaymentMode === "upi") {
+        if (nextPaymentStatus === "Sponsored" && isOnlinePaymentMode(nextPaymentMode)) {
             return Response.json({ error: "Sponsored registrations must use cash payment mode." }, { status: 400 })
         }
 
@@ -169,7 +171,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     paymentConfirmedBy: confirmedBy,
                     paymentConfirmedAt: confirmedAt,
                     amount,
-                    utrNumber: nextPaymentStatus === "Paid" && nextPaymentMode === "upi" ? data.utrNumber : null,
+                    utrNumber: nextPaymentStatus === "Paid" && isOnlinePaymentMode(nextPaymentMode) ? data.utrNumber : null,
                 },
                 include: {
                     entries: { orderBy: { createdAt: "asc" } },

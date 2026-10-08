@@ -10,7 +10,7 @@ import {
     normalizeRegistrationData,
     resolveRegistrationEntries,
 } from "@/lib/registration-validation"
-import { isCompetitionRegistrationAvailable, normalizeCompetitionConfig } from "@/lib/competition"
+import { isCompetitionRegistrationAvailable, isOnlinePaymentMode, normalizeCompetitionConfig } from "@/lib/competition"
 import { readRequiredDocumentFiles, uploadRequiredDocuments } from "@/lib/registration-documents"
 
 type RouteContext = {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             folder: `salvo/${competition.slug}/student-photos`,
             label: "Student photo",
         })
-        const screenshotFile = data.paymentMode === "upi" && screenshot instanceof File && screenshot.size > 0
+        const screenshotFile = isOnlinePaymentMode(data.paymentMode) && screenshot instanceof File && screenshot.size > 0
             ? await uploadImageToCloudinary(screenshot, {
                 folder: `salvo/${competition.slug}/payment-screenshots`,
                 label: "Payment screenshot",
@@ -84,9 +84,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 preferredDate: new Date(`${data.preferredDate}T00:00:00`),
                 preferredSlot: data.preferredSlot,
                 paymentMode: data.paymentMode,
-                paymentStatus: data.paymentMode === "upi" ? "Paid" : "Pending",
+                paymentStatus: isOnlinePaymentMode(data.paymentMode) ? "Paid" : "Pending",
                 amount,
-                utrNumber: data.paymentMode === "upi" ? data.utrNumber : null,
+                utrNumber: isOnlinePaymentMode(data.paymentMode) ? data.utrNumber : null,
                 screenshotPath: screenshotFile,
                 studentPhotoPath: studentPhotoFile,
                 documents: {

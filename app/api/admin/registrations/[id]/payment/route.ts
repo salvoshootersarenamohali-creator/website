@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isCoachName, isCompetitionAdminRequest, isValidCoachCode } from "@/lib/admin"
+import { isOnlinePaymentMode } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
+import { getPaymentReferenceError } from "@/lib/registration-validation"
 
 type RouteContext = {
     params: Promise<{ id: string }>
 }
 
 const allowedStatuses = new Set(["Paid", "Sponsored"])
-const allowedPaymentModes = new Set(["cash", "upi"])
+const allowedPaymentModes = new Set(["cash", "upi", "neft", "imps", "rtgs"])
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!(await isCompetitionAdminRequest(request))) return adminUnauthorized()
@@ -22,15 +24,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const utrNumber = String(body.utrNumber ?? "").trim()
 
     if (!allowedPaymentModes.has(paymentMode)) {
-        return Response.json({ error: "Payment method must be cash or online." }, { status: 400 })
+        return Response.json({ error: "Select a valid payment method." }, { status: 400 })
     }
 
     if (!allowedStatuses.has(requestedPaymentStatus)) {
         return Response.json({ error: "Payment status must be Paid or Sponsored." }, { status: 400 })
     }
 
-    if (paymentMode === "upi" && !/^\d{12}$/.test(utrNumber)) {
-        return Response.json({ error: "Online payments require a 12-digit UTR number." }, { status: 400 })
+    if (requestedPaymentStatus === "Sponsored" && isOnlinePaymentMode(paymentMode)) {
+        return Response.json({ error: "Sponsored registrations must use cash payment mode." }, { status: 400 })
+    }
+
+    const referenceError = getPaymentReferenceError(paymentMode, utrNumber)
+    if (referenceError) {
+        return Response.json({ error: referenceError }, { status: 400 })
     }
 
     if (!isCoachName(coachName) || !isValidCoachCode(coachName, coachCode)) {
@@ -52,8 +59,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: { id },
         data: {
             paymentMode,
-            paymentStatus: paymentMode === "upi" ? "Paid" : requestedPaymentStatus,
-            utrNumber: paymentMode === "upi" ? utrNumber : null,
+            paymentStatus: requestedPaymentStatus,
+            utrNumber: isOnlinePaymentMode(paymentMode) ? utrNumber : null,
             paymentConfirmedBy: coachName,
             paymentConfirmedAt: new Date(),
         },
