@@ -17,6 +17,7 @@ export type IncomingRegistrationEntry = {
 export type IncomingRegistrationData = {
     name: string
     academy: string
+    coachName: string
     motherName: string
     fatherName: string
     gender: string
@@ -82,6 +83,7 @@ export function normalizeRegistrationData(data: Partial<IncomingRegistrationData
     return {
         name: toProperCase(String(data.name ?? "").trim()),
         academy: toProperCase(String(data.academy ?? "").trim()),
+        coachName: toProperCase(String(data.coachName ?? "").trim()),
         motherName: toProperCase(String(data.motherName ?? "").trim()),
         fatherName: toProperCase(String(data.fatherName ?? "").trim()),
         gender: String(data.gender ?? "").trim(),
@@ -99,6 +101,9 @@ export function normalizeRegistrationData(data: Partial<IncomingRegistrationData
 export function resolveRegistrationEntries(data: IncomingRegistrationData, config: CompetitionConfig = defaultCompetitionConfig): ResolvedRegistrationEntry[] {
     if (!data.name || !data.academy || !data.gender || !data.dateOfBirth || !data.phone || !data.preferredDate || !data.preferredSlot || !data.paymentMode) {
         validationError("Please complete all required fields.")
+    }
+    if (config.requiresCoachName && !data.coachName) {
+        validationError("Please enter the coach name.")
     }
     if (config.requiresGuardianDetails && (!data.motherName || !data.fatherName)) {
         validationError("Please enter both mother and father names.")

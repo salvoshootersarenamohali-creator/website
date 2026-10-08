@@ -39,6 +39,7 @@ type SavedRegistration = {
     id: string
     name: string
     academy: string
+    coachName: string | null
     motherName: string | null
     fatherName: string | null
     address: string | null
@@ -66,6 +67,7 @@ type SavedRegistration = {
 const initialForm = {
     name: "",
     academy: "",
+    coachName: "",
     motherName: "",
     fatherName: "",
     gender: "" as "" | Gender,
@@ -380,9 +382,14 @@ export default function RegisterPage() {
                                 <Field label="Full Name" required>
                                     <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                                 </Field>
-                                <Field label="Academy name/ Coach name" required>
+                                <Field label={config.requiresCoachName ? "Academy Name" : "Academy name/ Coach name"} required>
                                     <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                                 </Field>
+                                {config.requiresCoachName && (
+                                    <Field label="Coach Name" required>
+                                        <input required value={form.coachName} onChange={(event) => setForm({ ...form, coachName: toProperCase(event.target.value) })} className="field" />
+                                    </Field>
+                                )}
                                 {config.requiresGuardianDetails && (
                                     <div className="grid gap-4 sm:grid-cols-2">
                                         <Field label="Mother's Name" required>
@@ -756,6 +763,7 @@ function FaridkotProvisionalForm({ registration, competition }: { registration: 
                     <div className="space-y-4 text-lg">
                         <FormLine label="Name of Competition/Event" value={competition?.title ?? firstEntry?.eventTitle ?? ""} />
                         <FormLine label="Shooter Name" value={registration.name} />
+                        {registration.coachName && <FormLine label="Coach Name" value={registration.coachName} />}
                         <FormLine label="Mother's Name" value={registration.motherName ?? ""} />
                         <FormLine label="Father's Name" value={registration.fatherName ?? ""} />
                         <FormLine label="Date of Birth" value={registration.dateOfBirth.slice(0, 10)} />
@@ -819,6 +827,7 @@ function CardBody({ registration, competition, title }: { registration: SavedReg
             <div className="space-y-5">
                 <CardLine label="1. Name" value={registration.name} />
                 <CardLine label="2. Club Name" value={registration.academy} />
+                {registration.coachName && <CardLine label="2a. Coach Name" value={registration.coachName} />}
                 <CardLine label="3. Contact" value={registration.phone} />
                 <div>
                     <p className="font-bold">4. Category/Event:</p>

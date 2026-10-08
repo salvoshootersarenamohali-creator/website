@@ -75,6 +75,7 @@ export type CompetitionConfig = {
     matchStartTime: string
     minAge: number | null
     requiredDocuments: RequiredDocumentDefinition[]
+    requiresCoachName: boolean
     requiresGuardianDetails: boolean
     requiresAddress: boolean
     teamEntriesEnabled: boolean
@@ -275,6 +276,7 @@ export const defaultCompetitionConfig: CompetitionConfig = {
     matchStartTime: "8:00 AM",
     minAge: null,
     requiredDocuments: [],
+    requiresCoachName: false,
     requiresGuardianDetails: false,
     requiresAddress: false,
     teamEntriesEnabled: true,
@@ -614,6 +616,7 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
         matchStartTime: String(raw.matchStartTime ?? defaultCompetitionConfig.matchStartTime).trim() || defaultCompetitionConfig.matchStartTime,
         minAge: readPositiveInteger(raw.minAge, null),
         requiredDocuments: readRequiredDocuments(raw.requiredDocuments),
+        requiresCoachName: raw.requiresCoachName === true,
         requiresGuardianDetails: raw.requiresGuardianDetails === true,
         requiresAddress: raw.requiresAddress === true,
         teamEntriesEnabled: raw.teamEntriesEnabled !== false,

@@ -33,6 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const data = normalizeRegistrationData({
             name: String(formData.get("name") ?? ""),
             academy: String(formData.get("academy") ?? ""),
+            coachName: String(formData.get("coachName") ?? ""),
             motherName: String(formData.get("motherName") ?? ""),
             fatherName: String(formData.get("fatherName") ?? ""),
             gender: String(formData.get("gender") ?? ""),
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 competitionId: competition.id,
                 name: data.name,
                 academy: data.academy,
+                coachName: data.coachName || null,
                 motherName: data.motherName || null,
                 fatherName: data.fatherName || null,
                 gender: data.gender,

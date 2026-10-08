@@ -67,6 +67,7 @@ type AdminRegistration = {
     id: string
     name: string
     academy: string
+    coachName: string | null
     motherName: string | null
     fatherName: string | null
     gender: string
@@ -304,6 +305,7 @@ function buildDemoRegistrations(): AdminRegistration[] {
             id: `demo-registration-${index}`,
             name,
             academy: academies[index % academies.length],
+            coachName: null,
             motherName: null,
             fatherName: null,
             gender,
@@ -373,7 +375,7 @@ export default function SalvoCupAdminPage() {
     const filtered = React.useMemo(() => {
         const originalOrder = new Map(registrations.map((registration, index) => [registration.id, index]))
         const rows = registrations.filter((registration) => {
-            const haystack = `${registration.name} ${registration.academy} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
+            const haystack = `${registration.name} ${registration.academy} ${registration.coachName ?? ""} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
             const matchesQuery = haystack.includes(query.toLowerCase())
             const matchesFilter = filter === "all" || registration.paymentStatus === filter || registration.entries.some((entry) => entry.ruleSet === filter || entry.discipline === filter)
             const matchesDate = registrationDateFilter === "all" || dateOnly(registration.preferredDate) === registrationDateFilter
@@ -612,6 +614,7 @@ export default function SalvoCupAdminPage() {
                                                         <div>
                                                             <p className="font-bold">{registration.name}</p>
                                                             <p className="text-sm text-white/55">{registration.academy}</p>
+                                                            {registration.coachName && <p className="text-xs text-white/45">Coach: {registration.coachName}</p>}
                                                         </div>
                                                         <span className={`rounded-full px-2 py-1 text-xs font-bold ${paymentBadgeClass(registration.paymentStatus)}`}>
                                                             {registration.paymentStatus}
@@ -1714,6 +1717,7 @@ function RegistrationDetail({
                         )}
                     </div>
                     <p className="text-white/55">{registration.academy} | {registration.phone}</p>
+                    {registration.coachName && <p className="mt-1 text-sm text-white/55">Coach: {registration.coachName}</p>}
                     <p className="mt-2 text-sm text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -1923,6 +1927,7 @@ function StudentPhotoUpload({
 type RegistrationEditFormState = {
     name: string
     academy: string
+    coachName: string
     motherName: string
     fatherName: string
     gender: "" | Gender
@@ -1954,6 +1959,7 @@ function RegistrationEditForm({
     const [form, setForm] = React.useState<RegistrationEditFormState>(() => ({
         name: registration.name,
         academy: registration.academy,
+        coachName: registration.coachName ?? "",
         motherName: registration.motherName ?? "",
         fatherName: registration.fatherName ?? "",
         gender: registration.gender === "male" || registration.gender === "female" ? registration.gender : "",
@@ -2111,6 +2117,12 @@ function RegistrationEditForm({
                     <span className="mb-2 block text-sm font-semibold text-white/70">Academy</span>
                     <input value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                 </label>
+                {(config.requiresCoachName || registration.coachName) && (
+                    <label>
+                        <span className="mb-2 block text-sm font-semibold text-white/70">Coach Name</span>
+                        <input value={form.coachName} onChange={(event) => setForm({ ...form, coachName: toProperCase(event.target.value) })} className="field" />
+                    </label>
+                )}
                 {config.requiresGuardianDetails && (
                     <>
                         <label>
@@ -2648,6 +2660,7 @@ function PrintableCard({ registration, variant }: { registration: AdminRegistrat
             <div className="salvo-print-fields">
                 <CardLine label="1. Name" value={registration.name} />
                 <CardLine label="2. Club Name" value={registration.academy} />
+                {registration.coachName && <CardLine label="2a. Coach Name" value={registration.coachName} />}
                 <CardLine label="3. Contact" value={registration.phone} />
                 <div className="salvo-category-row">
                     <p>4. Category/Event:</p>

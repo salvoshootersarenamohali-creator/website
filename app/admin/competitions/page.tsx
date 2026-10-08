@@ -796,6 +796,8 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                 </Field>
             </div>
 
+            <Toggle label="Require separate coach name" checked={config.requiresCoachName} onChange={(value) => onChange({ ...config, requiresCoachName: value })} />
+
             <div>
                 <h3 className="mb-3 text-xl font-black">Cash Prizes</h3>
                 <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-4">

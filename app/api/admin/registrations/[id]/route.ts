@@ -46,6 +46,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const data = normalizeRegistrationData({
             name: body.name,
             academy: body.academy,
+            coachName: body.coachName,
             motherName: body.motherName,
             fatherName: body.fatherName,
             gender: body.gender,
@@ -59,7 +60,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             entries: body.entries,
         })
 
-        const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi"] })
+        const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi"], requiresCoachName: false })
 
         const existing = await prisma.registration.findUnique({
             where: { id },
@@ -154,6 +155,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                 data: {
                     name: data.name,
                     academy: data.academy,
+                    coachName: data.coachName || null,
                     motherName: data.motherName || null,
                     fatherName: data.fatherName || null,
                     gender: data.gender,
