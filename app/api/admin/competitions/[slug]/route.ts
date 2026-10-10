@@ -121,8 +121,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             if (scheduleDates.has(day.date)) {
                 return Response.json({ error: "Each relay date can only be added once." }, { status: 400 })
             }
-            if (!day.slots.length || day.slots.some((slot) => !slot.trim())) {
-                return Response.json({ error: `Add at least one valid time slot for ${day.label || day.date}.` }, { status: 400 })
+            if (day.slots.some((slot) => !slot.trim())) {
+                return Response.json({ error: `Enter a valid time for every slot on ${day.label || day.date}.` }, { status: 400 })
             }
             scheduleDates.add(day.date)
         }

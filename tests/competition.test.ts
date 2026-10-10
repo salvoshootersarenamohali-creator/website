@@ -64,6 +64,20 @@ describe("competition schedule", () => {
         })
     })
 
+    it("preserves a day with intentionally empty relay slots", () => {
+        const slots = buildCompetitionSlotsForDateRange("2026-09-26", "2026-09-27", [
+            { date: "2026-09-26", label: "Old label", slots: [] },
+            { date: "2026-09-27", label: "Old label", slots: ["9:00 AM - 10:00 AM"] },
+        ])
+
+        expect(slots[0]).toEqual({
+            date: "2026-09-26",
+            label: "26 September 2026",
+            slots: [],
+        })
+        expect(normalizeCompetitionConfig({ slotOptions: slots }).slotOptions[0].slots).toEqual([])
+    })
+
     it("rejects invalid or reversed dates", () => {
         expect(parseCompetitionDate("2026-02-30")).toBeNull()
         expect(formatCompetitionDateLabel("not-a-date")).toBe("")

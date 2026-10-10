@@ -974,7 +974,7 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
 
             <div>
                 <h3 className="text-xl font-black">Relay Dates and Slots</h3>
-                <p className="mb-3 mt-1 text-sm text-white/45">Relay days follow the competition date range. Use the start and end date fields above to add or remove days.</p>
+                <p className="mb-3 mt-1 text-sm text-white/45">Relay days follow the competition date range. Remove every slot from a day when no relays should be offered on that date.</p>
                 <div className="grid gap-3">
                     {config.slotOptions.map((slot, index) => (
                         <div key={slot.date} className="rounded-md border border-white/10 bg-black/25 p-4">
@@ -1023,7 +1023,7 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
                                         </div>
                                     )
                                 })}
-                                {!slot.slots.length && <p className="rounded-md border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">Add at least one time slot for this day.</p>}
+                                {!slot.slots.length && <p className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm text-white/55">No relays scheduled. This day will not be available during registration.</p>}
                             </div>
                         </div>
                     ))}

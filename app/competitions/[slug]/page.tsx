@@ -220,7 +220,7 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                             {competition.config.slotOptions.map((slot) => (
                                 <p key={slot.date} className="rounded-md border border-white/10 bg-black/20 p-3">
                                     <span className="font-bold text-white">{slot.label}</span>
-                                    <span className="mt-1 block">{slot.slots.join(", ")}</span>
+                                    <span className="mt-1 block">{slot.slots.length ? slot.slots.join(", ") : "No relays scheduled"}</span>
                                 </p>
                             ))}
                         </div>

@@ -260,7 +260,9 @@ export function buildCompetitionSlotsForDateRange(
         return {
             date: dateText,
             label: formatCompetitionDateLabel(dateText),
-            slots: [...(existing?.slots.length ? existing.slots : fallbackSlots)],
+            // An existing empty list is intentional: admins can keep a competition
+            // day in the date range without accepting relay bookings on that day.
+            slots: [...(existing ? existing.slots : fallbackSlots)],
         }
     })
 }

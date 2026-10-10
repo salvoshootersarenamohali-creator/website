@@ -122,7 +122,10 @@ export default function RegisterPage() {
     const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(null)
     const config = competition?.config ?? defaultCompetitionConfig
     const events = config.events
-    const availableSlots = config.slotOptions
+    const availableSlots = React.useMemo(
+        () => config.slotOptions.filter((day) => day.slots.length > 0),
+        [config.slotOptions]
+    )
     const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
     const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
     const paymentSummary = config.allowedPaymentModes.map(getPaymentModeLabel).join(" / ")
@@ -148,12 +151,12 @@ export default function RegisterPage() {
                 if (!cancelled) {
                     const normalized = { ...data.competition, config: normalizeCompetitionConfig(data.competition.config) }
                     setCompetition(normalized)
-                    const firstSlot = normalized.config.slotOptions[0]
+                    const firstSlot = normalized.config.slotOptions.find((day) => day.slots.length > 0)
                     const firstPaymentMode = normalized.config.allowedPaymentModes[0] ?? "cash"
                     setForm((current) => ({
                         ...current,
-                        preferredDate: firstSlot?.date ?? current.preferredDate,
-                        preferredSlot: firstSlot?.slots[0] ?? current.preferredSlot,
+                        preferredDate: firstSlot?.date ?? "",
+                        preferredSlot: firstSlot?.slots[0] ?? "",
                         paymentMode: firstPaymentMode,
                         utrNumber: "",
                     }))
@@ -179,7 +182,10 @@ export default function RegisterPage() {
 
     React.useEffect(() => {
         if (!selectedSlots.includes(form.preferredSlot)) {
-            setForm((current) => ({ ...current, preferredSlot: selectedSlots[0] ?? "" }))
+            setForm((current) => {
+                const preferredSlot = selectedSlots[0] ?? ""
+                return current.preferredSlot === preferredSlot ? current : { ...current, preferredSlot }
+            })
         }
     }, [form.preferredDate, form.preferredSlot, selectedSlots])
 
@@ -242,6 +248,10 @@ export default function RegisterPage() {
 
         if (!competition || !registrationAvailable) {
             setError("Registration is closed for this competition.")
+            return
+        }
+        if (!availableSlots.length) {
+            setError("No relay time slots are currently available.")
             return
         }
         if (!form.gender) {
@@ -451,16 +461,24 @@ export default function RegisterPage() {
                             </Panel>
 
                             <Panel title="Preferred Relay">
-                                <Field label="Competition Date" required>
-                                    <select required value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
-                                        {availableSlots.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
-                                    </select>
-                                </Field>
-                                <Field label="Time Slot" required>
-                                    <select required value={form.preferredSlot} onChange={(event) => setForm({ ...form, preferredSlot: event.target.value })} className="field">
-                                        {selectedSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-                                    </select>
-                                </Field>
+                                {availableSlots.length ? (
+                                    <>
+                                        <Field label="Competition Date" required>
+                                            <select required value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
+                                                {availableSlots.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
+                                            </select>
+                                        </Field>
+                                        <Field label="Time Slot" required>
+                                            <select required value={form.preferredSlot} onChange={(event) => setForm({ ...form, preferredSlot: event.target.value })} className="field">
+                                                {selectedSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                                            </select>
+                                        </Field>
+                                    </>
+                                ) : (
+                                    <p className="rounded-md border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
+                                        No relay time slots are currently available. Please contact the organizer before registering.
+                                    </p>
+                                )}
                             </Panel>
 
                             <Panel title="Payment">
@@ -661,7 +679,7 @@ export default function RegisterPage() {
                                 {error && <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
                                 <button
                                     type="submit"
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || !availableSlots.length}
                                     className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#D4AF37] px-6 font-bold uppercase tracking-[0.14em] text-black shadow-[0_0_28px_rgba(212,175,55,0.35)] transition hover:bg-[#E5C558] disabled:opacity-60"
                                 >
                                     {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
