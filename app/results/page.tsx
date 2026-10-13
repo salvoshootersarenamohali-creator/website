@@ -278,7 +278,7 @@ export default function ResultsPage() {
                             </h1>
                             <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
                                 {activeTab === "certificates"
-                                    ? "Find your name in the final participant directory and download your official Salvo certificate."
+                                    ? "Find your name in the final participant directory and download your official competition certificate."
                                     : "View your uploaded score and follow your category ranking as the scoreboard updates during the event."}
                             </p>
                         </div>

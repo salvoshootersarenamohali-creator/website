@@ -4,6 +4,8 @@ import { getRegistrationEntryFee, isOnlinePaymentMode, normalizeCompetitionConfi
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { AUTOMATIC_PARA_SPONSOR } from "@/lib/para-registration"
 import { prisma } from "@/lib/prisma"
+import { RelayCapacityError, resolveRelaySelection } from "@/lib/relay-booking"
+import { reserveRelay, serializableTransaction } from "@/lib/relay-booking-server"
 import {
     RegistrationValidationError,
     getErrorMessage,
@@ -114,7 +116,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             ? AUTOMATIC_PARA_SPONSOR
             : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedBy : nextPaymentStatus === "Pending" ? null : existing.paymentConfirmedBy
 
-        const registration = await prisma.$transaction(async (tx) => {
+        const registration = await serializableTransaction(async (tx) => {
+            const current = await tx.competition.findUniqueOrThrow({ where: { id: competition.id } })
+            if (JSON.stringify(current.config) !== JSON.stringify(competition.config)) throw new RegistrationValidationError("Competition settings changed during this edit. Refresh before saving again.")
+            if (config.relayBooking.enabled) {
+                await reserveRelay(tx, competition.id, id, resolveRelaySelection(data.preferredDate, data.preferredSlot, pricedEntries, config))
+            }
             if (removedEntries.length) {
                 await tx.registrationEntry.deleteMany({
                     where: { id: { in: removedEntries.map((entry) => entry.id) } },
@@ -165,7 +172,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     phone: data.phone,
                     address: data.address || null,
                     preferredDate: new Date(`${data.preferredDate}T00:00:00`),
-                    preferredSlot: data.preferredSlot,
+                    preferredSlot: config.relayBooking.enabled ? resolveRelaySelection(data.preferredDate, data.preferredSlot, pricedEntries, config).label : data.preferredSlot,
                     paymentMode: nextPaymentMode,
                     paymentStatus: nextPaymentStatus,
                     paymentConfirmedBy: confirmedBy,
@@ -174,6 +181,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     utrNumber: nextPaymentStatus === "Paid" && isOnlinePaymentMode(nextPaymentMode) ? data.utrNumber : null,
                 },
                 include: {
+                    relayBooking: true,
                     entries: { orderBy: { createdAt: "asc" } },
                     documents: { orderBy: { position: "asc" } },
                 },
@@ -184,7 +192,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     } catch (error) {
         console.error("Unable to update registration", error)
         const message = getErrorMessage(error, "Unable to update registration.")
-        return Response.json({ error: message }, { status: error instanceof RegistrationValidationError ? 400 : 500 })
+        return Response.json({ error: message }, { status: error instanceof RelayCapacityError ? 409 : error instanceof RegistrationValidationError ? 400 : 500 })
     }
 }
 

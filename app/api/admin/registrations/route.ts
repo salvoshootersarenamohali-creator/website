@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
             where: { competitionId: competition.id },
             orderBy: { createdAt: "desc" },
             include: {
+                relayBooking: true,
+                batch: true,
                 entries: { orderBy: { createdAt: "asc" } },
                 documents: { orderBy: { position: "asc" } },
             },

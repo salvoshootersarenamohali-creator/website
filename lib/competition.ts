@@ -1,3 +1,5 @@
+import { defaultRelayBooking, normalizeCertificate, normalizeRelayBooking, type CertificateConfig, type RelayBookingConfig } from "@/lib/relay-config"
+
 export type Discipline = "pistol" | "rifle"
 export type RuleSet = "NR" | "ISSF"
 export type Gender = "male" | "female"
@@ -18,7 +20,7 @@ export type CashPrizeGroup = {
     id: string
     title: string
     tag: string | null
-    prizes: PrizeAmounts
+    prizes: number[]
     target: CashPrizeTarget
 }
 
@@ -64,6 +66,11 @@ export type PaymentDetails = {
 }
 
 export type CompetitionConfig = {
+    relayBooking: RelayBookingConfig
+    coachBatchEnabled: boolean
+    certificate: CertificateConfig | null
+    scheduleImagePath: string | null
+    prizeImagePath: string | null
     competitionYear: number
     entryFee: number
     littleChampEntryFee: number
@@ -268,6 +275,11 @@ export function buildCompetitionSlotsForDateRange(
 }
 
 export const defaultCompetitionConfig: CompetitionConfig = {
+    relayBooking: defaultRelayBooking,
+    coachBatchEnabled: false,
+    certificate: null,
+    scheduleImagePath: null,
+    prizeImagePath: null,
     competitionYear: DEFAULT_COMPETITION_YEAR,
     entryFee: ENTRY_FEE,
     littleChampEntryFee: LITTLE_CHAMP_ENTRY_FEE,
@@ -448,6 +460,11 @@ function readPrizeAmounts(value: unknown): PrizeAmounts | null {
     return [...value] as PrizeAmounts
 }
 
+function readGroupPrizes(value: unknown): number[] | null {
+    return Array.isArray(value) && value.length >= 3 && value.length <= 8 && value.every((v) => Number.isInteger(v) && v >= 0)
+        ? [...value] : null
+}
+
 function readCategoryPrizes(value: unknown): Record<string, PrizeAmounts> {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return {}
 
@@ -535,7 +552,7 @@ function readCashPrizeGroups(value: unknown, events: CompetitionEvent[]): CashPr
         const candidate = group as Partial<CashPrizeGroup>
         const id = String(candidate.id ?? "").trim()
         const title = String(candidate.title ?? "").trim()
-        const prizes = readPrizeAmounts(candidate.prizes)
+        const prizes = readGroupPrizes(candidate.prizes)
         const target = readCashPrizeTarget(candidate.target, events)
         if (!id || seenIds.has(id) || !title || !prizes || !target) return []
 
@@ -636,6 +653,11 @@ export function normalizeCompetitionConfig(value: unknown): CompetitionConfig {
 
     return {
         competitionYear: Number.isInteger(raw.competitionYear) ? Number(raw.competitionYear) : DEFAULT_COMPETITION_YEAR,
+        relayBooking: normalizeRelayBooking(raw.relayBooking),
+        coachBatchEnabled: raw.coachBatchEnabled === true,
+        certificate: normalizeCertificate(raw.certificate),
+        scheduleImagePath: readOptionalString(raw.scheduleImagePath),
+        prizeImagePath: readOptionalString(raw.prizeImagePath),
         entryFee,
         littleChampEntryFee: readPositiveInteger(raw.littleChampEntryFee, LITTLE_CHAMP_ENTRY_FEE) ?? LITTLE_CHAMP_ENTRY_FEE,
         teamEntryFee: readPositiveInteger(raw.teamEntryFee, DEFAULT_TEAM_ENTRY_FEE) ?? DEFAULT_TEAM_ENTRY_FEE,
@@ -686,7 +708,7 @@ export function validateCashPrizeConfiguration(value: unknown) {
         if (!id || seenIds.has(id)) return "Every cash prize group must have a unique ID."
         seenIds.add(id)
         if (!String(group.title ?? "").trim()) return "Every cash prize group must have a title."
-        if (!readPrizeAmounts(group.prizes)) return "Every cash prize group must have three non-negative whole-number amounts."
+        if (!readGroupPrizes(group.prizes)) return "Every cash prize group must have three non-negative whole-number amounts."
         if (!readCashPrizeTarget(group.target, events)) return "Every cash prize group must have a valid display association."
     }
 

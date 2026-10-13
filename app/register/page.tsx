@@ -28,6 +28,8 @@ import {
     slotOptions,
 } from "@/lib/competition"
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
+import { RelaySelector } from "@/components/RelaySelector"
+import { CoachBatchForm } from "@/components/CoachBatchForm"
 
 type SavedEntry = {
     id: string
@@ -38,6 +40,7 @@ type SavedEntry = {
 }
 
 type SavedRegistration = {
+    relayBooking?: { date: string; relayId: string; pool: string; lane: number } | null
     id: string
     name: string
     academy: string
@@ -120,11 +123,15 @@ export default function RegisterPage() {
     const [isSubmitting, setIsSubmitting] = React.useState(false)
     const [registration, setRegistration] = React.useState<SavedRegistration | null>(null)
     const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(null)
+    const [batchMode, setBatchMode] = React.useState(false)
+    const [relayRefresh, setRelayRefresh] = React.useState(0)
     const config = competition?.config ?? defaultCompetitionConfig
     const events = config.events
     const availableSlots = React.useMemo(
-        () => config.slotOptions.filter((day) => day.slots.length > 0),
-        [config.slotOptions]
+        () => config.relayBooking.enabled
+            ? config.relayBooking.days.filter((day) => day.relays.length > 0).map((day) => ({ date: day.date, label: formatCompetitionDateLabel(day.date), slots: [] as string[] }))
+            : config.slotOptions.filter((day) => day.slots.length > 0),
+        [config.slotOptions, config.relayBooking]
     )
     const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
     const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
@@ -155,8 +162,8 @@ export default function RegisterPage() {
                     const firstPaymentMode = normalized.config.allowedPaymentModes[0] ?? "cash"
                     setForm((current) => ({
                         ...current,
-                        preferredDate: firstSlot?.date ?? "",
-                        preferredSlot: firstSlot?.slots[0] ?? "",
+                        preferredDate: normalized.config.relayBooking.enabled ? normalized.config.relayBooking.days.find((day) => day.relays.length)?.date ?? "" : firstSlot?.date ?? "",
+                        preferredSlot: normalized.config.relayBooking.enabled ? "" : firstSlot?.slots[0] ?? "",
                         paymentMode: firstPaymentMode,
                         utrNumber: "",
                     }))
@@ -181,13 +188,14 @@ export default function RegisterPage() {
     )
 
     React.useEffect(() => {
+        if (config.relayBooking.enabled) return
         if (!selectedSlots.includes(form.preferredSlot)) {
             setForm((current) => {
                 const preferredSlot = selectedSlots[0] ?? ""
                 return current.preferredSlot === preferredSlot ? current : { ...current, preferredSlot }
             })
         }
-    }, [form.preferredDate, form.preferredSlot, selectedSlots])
+    }, [config.relayBooking.enabled, form.preferredDate, form.preferredSlot, selectedSlots])
 
     React.useEffect(() => {
         if (!config.allowedPaymentModes.includes(form.paymentMode)) {
@@ -216,7 +224,7 @@ export default function RegisterPage() {
         const event = getEventById(eventId, config)
         if (!event) return false
         if (selectedDiscipline && event.discipline !== selectedDiscipline) return false
-        if (selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
+        if (!config.relayBooking.enabled && selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
         return true
     }
 
@@ -262,6 +270,7 @@ export default function RegisterPage() {
             setError("Please select at least one event category.")
             return
         }
+        if (config.relayBooking.enabled && !form.preferredSlot) { setError("Please select an available relay."); return }
         if (!studentPhoto) {
             setError("Please upload the shooter photo.")
             return
@@ -298,6 +307,7 @@ export default function RegisterPage() {
         } catch (submitError) {
             setError(submitError instanceof Error ? submitError.message : "Registration failed.")
         } finally {
+            setRelayRefresh((value) => value + 1)
             setIsSubmitting(false)
         }
     }
@@ -365,10 +375,10 @@ export default function RegisterPage() {
                     <div className="rounded-lg border border-[#D4AF37]/30 bg-neutral-950/80 p-5 shadow-2xl shadow-[#D4AF37]/10">
                         <Image
                             src={competition?.heroImagePath || "/competition-range.JPG"}
-                            alt="Shooters at Salvo range"
+                            alt={competition ? `${competition.title} entry circular` : "Competition at Salvo range"}
                             width={760}
                             height={520}
-                            className="h-auto w-full rounded-md object-contain lg:h-80 lg:object-cover"
+                            className={`h-auto w-full rounded-md object-contain ${config.relayBooking.enabled ? "" : "lg:h-80 lg:object-cover"}`}
                             priority
                         />
                     </div>
@@ -377,6 +387,10 @@ export default function RegisterPage() {
 
             <main className="container mx-auto px-4 py-12">
                 <CashPrizeSchedule config={config} className="mb-8" />
+                {config.coachBatchEnabled && registrationAvailable && !registration && <div className="mb-6 flex gap-3">
+                    <button type="button" className={`rounded-md border px-5 py-3 font-bold ${!batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(false)}>Single shooter</button>
+                    <button type="button" className={`rounded-md border px-5 py-3 font-bold ${batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(true)}>Coach: register multiple students</button>
+                </div>}
                 {registration ? (
                     <CompetitorCard registration={registration} competition={competition} onNew={() => {
                         setRegistration(null)
@@ -387,7 +401,7 @@ export default function RegisterPage() {
                         setDocumentFiles({})
                         setPaymentScreenshot(null)
                     }} />
-                ) : !registrationAvailable ? (
+                ) : batchMode && competition ? <CoachBatchForm competition={competition} /> : !registrationAvailable ? (
                     <ClosedRegistration competition={competition} />
                 ) : (
                     <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[0.95fr_1.4fr]">
@@ -416,14 +430,14 @@ export default function RegisterPage() {
                                 )}
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <Field label="Gender" required>
-                                        <select required value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as Gender })} className="field">
+                                        <select required value={form.gender} onChange={(event) => { setForm({ ...form, gender: event.target.value as Gender }); setEntries([]); setSelectionStartedWith(null) }} className="field">
                                             <option value="">Select gender</option>
                                             <option value="male">Male / Boy</option>
                                             <option value="female">Female / Girl</option>
                                         </select>
                                     </Field>
                                     <Field label="Date of Birth" required>
-                                        <input required type="date" value={form.dateOfBirth} onChange={(event) => setForm({ ...form, dateOfBirth: event.target.value })} className="field" />
+                                        <input required type="date" value={form.dateOfBirth} onChange={(event) => { setForm({ ...form, dateOfBirth: event.target.value }); setEntries([]); setSelectionStartedWith(null) }} className="field" />
                                     </Field>
                                 </div>
                                 <Field label="Phone Number" required>
@@ -461,7 +475,7 @@ export default function RegisterPage() {
                             </Panel>
 
                             <Panel title="Preferred Relay">
-                                {availableSlots.length ? (
+                                {config.relayBooking.enabled && competition ? <RelaySelector competition={competition} entries={entries} gender={form.gender} dateOfBirth={form.dateOfBirth} date={form.preferredDate} slot={form.preferredSlot} refreshKey={relayRefresh} onChange={(preferredDate, preferredSlot) => setForm((current) => ({ ...current, preferredDate, preferredSlot }))} /> : availableSlots.length ? (
                                     <>
                                         <Field label="Competition Date" required>
                                             <select required value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
@@ -889,6 +903,7 @@ function CardBody({ registration, competition, title }: { registration: SavedReg
                     </div>
                 </div>
                 <CardLine label="5. Slot" value={registration.preferredSlot} />
+                {registration.relayBooking && <CardLine label="Lane" value={`${registration.relayBooking.pool === "special" ? "Special" : "Standard"} lane ${registration.relayBooking.lane}`} />}
                 <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${getPaymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`} />
             </div>
             <div className="mt-12 flex justify-between">

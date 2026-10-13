@@ -9,6 +9,8 @@ import {
 import { normalizeCompetitionConfig, parseCompetitionDate, validateCashPrizeConfiguration, validateParaEntryConfiguration, validateRequiredDocuments } from "@/lib/competition"
 import { serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
+import { validateRelayConfiguration } from "@/lib/relay-config"
+import { assertBookingConfigurationChange, RelayConfigurationConflict, serializableTransaction } from "@/lib/relay-booking-server"
 
 type RouteContext = {
     params: Promise<{ slug: string }>
@@ -104,6 +106,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         if (endDate.getTime() < startDate.getTime()) {
             return Response.json({ error: "The end date cannot be before the start date." }, { status: 400 })
         }
+        const relayError = validateRelayConfiguration(rawConfig, startDate.toISOString().slice(0, 10), endDate.toISOString().slice(0, 10))
+        if (relayError) return Response.json({ error: relayError }, { status: 400 })
 
         const requestedYear = Number(body.competitionYear ?? config.competitionYear)
         if (!Number.isInteger(requestedYear) || requestedYear < 1900 || requestedYear > 2200) {
@@ -133,7 +137,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             return Response.json({ error: "Publish the competition before opening registration." }, { status: 400 })
         }
 
-        const competition = await prisma.competition.update({
+        const competition = await serializableTransaction(async (tx) => {
+            await assertBookingConfigurationChange(tx, existing.id, config)
+            return tx.competition.update({
             where: { id: existing.id },
             data: {
                 slug: nextSlug,
@@ -156,6 +162,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     competitionYear,
                 },
             },
+            })
         })
 
         return Response.json({
@@ -165,6 +172,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             },
         })
     } catch (error) {
+        if (error instanceof RelayConfigurationConflict) return Response.json({ error: error.message }, { status: 409 })
         if (isAdminPinConflict(error)) {
             return Response.json({ error: "Another competition already uses this admin PIN." }, { status: 409 })
         }

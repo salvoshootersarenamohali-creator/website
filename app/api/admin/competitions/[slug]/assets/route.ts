@@ -37,7 +37,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
         const formData = await request.formData()
         const assetType = String(formData.get("assetType") ?? "")
-        if (!isAssetType(assetType)) {
+        const certificateAsset = assetType === "certificateLogo" || assetType === "signature"
+        if (!isAssetType(assetType) && !certificateAsset) {
             return Response.json({ error: "Asset type must be hero or paymentQr." }, { status: 400 })
         }
 
@@ -46,7 +47,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
             return Response.json({ error: "Choose an image file to upload." }, { status: 400 })
         }
 
-        const config = assetConfig[assetType]
+        const config = isAssetType(assetType) ? assetConfig[assetType] : { folderName: "certificates", label: "Certificate image" }
+        if (certificateAsset && file.type !== "image/png" && file.type !== "image/jpeg") return Response.json({ error: "Certificate images must be PNG or JPG." }, { status: 400 })
         const imageUrl = await uploadImageToCloudinary(file, {
             folder: `salvo/${competition.slug}/competition-assets/${config.folderName}`,
             publicId: `${Date.now()}-${crypto.randomUUID()}`,
@@ -54,10 +56,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
         if (!imageUrl) return Response.json({ error: "Choose an image file to upload." }, { status: 400 })
 
+        if (certificateAsset) return Response.json({ imageUrl })
+
         const updated = await prisma.competition.update({
             where: { id: competition.id },
             data: {
-                [config.field]: imageUrl,
+                [assetConfig[assetType as AssetType].field]: imageUrl,
             },
         })
 

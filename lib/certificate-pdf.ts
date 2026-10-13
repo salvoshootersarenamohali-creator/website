@@ -12,7 +12,25 @@ const IVORY = rgb(0.985, 0.975, 0.94)
 const MUTED = rgb(0.32, 0.36, 0.4)
 const WHITE = rgb(1, 1, 1)
 
-type CertificateCompetition = Pick<PublicCompetition, "title" | "shortTitle" | "startDate" | "endDate" | "venue">
+type CertificateCompetition = Pick<PublicCompetition, "title" | "shortTitle" | "startDate" | "endDate" | "venue"> & { config?: Pick<PublicCompetition["config"], "certificate"> }
+
+async function embedCertificateImage(document: PDFDocument, imagePath: string) {
+    let bytes: Uint8Array
+    if (imagePath.startsWith("/") && !imagePath.startsWith("//")) {
+        const publicRoot = path.resolve(process.cwd(), "public")
+        const resolved = path.resolve(publicRoot, imagePath.slice(1))
+        if (!resolved.startsWith(publicRoot + path.sep)) throw new Error("Invalid certificate image path.")
+        bytes = await readFile(resolved)
+    } else {
+        const url = new URL(imagePath)
+        if (url.protocol !== "https:" || url.hostname !== "res.cloudinary.com") throw new Error("Certificate images must use uploaded Cloudinary assets or local public images.")
+        const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10000) })
+        if (!response.ok || Number(response.headers.get("content-length")) > 5 * 1024 * 1024) throw new Error("Unable to load certificate image.")
+        bytes = new Uint8Array(await response.arrayBuffer())
+    }
+    if (bytes.byteLength > 5 * 1024 * 1024) throw new Error("Certificate image is too large.")
+    return bytes[0] === 137 && bytes[1] === 80 ? document.embedPng(bytes) : document.embedJpg(bytes)
+}
 
 function pdfText(value: string) {
     return value
@@ -142,8 +160,10 @@ export async function generateParticipantCertificate(
 ) {
     const document = await PDFDocument.create()
     document.setTitle(`${participant.shooterName} - ${competition.shortTitle} Certificate`)
-    document.setAuthor("Salvo Shooters Arena")
-    document.setCreator("Salvo Shooters Arena")
+    const branding = competition.config?.certificate
+    const issuer = branding?.issuerName || "Salvo Shooters Arena"
+    document.setAuthor(issuer)
+    document.setCreator(issuer)
     document.setSubject(participant.medalCount ? "Certificate of Achievement" : "Certificate of Participation")
 
     const page = document.addPage(A4_LANDSCAPE)
@@ -155,11 +175,8 @@ export async function generateParticipantCertificate(
         document.embedFont(StandardFonts.Helvetica),
         document.embedFont(StandardFonts.HelveticaBold),
     ])
-    const [logoBytes, signatureBytes] = await Promise.all([
-        readFile(path.join(process.cwd(), "public", "salvo-logo.png")),
-        readFile(path.join(process.cwd(), "public", "certificates", "anjum-moudgil-signature.png")),
-    ])
-    const [logo, signature] = await Promise.all([document.embedPng(logoBytes), document.embedPng(signatureBytes)])
+    const logoPath = branding ? branding.logoPath : "/salvo-logo.png"
+    const logo = logoPath ? await embedCertificateImage(document, logoPath) : null
 
     page.drawRectangle({ x: 0, y: 0, width, height, color: IVORY })
     page.drawRectangle({ x: 18, y: 18, width: width - 36, height: height - 36, borderColor: NAVY, borderWidth: 2.2 })
@@ -169,7 +186,8 @@ export async function generateParticipantCertificate(
 
     drawTargetMotif(page, 79, 88, 1.55)
     drawTargetMotif(page, width - 76, height - 82, 1.25)
-    drawImageContained(page, logo, { x: 52, y: height - 105, width: 146, height: 56 })
+    if (logo) drawImageContained(page, logo, { x: 52, y: height - 105, width: 146, height: 56 })
+    else drawCenteredInBox(page, issuer, 52, 198, height - 80, helveticaBold, 12, GOLD_LIGHT)
 
     const dateRange = formatCompetitionDateRange(competition.startDate, competition.endDate)
     page.drawText(pdfText(competition.title).toUpperCase(), {
@@ -215,14 +233,32 @@ export async function generateParticipantCertificate(
 
     drawEntryGrid(page, participant.entries, { regular: helvetica, bold: helveticaBold })
 
+    if (branding) {
+        const signers = branding.signers.slice(0, 3)
+        const signerWidth = (width - 140) / Math.max(1, signers.length)
+        for (const [index, signer] of signers.entries()) {
+            const left = 70 + index * signerWidth
+            const right = left + signerWidth - 18
+            if (signer.imagePath) {
+                const signature = await embedCertificateImage(document, signer.imagePath)
+                drawImageContained(page, signature, { x: left, y: 81, width: right - left, height: 62 })
+            }
+            page.drawLine({ start: { x: left, y: 77 }, end: { x: right, y: 77 }, color: NAVY, thickness: 0.7 })
+            drawCenteredInBox(page, signer.name.toUpperCase(), left, right, 62, helveticaBold, 10, NAVY)
+            drawCenteredInBox(page, signer.designation, left, right, 48, helvetica, 8, MUTED)
+        }
+        drawCentered(page, `Issued by ${issuer}`, { y: signers.length ? 33 : 75, font: helveticaBold, size: 10, color: NAVY, maxWidth: width - 150 })
+    } else {
     page.drawText("Issued by", { x: 155, y: 92, font: helvetica, size: 8, color: MUTED })
     page.drawText("SALVO SHOOTERS ARENA", { x: 155, y: 74, font: helveticaBold, size: 12, color: NAVY })
     page.drawText("Precision - Discipline - Excellence", { x: 155, y: 57, font: times, size: 9.5, color: GOLD })
 
+    const signature = await embedCertificateImage(document, "/certificates/anjum-moudgil-signature.png")
     drawImageContained(page, signature, { x: width - 259, y: 73, width: 190, height: 84 })
     page.drawLine({ start: { x: width - 257, y: 75 }, end: { x: width - 69, y: 75 }, color: NAVY, thickness: 0.7 })
     drawCenteredInBox(page, "ANJUM MOUDGIL", width - 257, width - 69, 59, helveticaBold, 10.5, NAVY)
     drawCenteredInBox(page, "MENTOR - TWO-TIME OLYMPIAN - ARJUNA AWARDEE", width - 276, width - 50, 44, helvetica, 7.5, MUTED)
+    }
 
     return document.save()
 }

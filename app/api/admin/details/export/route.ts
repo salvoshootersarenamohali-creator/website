@@ -14,6 +14,10 @@ import {
     sanitizeLaneLabels,
 } from "@/lib/details"
 import { prisma } from "@/lib/prisma"
+import { normalizeCompetitionConfig } from "@/lib/competition"
+import { buildBookedDetails } from "@/lib/booked-details"
+import { generateDetailPdf } from "@/lib/detail-pdf"
+import { generateDetailWorkbook } from "@/lib/detail-workbook"
 
 const VENUE = "SALVO SHOOTERS ARENA SEC- 86, MOHALI"
 
@@ -120,8 +124,20 @@ export async function POST(request: NextRequest) {
         const registrations = await prisma.registration.findMany({
             where: { competitionId: competition.id },
             orderBy: { createdAt: "asc" },
-            include: { entries: { orderBy: { createdAt: "asc" } } },
+            include: { relayBooking: true, entries: { orderBy: { createdAt: "asc" } } },
         })
+        const competitionConfig = normalizeCompetitionConfig(competition.config)
+        if (competitionConfig.relayBooking.enabled) {
+            const details = buildBookedDetails(registrations, competitionConfig, config.date)
+            const generatedAt = new Date().toISOString()
+            const pdf = body.format === "pdf"
+            const buffer = pdf ? Buffer.from(await generateDetailPdf(competition.title, competition.venue ?? "", details, generatedAt)) : generateDetailWorkbook(competition.title, competition.venue ?? "", details, generatedAt)
+            return new Response(new Uint8Array(buffer), { headers: {
+                "Content-Type": pdf ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "Content-Disposition": `attachment; filename="${competitionFilePrefix(competition)}-details-${config.date}.${pdf ? "pdf" : "xlsx"}"`,
+                "Cache-Control": "no-store",
+            } })
+        }
         const schedule = buildDetailSchedule(registrations, config)
         const workbook = XLSX.utils.book_new()
 

@@ -11,6 +11,7 @@ datasource db {
 model Registration {
   id             String              @id @default(cuid())
   competitionId  String
+  batchId        String?
   name           String
   academy        String
   coachName      String?
@@ -35,11 +36,14 @@ model Registration {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   competition    Competition          @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  batch          RegistrationBatch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  relayBooking   RegistrationRelayBooking?
   entries        RegistrationEntry[]
   documents      RegistrationDocument[]
   teamMemberships TeamEntryMember[]
 
   @@index([competitionId])
+  @@index([batchId])
   @@index([preferredDate])
   @@index([paymentStatus])
 }
@@ -81,12 +85,47 @@ model Competition {
   updatedAt         DateTime       @updatedAt
   registrations     Registration[]
   teamEntries       TeamEntry[]
+  registrationBatches RegistrationBatch[]
+  relayBookings     RegistrationRelayBooking[]
 
   @@index([status])
   @@index([isPublished])
   @@index([registrationOpen])
   @@index([resultsPublished])
   @@index([startDate])
+}
+
+model RegistrationBatch {
+  id            String @id @default(cuid())
+  competitionId String
+  submissionKey String @unique
+  academy       String
+  coachName     String
+  phone         String
+  paymentMode   String
+  paymentStatus String
+  utrNumber     String?
+  screenshotPath String?
+  amount        Int
+  createdAt     DateTime @default(now())
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  registrations Registration[]
+  @@index([competitionId])
+}
+
+model RegistrationRelayBooking {
+  id             String @id @default(cuid())
+  registrationId String @unique
+  competitionId  String
+  date           String
+  relayId        String
+  pool           String
+  lane           Int
+  createdAt      DateTime @default(now())
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  @@unique([competitionId, date, relayId, pool, lane])
+  @@index([competitionId, date])
 }
 
 model RegistrationEntry {

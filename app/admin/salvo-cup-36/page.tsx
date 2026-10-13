@@ -45,6 +45,8 @@ import {
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { getRegistrationParaState } from "@/lib/para-registration"
 import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
+import { RelaySelector } from "@/components/RelaySelector"
+import { BookedDetailsView } from "@/components/BookedDetailsView"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
 
@@ -66,6 +68,8 @@ type AdminEntry = {
 }
 
 type AdminRegistration = {
+    relayBooking?: { date: string; relayId: string; pool: string; lane: number } | null
+    batchId?: string | null
     id: string
     name: string
     academy: string
@@ -573,7 +577,7 @@ export default function SalvoCupAdminPage() {
                         ) : view === "top-students" ? (
                             <TopStudentsView registrations={registrations} />
                         ) : view === "details" ? (
-                            <DetailsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} />
+                            competitionConfig.relayBooking.enabled ? <BookedDetailsView registrations={registrations} config={competitionConfig} title={competitionTitle} venue={competition?.venue ?? ""} slug={competitionSlug} adminPin={activePin} /> : <DetailsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} />
                         ) : (
                             <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
                                 <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
@@ -1985,6 +1989,7 @@ function RegistrationEditForm({
     const [saving, setSaving] = React.useState(false)
     const [error, setError] = React.useState("")
     const registrationIsParaShooter = registration.entries.length > 0 && registration.entries.every((entry) => entry.isPara)
+    const [relayRefresh, setRelayRefresh] = React.useState(0)
 
     const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
     const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
@@ -2019,10 +2024,10 @@ function RegistrationEditForm({
     const isOnlinePaid = isOnlinePaymentMode(form.paymentMode) && form.paymentStatus === "Paid"
 
     React.useEffect(() => {
-        if (!selectedSlots.includes(form.preferredSlot)) {
+        if (!config.relayBooking.enabled && !selectedSlots.includes(form.preferredSlot)) {
             setForm((current) => ({ ...current, preferredSlot: selectedSlots[0] ?? "" }))
         }
-    }, [form.preferredSlot, selectedSlots])
+    }, [config.relayBooking.enabled, form.preferredSlot, selectedSlots])
 
     const isEntrySelected = (eventId: string, categoryCode: string) =>
         entries.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
@@ -2031,7 +2036,7 @@ function RegistrationEditForm({
         const event = getEventById(eventId, config)
         if (!event) return false
         if (selectedDiscipline && event.discipline !== selectedDiscipline) return false
-        if (selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
+        if (!config.relayBooking.enabled && selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
         return true
     }
 
@@ -2062,6 +2067,7 @@ function RegistrationEditForm({
             setError("Select at least one event category.")
             return
         }
+        if (config.relayBooking.enabled && !form.preferredSlot) { setError("Select an available relay."); return }
         if (invalidEntries.length) {
             setError("Remove or replace categories that are no longer eligible for this shooter.")
             return
@@ -2097,6 +2103,7 @@ function RegistrationEditForm({
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "Unable to update registration.")
         } finally {
+            setRelayRefresh((value) => value + 1)
             setSaving(false)
         }
     }
@@ -2160,7 +2167,7 @@ function RegistrationEditForm({
                         <textarea value={form.address} onChange={(event) => setForm({ ...form, address: toProperCase(event.target.value) })} className="field min-h-24" />
                     </label>
                 )}
-                <label>
+                {config.relayBooking.enabled ? <div className="md:col-span-2"><RelaySelector competition={{ slug: competitionSlug, config } as PublicCompetition} entries={entries} gender={form.gender} dateOfBirth={form.dateOfBirth} date={form.preferredDate} slot={form.preferredSlot} currentBooking={registration.relayBooking} refreshKey={relayRefresh} onChange={(preferredDate, preferredSlot) => setForm((current) => ({ ...current, preferredDate, preferredSlot }))} /></div> : <><label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Competition Date</span>
                     <select value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
                         {config.slotOptions.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
@@ -2171,7 +2178,7 @@ function RegistrationEditForm({
                     <select value={form.preferredSlot} onChange={(event) => setForm({ ...form, preferredSlot: event.target.value })} className="field">
                         {selectedSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
                     </select>
-                </label>
+                </label></>}
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Payment Mode</span>
                     <select value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value as PaymentMode, utrNumber: "" })} className="field">

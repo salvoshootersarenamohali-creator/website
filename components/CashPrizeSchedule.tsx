@@ -36,10 +36,10 @@ export function CashPrizeSchedule({ config, className = "" }: CashPrizeScheduleP
                                 {group.tag && <span className="rounded bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#0b5d1e]">{group.tag}</span>}
                             </div>
                             {associationLabel && <p className="border-b border-white/10 px-4 py-2 text-xs text-white/45">{associationLabel}</p>}
-                            <ol className="grid grid-cols-3" aria-label={`${group.title} cash prizes`}>
+                            <ol className={`grid grid-cols-3 ${group.prizes.length > 3 ? "sm:grid-cols-4" : ""}`} aria-label={`${group.title} cash prizes`}>
                                 {group.prizes.map((prize, index) => (
                                     <li key={index} className="border-r border-white/10 px-2 py-4 text-center last:border-r-0">
-                                        <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">{["1st", "2nd", "3rd"][index]}</span>
+                                        <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">{["1st", "2nd", "3rd"][index] ?? `${index + 1}th`}</span>
                                         <strong className="mt-2 block text-lg text-[#E5C558]">{formatCurrency(prize)}</strong>
                                     </li>
                                 ))}

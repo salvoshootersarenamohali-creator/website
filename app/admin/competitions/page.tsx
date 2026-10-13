@@ -15,6 +15,7 @@ import {
     normalizeCompetitionConfig,
 } from "@/lib/competition"
 import { toProperCase } from "@/lib/registration-validation"
+import { CompetitionBookingSettings } from "@/components/CompetitionBookingSettings"
 
 type AdminCompetition = PublicCompetition & {
     registrations: number
@@ -548,6 +549,7 @@ function CompetitionEditor({ competition, adminPin, onSaved }: { competition: Ad
             </Field>
 
             <ConfigEditor config={form.config} onChange={updateConfig} />
+            <CompetitionBookingSettings config={form.config} onChange={updateConfig} slug={competition.slug} adminPin={adminPin} />
 
             {message && <p className="mt-4 rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm text-white/75">{message}</p>}
         </section>
@@ -716,7 +718,7 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
     }
 
     const updateCashPrizeGroupAmount = (groupIndex: number, prizeIndex: number, value: number) => {
-        const prizes = [...config.cashPrizeGroups[groupIndex].prizes] as [number, number, number]
+        const prizes = [...config.cashPrizeGroups[groupIndex].prizes]
         prizes[prizeIndex] = value
         updateCashPrizeGroup(groupIndex, { prizes })
     }
@@ -923,11 +925,12 @@ function ConfigEditor({ config, onChange }: { config: CompetitionConfig; onChang
 
                                         <div className="mt-3 grid gap-3 sm:grid-cols-3">
                                             {group.prizes.map((prize, prizeIndex) => (
-                                                <CreateField key={prizeIndex} label={`${["1st", "2nd", "3rd"][prizeIndex]} prize`}>
+                                                <CreateField key={prizeIndex} label={`${["1st", "2nd", "3rd"][prizeIndex] ?? `${prizeIndex + 1}th`} prize`}>
                                                     <input min={0} step={1} type="number" value={prize} onChange={(event) => updateCashPrizeGroupAmount(groupIndex, prizeIndex, Number(event.target.value))} className="field" />
                                                 </CreateField>
                                             ))}
                                         </div>
+                                        <div className="mt-3 flex gap-3"><button type="button" className="admin-button" disabled={group.prizes.length >= 8} onClick={() => updateCashPrizeGroup(groupIndex, { prizes: [...group.prizes, 0] })}>Add prize place</button><button type="button" className="admin-button" disabled={group.prizes.length <= 3} onClick={() => updateCashPrizeGroup(groupIndex, { prizes: group.prizes.slice(0, -1) })}>Remove last place</button></div>
                                     </div>
                                 )
                             })}

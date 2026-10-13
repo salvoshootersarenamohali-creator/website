@@ -9,6 +9,7 @@ import {
     getEventById,
     isOnlinePaymentMode,
 } from "@/lib/competition"
+import { resolveRelaySelection } from "@/lib/relay-booking"
 
 export type IncomingRegistrationEntry = {
     eventId: string
@@ -126,7 +127,7 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
             : "Please select a valid payment mode.")
     }
     const selectedDay = config.slotOptions.find((slot) => slot.date === data.preferredDate)
-    if (!selectedDay || !selectedDay.slots.includes(data.preferredSlot)) {
+    if (!config.relayBooking.enabled && (!selectedDay || !selectedDay.slots.includes(data.preferredSlot))) {
         validationError("Please select a valid relay date and time slot.")
     }
     if (!data.entries.length) {
@@ -143,6 +144,7 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
 
     const seenEntries = new Set<string>()
     const resolvedEntries = data.entries.map((entry) => {
+        if (!entry || typeof entry !== "object") validationError("Selected event is invalid.")
         const eventId = String(entry.eventId ?? "").trim()
         const categoryCode = String(entry.categoryCode ?? "").trim()
         const key = `${eventId}:${categoryCode}`
@@ -170,6 +172,7 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
         validationError("Choose either pistol or rifle categories, not both.")
     }
 
+    if (config.relayBooking.enabled) resolveRelaySelection(data.preferredDate, data.preferredSlot, resolvedEntries, config)
     return resolvedEntries
 }
 
