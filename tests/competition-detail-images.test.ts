@@ -31,10 +31,13 @@ function competitionRecord(slug: string) {
 }
 
 describe("competition detail images", () => {
-    it("hides Nehra artwork while retaining structured information and registration links", async () => {
+    it("retains Nehra's hero background but hides circulars below the hero", async () => {
         findUnique.mockResolvedValueOnce(competitionRecord("nehra-memorial-2026"))
         const html = renderToStaticMarkup(await CompetitionPage({ params: Promise.resolve({ slug: "nehra-memorial-2026" }) }))
-        expect(html).not.toContain("<img")
+        expect(html.match(/<img /g)).toHaveLength(1)
+        expect(html).toContain('<img src="/nehra-2026-entry-poster.png" alt=""')
+        expect(html).not.toContain("/nehra-2026-relay-schedule.png")
+        expect(html).not.toContain("/nehra-2026-prizes.png")
         expect(html).not.toContain("Official Entry Circular")
         expect(html).not.toContain("Official Relay Circular")
         expect(html).not.toContain("Official Prize and Entry Fee Circular")
