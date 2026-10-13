@@ -69,6 +69,7 @@ export default async function CompetitionPage({ params }: PageProps) {
 }
 
 function CompetitionDetail({ competition }: { competition: ReturnType<typeof getTemplatePublicCompetition> }) {
+    const showCompetitionImages = competition.slug !== "nehra-memorial-2026"
     const dateRange = formatCompetitionDateRange(competition.startDate, competition.endDate)
     const registrationAvailable = isCompetitionRegistrationAvailable(competition)
     const statusLabel = getCompetitionStatusLabel(competition)
@@ -83,14 +84,14 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
     return (
         <div className="min-h-screen bg-black text-white">
             <section className="relative overflow-hidden border-b border-white/10 px-4 py-14 md:py-20">
-                <Image
+                {showCompetitionImages && <Image
                     src={competition.heroImagePath || "/competition-range.JPG"}
                     alt=""
                     fill
                     priority
                     sizes="100vw"
                     className="object-cover opacity-35"
-                />
+                />}
                 <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(0,0,0,0.94),rgba(7,45,39,0.84),rgba(121,39,55,0.52))]" />
                 <div className="container relative z-10 mx-auto">
                     <div className="max-w-4xl">
@@ -209,13 +210,13 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                 </div>
 
                 <CashPrizeSchedule config={competition.config} className="mt-5" />
-                {competition.config.relayBooking.enabled && competition.heroImagePath && <section className="mt-5"><h2 className="mb-3 text-xl font-black">Official Entry Circular</h2><Image src={competition.heroImagePath} alt={`${competition.title} official entry circular`} width={990} height={1264} className="h-auto w-full max-w-3xl rounded-md" /></section>}
+                {showCompetitionImages && competition.config.relayBooking.enabled && competition.heroImagePath && <section className="mt-5"><h2 className="mb-3 text-xl font-black">Official Entry Circular</h2><Image src={competition.heroImagePath} alt={`${competition.title} official entry circular`} width={990} height={1264} className="h-auto w-full max-w-3xl rounded-md" /></section>}
                 {competition.config.relayBooking.enabled && <section className="mt-5 rounded-lg border border-white/15 bg-neutral-950 p-5">
                     <h2 className="text-2xl font-black">Daily Relay Schedule</h2><p className="mt-2 text-white/65">{competition.config.relayBooking.standardCapacity} standard lanes and {competition.config.relayBooking.specialCapacity} shared Little Champ / Open Sight lanes per relay. All times are local to the venue. Website dates and times are authoritative where the original circular differs.</p>
                     {competition.config.relayBooking.days.filter((day) => day.relays.length).map((day, index) => <details key={day.date} open={index === 0} className="mt-4 rounded-md border border-white/10 p-3"><summary className="cursor-pointer font-bold">{day.date} · {day.relays.length} relays</summary><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["Relay", "Rules", "Report", "Prepare", "Start", "End"].map((label) => <th key={label} className="p-3 text-[#D4AF37]">{label}</th>)}</tr></thead><tbody>{day.relays.map((relay) => <tr key={relay.id} className="border-t border-white/10"><td className="p-3">{relay.number}</td><td>{relay.ruleSet}</td><td>{relay.reportingTime}</td><td>{relay.preparationTime}</td><td>{relay.startTime}</td><td>{relay.endTime}</td></tr>)}</tbody></table></div></details>)}
                 </section>}
-                {competition.config.scheduleImagePath && <section className="mt-5"><h2 className="mb-3 text-xl font-black">Official Relay Circular</h2><Image src={competition.config.scheduleImagePath} alt="Official relay schedule circular" width={1179} height={749} className="h-auto w-full max-w-4xl rounded-md" /></section>}
-                {competition.config.prizeImagePath && <section className="mt-5"><h2 className="mb-3 text-xl font-black">Official Prize and Entry Fee Circular</h2><p className="mb-3 text-sm text-white/60">Use the competition dates and relay times shown on this page for booking. The original circular artwork is reproduced below.</p><Image src={competition.config.prizeImagePath} alt="Nehra Memorial cash prizes and entry fees circular" width={1033} height={1280} className="h-auto w-full max-w-3xl rounded-md" /></section>}
+                {showCompetitionImages && competition.config.scheduleImagePath && <section className="mt-5"><h2 className="mb-3 text-xl font-black">Official Relay Circular</h2><Image src={competition.config.scheduleImagePath} alt="Official relay schedule circular" width={1179} height={749} className="h-auto w-full max-w-4xl rounded-md" /></section>}
+                {showCompetitionImages && competition.config.prizeImagePath && <section className="mt-5"><h2 className="mb-3 text-xl font-black">Official Prize and Entry Fee Circular</h2><p className="mb-3 text-sm text-white/60">Use the competition dates and relay times shown on this page for booking. The original circular artwork is reproduced below.</p><Image src={competition.config.prizeImagePath} alt="Nehra Memorial cash prizes and entry fees circular" width={1033} height={1280} className="h-auto w-full max-w-3xl rounded-md" /></section>}
 
                 <div className="mt-5 grid gap-5 lg:grid-cols-3">
                     <section className="rounded-lg border border-emerald-300/20 bg-emerald-400/[0.06] p-5">
