@@ -18,6 +18,38 @@ export const dynamic = "force-dynamic"
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
     const { slug } = await params
 
+    if (slug === "nehra-memorial-2026") {
+        const title = "2nd Shri Baru Ram Nehra Memorial Shooting Championship 2026"
+        const description = "Air Rifle and Air Pistol championship at Nehra Shooting Club, Kaithal. Qualifying matches run 1-5 November, with finals on 6 November 2026."
+        const url = "https://salvoshootersarena.com/competitions/nehra-memorial-2026"
+        const image = "https://salvoshootersarena.com/nehra-shooting-club-logo.png"
+
+        return {
+            title,
+            description,
+            alternates: { canonical: url },
+            openGraph: {
+                title,
+                description,
+                type: "website",
+                url,
+                siteName: "Nehra Shooting Club, Kaithal",
+                images: [{
+                    url: image,
+                    width: 1256,
+                    height: 1256,
+                    alt: "Nehra Shooting Club, Kaithal logo",
+                }],
+            },
+            twitter: {
+                card: "summary_large_image",
+                title,
+                description,
+                images: [image],
+            },
+        }
+    }
+
     if (slug === "38th-salvo-cup") {
         return {
             title: "38th Salvo Cup | 25th-27th September 2026",

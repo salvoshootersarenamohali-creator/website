@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { createElement, type ReactNode } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it, vi } from "vitest"
-import CompetitionPage from "@/app/competitions/[slug]/page"
+import CompetitionPage, { generateMetadata } from "@/app/competitions/[slug]/page"
 import { getTemplatePublicCompetition } from "@/lib/competition-server"
 
 const { findUnique } = vi.hoisted(() => ({ findUnique: vi.fn() }))
@@ -31,6 +31,33 @@ function competitionRecord(slug: string) {
 }
 
 describe("competition detail images", () => {
+    it("publishes Nehra-specific link preview metadata", async () => {
+        const metadata = await generateMetadata({ params: Promise.resolve({ slug: "nehra-memorial-2026" }) })
+
+        expect(metadata).toMatchObject({
+            title: "2nd Shri Baru Ram Nehra Memorial Shooting Championship 2026",
+            description: "Air Rifle and Air Pistol championship at Nehra Shooting Club, Kaithal. Qualifying matches run 1-5 November, with finals on 6 November 2026.",
+            alternates: {
+                canonical: "https://salvoshootersarena.com/competitions/nehra-memorial-2026",
+            },
+            openGraph: {
+                title: "2nd Shri Baru Ram Nehra Memorial Shooting Championship 2026",
+                siteName: "Nehra Shooting Club, Kaithal",
+                url: "https://salvoshootersarena.com/competitions/nehra-memorial-2026",
+                images: [{
+                    url: "https://salvoshootersarena.com/nehra-shooting-club-logo.png",
+                    width: 1256,
+                    height: 1256,
+                    alt: "Nehra Shooting Club, Kaithal logo",
+                }],
+            },
+            twitter: {
+                card: "summary_large_image",
+                images: ["https://salvoshootersarena.com/nehra-shooting-club-logo.png"],
+            },
+        })
+    })
+
     it("retains Nehra's hero background but hides circulars below the hero", async () => {
         findUnique.mockResolvedValueOnce(competitionRecord("nehra-memorial-2026"))
         const html = renderToStaticMarkup(await CompetitionPage({ params: Promise.resolve({ slug: "nehra-memorial-2026" }) }))
