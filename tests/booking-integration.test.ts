@@ -56,9 +56,12 @@ describe.skipIf(!enabled)("booking transactions against an isolated PostgreSQL d
         }
         await prisma.$disconnect(); vi.unstubAllEnvs()
     })
-    it("seeds the new event through migrations", async () => {
+    it("keeps the withdrawn event unpublished after migrations", async () => {
         const event = await prisma.competition.findUniqueOrThrow({ where: { slug: "nehra-memorial-2026" } })
-        expect(event.registrationOpen).toBe(true)
+        expect(event.isPublished).toBe(false)
+        expect(event.registrationOpen).toBe(false)
+        expect(event.resultsPublished).toBe(false)
+        expect(event.status).toBe("closed")
         expect(normalizeCompetitionConfig(event.config).relayBooking.days).toHaveLength(5)
     })
     it("accepts exactly 13 concurrent standard submissions and frees a deleted lane", async () => {

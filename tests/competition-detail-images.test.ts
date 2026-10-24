@@ -31,47 +31,15 @@ function competitionRecord(slug: string) {
 }
 
 describe("competition detail images", () => {
-    it("publishes Nehra-specific link preview metadata", async () => {
+    it("does not advertise the withdrawn Nehra competition in link previews", async () => {
         const metadata = await generateMetadata({ params: Promise.resolve({ slug: "nehra-memorial-2026" }) })
-
-        expect(metadata).toMatchObject({
-            title: "2nd Shri Baru Ram Nehra Memorial Shooting Championship 2026",
-            description: "Air Rifle and Air Pistol championship at Nehra Shooting Club, Kaithal. Qualifying matches run 1-5 November, with finals on 6 November 2026.",
-            alternates: {
-                canonical: "https://salvoshootersarena.com/competitions/nehra-memorial-2026",
-            },
-            openGraph: {
-                title: "2nd Shri Baru Ram Nehra Memorial Shooting Championship 2026",
-                siteName: "Nehra Shooting Club, Kaithal",
-                url: "https://salvoshootersarena.com/competitions/nehra-memorial-2026",
-                images: [{
-                    url: "https://salvoshootersarena.com/nehra-shooting-club-logo.png",
-                    width: 1256,
-                    height: 1256,
-                    alt: "Nehra Shooting Club, Kaithal logo",
-                }],
-            },
-            twitter: {
-                card: "summary_large_image",
-                images: ["https://salvoshootersarena.com/nehra-shooting-club-logo.png"],
-            },
-        })
+        expect(metadata).toEqual({})
     })
 
-    it("retains Nehra's hero background but hides circulars below the hero", async () => {
-        findUnique.mockResolvedValueOnce(competitionRecord("nehra-memorial-2026"))
-        const html = renderToStaticMarkup(await CompetitionPage({ params: Promise.resolve({ slug: "nehra-memorial-2026" }) }))
-        expect(html.match(/<img /g)).toHaveLength(1)
-        expect(html).toContain('<img src="/nehra-2026-entry-poster.png" alt=""')
-        expect(html).not.toContain("/nehra-2026-relay-schedule.png")
-        expect(html).not.toContain("/nehra-2026-prizes.png")
-        expect(html).not.toContain("Official Entry Circular")
-        expect(html).not.toContain("Official Relay Circular")
-        expect(html).not.toContain("Official Prize and Entry Fee Circular")
-        expect(html).toContain("Daily Relay Schedule")
-        expect(html).toContain("Nehra Memorial Cash Prize Schedule")
-        expect(html).toContain("21:35")
-        expect(html).toContain("/competitions/nehra-memorial-2026/register")
+    it("returns not found for the unpublished Nehra competition", async () => {
+        findUnique.mockResolvedValueOnce({ ...competitionRecord("nehra-memorial-2026"), isPublished: false, registrationOpen: false, resultsPublished: false, status: "closed" })
+        await expect(CompetitionPage({ params: Promise.resolve({ slug: "nehra-memorial-2026" }) }))
+            .rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404")
     })
 
     it("keeps hero and circular images available for other competitions", async () => {
