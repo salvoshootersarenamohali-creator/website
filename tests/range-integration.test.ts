@@ -381,4 +381,11 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         await prisma.rangeAudit.createMany({ data: Array.from({ length: 5001 }, (_, i) => ({ actorId: ownerId, locationId, action: "test.export.limit", entityId: `limit-${i}` })) })
         expect((await call(`reports?locationId=${locationId}&report=audit&search=test.export.limit&export=1`, ownerId)).status).toBe(413)
     })
+    it("enforces the open-shift lock even for direct database writes", async () => {
+        await expect(prisma.rangeShift.create({ data: { userId: coachId, locationId, inAt: new Date(), outAt: null, openKey: null } })).rejects.toThrow()
+        const shift = await prisma.rangeShift.create({ data: { userId: coachId, locationId, inAt: new Date(), openKey: coachId } })
+        try {
+            await expect(prisma.rangeShift.create({ data: { userId: coachId, locationId: otherLocationId, inAt: new Date(), openKey: coachId } })).rejects.toThrow()
+        } finally { await prisma.rangeShift.delete({ where: { id: shift.id } }) }
+    })
 })
