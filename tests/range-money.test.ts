@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest"
 import { formatMoney, paise, parseMoney } from "@/lib/range/money"
 import { normalizeFinance } from "@/lib/range/finance"
 import { rangeDay } from "@/lib/range/shared"
+import { suggestedCoverageEnd } from "@/lib/range/fee-period"
 describe("range money validation", () => {
+    it("suggests inclusive coverage dates across month ends and leap years", () => {
+        expect(suggestedCoverageEnd("2026-11-12", 3)).toBe("2027-02-11")
+        expect(suggestedCoverageEnd("2026-01-31", 1)).toBe("2026-02-28")
+        expect(suggestedCoverageEnd("2028-01-31", 1)).toBe("2028-02-29")
+        expect(suggestedCoverageEnd("2026-11-01", 3)).toBe("2027-01-31")
+    })
     it("parses rupees exactly without floating point rounding", () => {
         expect(parseMoney("950.25")).toBe(95025)
         expect(parseMoney("0.10")).toBe(10)

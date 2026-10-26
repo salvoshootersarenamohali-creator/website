@@ -32,6 +32,12 @@ Every entry records integer paise, actual activity date, recorder, category snap
 
 Optional receipt images are authenticated Cloudinary assets with permission-checked, expiring links. Gallery uploads are permitted for receipts; only attendance requires live capture. Owners void and replace mistakes, preserving originals and coach attribution. Actual refunds are separate opposite-direction entries linked to the original, capped to its remaining unrefunded amount. Resolve associated refunds before voiding/correcting the original. Salary/fee records will be managed by their own features, keeping their metadata consistent. Financial POSTs are keyed to prevent duplicated submissions; all movements and audit records commit atomically.
 
+## Admissions and renewals
+
+Add a student in the roster before recording an admission or renewal. Record the amount actually received, number of months, explicit inclusive coverage dates and account/payment parts. The suggested end date advances calendar months, subtracts one day and clamps at short month ends; it is always editable. Coverage and income commit together and retries do not duplicate payments. This records payments and their coverage, not agreed fees, receivables or installment schedules.
+
+Coaches see fee payments they recorded and can request corrections. Owners see all fee histories and use Admissions & fees to void or replace a payment and its coverage together. Generic financial corrections cannot modify fee records. Voided coverage stays in history; owner replacements retain the original coach's attribution. Actual money returned is recorded separately as a refund and does not silently alter agreed coverage dates.
+
 ## Future app / shooter compatibility
 
 Students have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.

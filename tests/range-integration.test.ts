@@ -48,6 +48,7 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         const ids = [ownerId, coachId, otherId, temporaryId]
         const financeWhere = { locationId: { in: [locationId, otherLocationId] } }
         const finances = await prisma.rangeFinanceTransaction.findMany({ where: financeWhere })
+        await prisma.rangeStudentFee.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
         await prisma.rangeMoneyMovement.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
         await prisma.rangeFinanceTransaction.updateMany({ where: financeWhere, data: { correctsId: null, refundOfId: null } })
         await prisma.rangeFinanceTransaction.deleteMany({ where: financeWhere })
@@ -246,5 +247,24 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         const response = await POST(new NextRequest("http://localhost/api/range/finance", { method: "POST", headers: { origin: "http://localhost", cookie: `${SESSION_COOKIE}=${coachId}` }, body: form }), { params: Promise.resolve({ path: ["finance"] }) })
         expect(response.status).toBe(500)
         expect(await prisma.rangeFinanceTransaction.count({ where: { locationId } })).toBe(before)
+    })
+    it("records fee coverage and its income atomically without duplicate retries", async () => {
+        const body = { locationId, enrollmentId: studentIds[0], type: "admission", months: 3, coverageStart: "2026-11-12", coverageEnd: "2027-02-11", amountPaise: 1500000, occurredOn: rangeDay(), categoryId: incomeCategory, payments: [{ accountId: coachCash, method: "cash", amountPaise: 1500000 }], submissionKey: randomUUID() }
+        const response = await call("fees", coachId, body)
+        expect(response.status).toBe(200)
+        const id = (await response.json()).transactionId
+        expect((await (await call("fees", coachId, body)).json()).transactionId).toBe(id)
+        expect(await prisma.rangeStudentFee.count({ where: { transactionId: id } })).toBe(1)
+        expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id } })).source).toBe("studentFee")
+        expect((await call("fees", coachId, { ...body, months: 0, submissionKey: randomUUID() })).status).toBe(400)
+        expect((await call(`fees?locationId=${otherLocationId}`, coachId)).status).toBe(403)
+        expect((await call("finance/void", ownerId, { id, version: 1, reason: "Use fee flow" })).status).toBe(400)
+        const corrected = await call("fees/correct", ownerId, { ...body, id, version: 1, months: 2, coverageEnd: "2027-01-11", reason: "Coverage agreed for two months", submissionKey: randomUUID() })
+        expect(corrected.status).toBe(200)
+        const replacementId = (await corrected.json()).transactionId
+        expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id } })).status).toBe("void")
+        expect((await prisma.rangeStudentFee.findUniqueOrThrow({ where: { transactionId: replacementId } })).months).toBe(2)
+        expect((await call("fees/void", coachId, { id: replacementId, version: 1, reason: "Not allowed" })).status).toBe(403)
+        expect((await call("fees/void", ownerId, { id: replacementId, version: 1, reason: "Duplicate record confirmed" })).status).toBe(200)
     })
 })

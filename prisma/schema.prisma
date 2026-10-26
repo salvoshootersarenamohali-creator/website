@@ -126,8 +126,23 @@ model RangeFinanceTransaction {
   refundOf RangeFinanceTransaction? @relation("FinanceRefunds", fields: [refundOfId], references: [id], onDelete: Restrict)
   refunds RangeFinanceTransaction[] @relation("FinanceRefunds")
   movements RangeMoneyMovement[]
+  studentFee RangeStudentFee?
   @@index([locationId, occurredOn])
   @@index([recordedById])
+}
+
+model RangeStudentFee {
+  id String @id @default(cuid())
+  transactionId String @unique
+  enrollmentId String
+  type String
+  months Int
+  coverageStart String
+  coverageEnd String
+  notes String?
+  transaction RangeFinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  enrollment RangeEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  @@index([enrollmentId, coverageStart])
 }
 
 model RangeMoneyMovement {
@@ -172,6 +187,7 @@ model RangeEnrollment {
   location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
   createdBy RangeUser @relation(fields: [createdById], references: [id], onDelete: Restrict)
   attendance RangeStudentAttendance[]
+  fees RangeStudentFee[]
   @@unique([profileId, locationId])
   @@index([locationId, active])
 }
