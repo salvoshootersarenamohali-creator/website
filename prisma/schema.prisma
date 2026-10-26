@@ -8,6 +8,76 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model RangeUser {
+  id String @id @default(cuid())
+  name String
+  phone String @unique
+  passwordHash String
+  role String @default("coach")
+  active Boolean @default(true)
+  mustChangePassword Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships RangeMembership[]
+  sessions RangeSession[]
+  audits RangeAudit[]
+}
+
+model RangeLocation {
+  id String @id @default(cuid())
+  name String
+  slug String @unique
+  timeZone String @default("Asia/Kolkata")
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  memberships RangeMembership[]
+  audits RangeAudit[]
+}
+
+model RangeMembership {
+  userId String
+  locationId String
+  user RangeUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  @@id([userId, locationId])
+  @@index([locationId])
+}
+
+model RangeSession {
+  tokenHash String @id
+  userId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user RangeUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RangeLoginAttempt {
+  id String @id @default(cuid())
+  phoneHash String
+  ipHash String
+  createdAt DateTime @default(now())
+  @@index([phoneHash, createdAt])
+  @@index([ipHash, createdAt])
+}
+
+model RangeAudit {
+  id String @id @default(cuid())
+  actorId String
+  locationId String?
+  action String
+  entityId String
+  before Json?
+  after Json?
+  reason String?
+  createdAt DateTime @default(now())
+  actor RangeUser @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  location RangeLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  @@index([locationId, createdAt])
+  @@index([entityId])
+}
+
 model Registration {
   id             String              @id @default(cuid())
   competitionId  String
