@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import * as XLSX from "xlsx"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
@@ -314,5 +315,70 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: firstId } })).status).toBe("void")
         expect((await call("salaries/void", ownerId, { id: secondId, version: 1, reason: "Duplicate second record" })).status).toBe(200)
         expect((await prisma.rangeFinanceTransaction.aggregate({ where: { locationId, source: "salary", status: "posted" }, _sum: { amountPaise: true } }))._sum.amountPaise).toBe(100000)
+    })
+    it("keeps reporting owner-only and scopes coach overview financial data", async () => {
+        expect((await call(`reports?locationId=${locationId}`, coachId)).status).toBe(403)
+        expect((await call(`reports?locationId=${locationId}&export=1`, coachId)).status).toBe(403)
+        expect((await call(`reports/meta?locationId=${locationId}`, coachId)).status).toBe(403)
+        expect((await call(`dashboard?locationId=all`, coachId)).status).toBe(403)
+        expect((await call(`reports?locationId=${locationId}`)).status).toBe(401)
+        const coachOverview = await (await call(`dashboard?locationId=${locationId}`, coachId)).json()
+        expect(coachOverview.accounts.every((a: { id: string }) => a.id === coachCash)).toBe(true)
+        const expected = await prisma.rangeFinanceTransaction.aggregate({ where: { locationId, recordedById: coachId, status: "posted", kind: "expense", occurredOn: { gte: `${rangeDay().slice(0, 7)}-01`, lte: rangeDay() } }, _sum: { amountPaise: true } })
+        expect(coachOverview.expensePaise).toBe(expected._sum.amountPaise || 0)
+        expect((await call(`dashboard?locationId=${otherLocationId}`, coachId)).status).toBe(403)
+    })
+    it("filters payment-part totals correctly and exports the same matching records", async () => {
+        expect((await call("finance", coachId, saleData({ description: "Split report test sale" }))).status).toBe(200)
+        const query = `reports?locationId=${locationId}&report=finance&from=${rangeDay()}&to=${rangeDay()}&status=posted&accountId=${coachCash}&search=Split%20report%20test`
+        const data = await (await call(query, ownerId)).json()
+        expect(data.total).toBe(1)
+        expect(data.summary.incomePaise).toBe(50000)
+        expect(data.rows[0]["Transaction total (₹)"]).toBe(950)
+        expect(data.rows[0]["Net movement in view (₹)"]).toBe(500)
+        const response = await call(`${query}&export=1`, ownerId)
+        expect(response.status).toBe(200)
+        expect(response.headers.get("content-type")).toContain("spreadsheetml")
+        const workbook = XLSX.read(await response.arrayBuffer(), { type: "array" })
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Records)
+        expect(rows).toHaveLength(1)
+        expect(rows[0]["Net movement in view (₹)"]).toBe(500)
+        expect((await call(`reports?locationId=${locationId}&report=finance&status=invalid`, ownerId)).status).toBe(400)
+        expect((await call(`reports?locationId=${locationId}&report=coachAttendance&accountId=${coachCash}`, ownerId)).status).toBe(400)
+    })
+    it("exports unmarked students as text without inventing absent records or Excel formulas", async () => {
+        const created = await call("students", coachId, { locationId, name: "=1+1", guardianPhone: "9000000088", discipline: "pistol", startDate: rangeDay(), submissionKey: randomUUID() })
+        expect(created.status).toBe(200)
+        const id = (await created.json()).enrollmentId
+        const response = await call(`reports?locationId=${locationId}&report=dailyRoll&status=unmarked&export=1`, ownerId)
+        expect(response.status).toBe(200)
+        const workbook = XLSX.read(await response.arrayBuffer(), { type: "array" }), sheet = workbook.Sheets.Records
+        const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet).find(r => r.Student === "=1+1")
+        expect(row?.Status).toBe("unmarked")
+        const cell = Object.values(sheet).find(c => c && typeof c === "object" && "v" in c && c.v === "=1+1")
+        expect(cell?.t).toBe("s")
+        expect(cell?.f).toBeUndefined()
+        expect(await prisma.rangeStudentAttendance.count({ where: { enrollmentId: id } })).toBe(0)
+    })
+    it("clips coach hours at India midnight and reports salary month independently of payment date", async () => {
+        await prisma.rangeShift.create({ data: { userId: coachId, locationId, inAt: new Date("2026-10-03T23:00:00+05:30"), outAt: new Date("2026-10-04T01:00:00+05:30"), adjusted: true } })
+        const attendance = await (await call(`reports?locationId=${locationId}&report=coachAttendance&from=2026-10-04&to=2026-10-04&personId=${coachId}&status=completed`, ownerId)).json()
+        expect(attendance.total).toBe(1)
+        expect(attendance.summary.completedHours).toBe(1)
+        const salaries = await (await call(`reports?locationId=${locationId}&report=salaries&from=${rangeDay()}&to=${rangeDay()}&month=${rangeDay().slice(0, 7)}&personId=${coachId}&status=posted`, ownerId)).json()
+        expect(salaries.total).toBe(1)
+        expect(salaries.summary.expensePaise).toBe(100000)
+        expect((await call(`reports?locationId=${locationId}&from=2026-10-10&to=2026-10-01`, ownerId)).status).toBe(400)
+    })
+    it("paginates audit history while exporting all matching pages and rejects oversized exports", async () => {
+        await prisma.rangeAudit.createMany({ data: Array.from({ length: 55 }, (_, i) => ({ actorId: ownerId, locationId, action: "test.pagination", entityId: `row-${i}` })) })
+        const query = `reports?locationId=${locationId}&report=audit&from=${rangeDay()}&to=${rangeDay()}&search=test.pagination`
+        const first = await (await call(query, ownerId)).json(), second = await (await call(`${query}&page=2`, ownerId)).json()
+        expect(first.total).toBe(55); expect(first.rows).toHaveLength(50); expect(second.rows).toHaveLength(5)
+        const exported = await call(`${query}&page=2&export=1`, ownerId)
+        const workbook = XLSX.read(await exported.arrayBuffer(), { type: "array" })
+        expect(XLSX.utils.sheet_to_json(workbook.Sheets.Records)).toHaveLength(55)
+        await prisma.rangeAudit.createMany({ data: Array.from({ length: 5001 }, (_, i) => ({ actorId: ownerId, locationId, action: "test.export.limit", entityId: `limit-${i}` })) })
+        expect((await call(`reports?locationId=${locationId}&report=audit&search=test.export.limit&export=1`, ownerId)).status).toBe(413)
     })
 })

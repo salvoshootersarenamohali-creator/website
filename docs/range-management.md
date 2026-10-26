@@ -50,6 +50,18 @@ Only owners may list, record, correct or void salaries. Each record identifies t
 
 Each salary and its expense commit in the same transaction, with retry keys preventing duplicate expense entries. Dedicated salary corrections void the original and replace both the salary metadata and expense together; reasons and history are retained. Generic financial corrections cannot alter salaries. Coach financial queries and receipt endpoints exclude owner-recorded salary entries, and every salary API rejects coaches independently of the navigation.
 
+## Overview, reports and Excel exports
+
+Overview shows today's complete student-roll counts, open shifts (flagging older missing departures), pending handovers/corrections, income/expenses for the selected activity dates and tracked account funds as of the end date. Coaches see only their own shift/financial entries and holding accounts. Owners can combine active locations, then jump into the corresponding operational panels. Transfers are excluded from income and expense totals.
+
+Owner-only Reports & history provides the finance ledger, overlapping coach shifts, recorded student attendance history, a complete single-day student roll including unmarked students, fees, handovers, salaries and change history. Filters cover dates, location(s), staff, student, category, account, payment method, status, salary month and search where applicable. Reports reject unsupported filters. Coach hours are clipped at India midnight boundaries; no hours or departure are invented for open shifts. All locations also includes global staff administration in change history.
+
+Tables are paginated at 50 rows. Matching counts and financial summaries cover the entire filtered result. Account/payment-method summaries use only matching movement parts; the full transaction amount remains a separate column. Voided records may be reviewed but have zero current movement. Excel downloads use the exact applied filters across all pages in one consistent database snapshot, with Records and Summary worksheets. Exports larger than 5,000 records or 4 MB are rejected with a request to narrow filters, never silently truncated. Text remains text in Excel, including values beginning with an equals sign. Authenticated media URLs and credentials are not embedded in exports.
+
+## Launch and acceptance
+
+Every operational release has its own commit/push and successful CI/deployment gate. CI applies all migrations and runs tests against disposable PostgreSQL before production migrations, then builds and deploys. Initial setup is manual: provision the owner securely, add real coaches and students, define actual products/accounts/opening balances and verify attendance capture on the real Android Chrome/iPhone Safari devices over HTTPS. No real financial starting amounts, coach passwords or student roster are seeded. Local preview screenshots use disposable sample data. Cloudinary must be configured in production for camera evidence and optional receipts.
+
 ## Future app / shooter compatibility
 
 Students have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.
