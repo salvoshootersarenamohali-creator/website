@@ -21,6 +21,9 @@ model RangeUser {
   memberships RangeMembership[]
   sessions RangeSession[]
   audits RangeAudit[]
+  shifts RangeShift[]
+  challenges RangeAttendanceChallenge[]
+  corrections RangeCorrection[]
 }
 
 model RangeLocation {
@@ -32,6 +35,60 @@ model RangeLocation {
   createdAt DateTime @default(now())
   memberships RangeMembership[]
   audits RangeAudit[]
+  shifts RangeShift[]
+  challenges RangeAttendanceChallenge[]
+  corrections RangeCorrection[]
+}
+
+model RangeShift {
+  id String @id @default(cuid())
+  userId String
+  locationId String
+  inAt DateTime
+  outAt DateTime?
+  originalInAt DateTime?
+  originalOutAt DateTime?
+  inPhoto String?
+  outPhoto String?
+  adjusted Boolean @default(false)
+  openKey String? @unique
+  version Int @default(1)
+  user RangeUser @relation(fields: [userId], references: [id], onDelete: Restrict)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  @@index([locationId, inAt])
+  @@index([userId, inAt])
+}
+
+model RangeAttendanceChallenge {
+  id String @id @default(cuid())
+  userId String
+  locationId String
+  action String
+  shiftId String?
+  expiresAt DateTime
+  usedAt DateTime?
+  outcomeShiftId String?
+  user RangeUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  @@index([userId, expiresAt])
+}
+
+model RangeCorrection {
+  id String @id @default(cuid())
+  userId String
+  locationId String
+  kind String
+  entityId String
+  reason String
+  proposed Json
+  status String @default("pending")
+  resolution String?
+  resolvedById String?
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+  user RangeUser @relation(fields: [userId], references: [id], onDelete: Restrict)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  @@index([locationId, status])
 }
 
 model RangeMembership {

@@ -2,6 +2,8 @@ import { NextRequest } from "next/server"
 import { currentActor, login, logout, changePassword, listLocations, staffAction, locationAction } from "@/lib/range/auth"
 import { assertSameOrigin, failure } from "@/lib/range/server"
 import { RangeError } from "@/lib/range/shared"
+import { attendanceList, attendanceChallenge, attendancePunch, attendancePhoto, attendanceCorrect } from "@/lib/range/attendance"
+import { correctionsAction, rejectCorrection } from "@/lib/range/corrections"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -19,6 +21,13 @@ async function handle(request: NextRequest, context: Context) {
         if (actor.mustChangePassword) throw new RangeError("Change your temporary password first.", 403)
         if (path === "staff") return await staffAction(request, actor)
         if (path === "locations") return await locationAction(request, actor)
+        if (path === "attendance" && request.method === "GET") return await attendanceList(request, actor)
+        if (path === "attendance/challenge" && request.method === "POST") return await attendanceChallenge(request, actor)
+        if (path === "attendance/punch" && request.method === "POST") return await attendancePunch(request, actor)
+        if (path === "attendance/photo" && request.method === "GET") return await attendancePhoto(request, actor)
+        if (path === "attendance/correct" && request.method === "POST") return await attendanceCorrect(request, actor)
+        if (path === "corrections") return await correctionsAction(request, actor)
+        if (path === "corrections/reject" && request.method === "POST") return await rejectCorrection(request, actor)
         throw new RangeError("Not found.", 404)
     } catch (error) { return failure(error) }
 }

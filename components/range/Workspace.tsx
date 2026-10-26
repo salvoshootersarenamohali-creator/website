@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { RangeActor, LocationOption } from "@/lib/range/shared"
 import { ActionForm, Field, Panel, rangeApi } from "./shared"
+import { Attendance } from "./Attendance"
 
 type Staff = RangeActor & { active: boolean; memberships: { locationId: string }[] }
 export function Workspace() {
@@ -12,9 +13,10 @@ export function Workspace() {
     useEffect(() => { void Promise.resolve().then(load) }, [load])
     if (!user) return <div className="p-8" role="status">{error || "Loading range workspace…"}</div>
     return <div className="mx-auto max-w-6xl space-y-6 px-4 py-8"><header className="flex flex-wrap items-center justify-between gap-4"><div><Link href="/range" className="text-2xl font-bold">Salvo Range</Link><p className="text-white/60">{user.name} · {user.role === "owner" ? "Owner" : "Coach"}</p></div><div className="flex flex-wrap gap-2"><select aria-label="Location" className="field max-w-52" value={locationId} onChange={e => setLocationId(e.target.value)}>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select><Button variant="outline" onClick={async () => { await rangeApi("logout", {}); window.location.assign("/range/login") }}>Sign out</Button></div></header>
-        {user.mustChangePassword ? <Panel title="Set your own password"><PasswordForm onDone={load} /></Panel> : <><nav className="flex flex-wrap gap-2" aria-label="Range workspace">{[["home", "Overview"], ...(user.role === "owner" ? [["staff", "Staff & locations"]] : []), ["password", "Password"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</nav>
+        {user.mustChangePassword ? <Panel title="Set your own password"><PasswordForm onDone={load} /></Panel> : <><nav className="flex flex-wrap gap-2" aria-label="Range workspace">{[["home", "Overview"], ["attendance", "Coach attendance"], ...(user.role === "owner" ? [["staff", "Staff & locations"]] : []), ["password", "Password"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</nav>
             {tab === "home" && <Panel title={locations.find(l => l.id === locationId)?.name || "Your workspace"}><p>Welcome, {user.name}. {user.role === "owner" ? "Manage staff accounts and location access using Staff & locations." : "Your account is ready. Your assigned locations appear above."}</p></Panel>}
             {tab === "staff" && user.role === "owner" && <StaffSettings locations={locations} reload={load} />}
+            {tab === "attendance" && locationId && <Attendance key={locationId} user={user} locationId={locationId} />}
             {tab === "password" && <Panel title="Change password"><PasswordForm onDone={load} /></Panel>}
         </>}
     </div>

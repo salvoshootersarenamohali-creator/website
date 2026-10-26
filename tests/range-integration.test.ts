@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { digest, hashPassword, SESSION_COOKIE } from "@/lib/range/auth"
 import { GET, POST } from "@/app/api/range/[...path]/route"
 import { locationAccess } from "@/lib/range/server"
 import type { RangeActor } from "@/lib/range/shared"
+
+vi.mock("@/lib/range/media", () => ({ uploadAttendancePhoto: vi.fn(async () => `test-private-${randomUUID()}`), removeAttendancePhoto: vi.fn(async () => {}), attendancePhotoUrl: vi.fn(() => "https://example.test/private-photo") }))
+import { uploadAttendancePhoto } from "@/lib/range/media"
 
 const enabled = Boolean(process.env.TEST_DATABASE_URL)
 const prefix = `range-test-${randomUUID()}`
@@ -20,6 +23,12 @@ async function call(path: string, token?: string, body?: unknown) {
     const req = request(path, token, body)
     return (body === undefined ? GET : POST)(req, { params: Promise.resolve({ path: path.split("?")[0].split("/") }) })
 }
+async function punch(challengeId: string, token = coachId, withPhoto = true) {
+    const body = new FormData(); body.set("challengeId", challengeId)
+    if (withPhoto) body.set("photo", new File([new Uint8Array(200)], "selfie.jpg", { type: "image/jpeg" }))
+    return POST(new NextRequest("http://localhost/api/range/attendance/punch", { method: "POST", headers: { origin: "http://localhost", cookie: `${SESSION_COOKIE}=${token}` }, body }), { params: Promise.resolve({ path: ["attendance", "punch"] }) })
+}
+async function challenge(action: string) { return (await (await call("attendance/challenge", coachId, { locationId, action })).json()).challengeId as string }
 
 describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
     beforeAll(async () => {
@@ -34,6 +43,9 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
     })
     afterAll(async () => {
         const ids = [ownerId, coachId, otherId, temporaryId]
+        await prisma.rangeCorrection.deleteMany({ where: { locationId: { in: [locationId, otherLocationId] } } })
+        await prisma.rangeAttendanceChallenge.deleteMany({ where: { userId: { in: ids } } })
+        await prisma.rangeShift.deleteMany({ where: { userId: { in: ids } } })
         await prisma.rangeAudit.deleteMany({ where: { actorId: { in: ids } } })
         await prisma.rangeUser.deleteMany({ where: { id: { in: ids } } })
         await prisma.rangeLocation.deleteMany({ where: { id: { in: [locationId, otherLocationId] } } })
@@ -74,5 +86,56 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         const audit = await prisma.rangeAudit.findFirstOrThrow({ where: { entityId: otherId } })
         expect(JSON.stringify(audit)).not.toContain("passwordHash")
         expect(JSON.stringify(audit)).not.toContain("temporary password")
+    })
+    it("requires a photo and leaves attendance unchanged if uploading fails", async () => {
+        const id = await challenge("in")
+        expect((await punch(id, coachId, false)).status).toBe(400)
+        vi.mocked(uploadAttendancePhoto).mockRejectedValueOnce(new Error("Storage unavailable"))
+        expect((await punch(id)).status).toBe(500)
+        expect(await prisma.rangeShift.count({ where: { userId: coachId } })).toBe(0)
+        expect((await prisma.rangeAttendanceChallenge.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull()
+    })
+    it("rejects expired captures and forged location access", async () => {
+        const id = await challenge("in")
+        await prisma.rangeAttendanceChallenge.update({ where: { id }, data: { expiresAt: new Date(0) } })
+        expect((await punch(id)).status).toBe(409)
+        expect((await call(`attendance?locationId=${otherLocationId}`, coachId)).status).toBe(403)
+        expect((await call("attendance/challenge", coachId, { locationId, action: "out" })).status).toBe(409)
+    })
+    it("commits one check-in for concurrent requests and safely replays successful captures", async () => {
+        const first = await challenge("in"), second = await challenge("in")
+        const results = await Promise.all([punch(first), punch(second)])
+        expect(results.map(r => r.status).sort()).toEqual([200, 409])
+        expect(await prisma.rangeShift.count({ where: { userId: coachId, outAt: null } })).toBe(1)
+        const used = await prisma.rangeAttendanceChallenge.findFirstOrThrow({ where: { userId: coachId, usedAt: { not: null } } })
+        expect((await punch(used.id, coachId, false)).status).toBe(200)
+        expect((await call("attendance/challenge", coachId, { locationId, action: "in" })).status).toBe(409)
+        const out = await challenge("out")
+        expect((await punch(out)).status).toBe(200)
+        expect((await punch(out, coachId, false)).status).toBe(200)
+        expect(await prisma.rangeShift.count({ where: { userId: coachId, outAt: null } })).toBe(0)
+        expect((await punch(await challenge("in"))).status).toBe(200)
+        expect((await punch(await challenge("out"))).status).toBe(200)
+        expect(await prisma.rangeShift.count({ where: { userId: coachId } })).toBe(2)
+    })
+    it("keeps owner corrections audited and rejects stale versions / overlapping shifts", async () => {
+        const shift = await prisma.rangeShift.findFirstOrThrow({ where: { userId: coachId }, orderBy: { inAt: "asc" } })
+        expect((await call("attendance/correct", coachId, { locationId })).status).toBe(403)
+        const data = { id: shift.id, version: shift.version, locationId, inAt: "2026-10-01T08:00", outAt: "2026-10-01T10:00", reason: "Forgot to mark the actual shift" }
+        expect((await call("attendance/correct", ownerId, data)).status).toBe(200)
+        expect((await call("attendance/correct", ownerId, data)).status).toBe(409)
+        const updated = await prisma.rangeShift.findUniqueOrThrow({ where: { id: shift.id } })
+        expect(updated.originalInAt).toEqual(shift.originalInAt)
+        expect(updated.inPhoto).toBe(shift.inPhoto)
+        expect(updated.adjusted).toBe(true)
+        expect((await call("attendance/correct", ownerId, { ...data, id: undefined, userId: coachId, inAt: "2026-10-01T09:00", outAt: "2026-10-01T11:00" })).status).toBe(409)
+        expect((await call(`attendance/photo?id=${shift.id}&side=in`, ownerId)).status).toBe(302)
+        expect((await call(`attendance/photo?id=not-a-shift`, coachId)).status).toBe(404)
+    })
+    it("resolves a coach correction request atomically with a missed shift", async () => {
+        expect((await call("corrections", coachId, { locationId, kind: "coachAttendance", entityId: coachId, reason: "Missed both punches", proposed: { inAt: "2026-10-02T08:00", outAt: "2026-10-02T10:00" } })).status).toBe(200)
+        const correction = await prisma.rangeCorrection.findFirstOrThrow({ where: { userId: coachId, status: "pending" } })
+        expect((await call("attendance/correct", ownerId, { locationId, userId: coachId, requestId: correction.id, inAt: "2026-10-02T08:00", outAt: "2026-10-02T10:00", reason: "Confirmed with coach" })).status).toBe(200)
+        expect((await prisma.rangeCorrection.findUniqueOrThrow({ where: { id: correction.id } })).status).toBe("resolved")
     })
 })
