@@ -38,6 +38,12 @@ Add a student in the roster before recording an admission or renewal. Record the
 
 Coaches see fee payments they recorded and can request corrections. Owners see all fee histories and use Admissions & fees to void or replace a payment and its coverage together. Generic financial corrections cannot modify fee records. Voided coverage stays in history; owner replacements retain the original coach's attribution. Actual money returned is recorded separately as a refund and does not silently alter agreed coverage dates.
 
+## Handovers and transfers
+
+Coaches submit transfers out of their own holding accounts to available own/Kartik/Salvo accounts within the same location. Owners may transfer between any accounts in a location, and can record a verified transfer immediately or confirm a pending one. Confirmation atomically posts one debit and one equal credit with finance kind `transfer`; these records never enter income/expense totals. Pending/rejected requests have no ledger effect. Repeated submissions and stale confirmations cannot move funds twice.
+
+Transfer history records source, recipient, amount, date, reference, requester and owner verification. Coaches can request corrections. Owners reject incorrect pending requests or reverse a mistaken confirmed ledger entry with a reason, then record a corrected transfer if needed. A reversal is bookkeeping correction, not a bank operation. If money actually moves back, record a new transfer. The system never initiates real payments.
+
 ## Future app / shooter compatibility
 
 Students have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.

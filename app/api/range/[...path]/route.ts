@@ -7,6 +7,7 @@ import { correctionsAction, rejectCorrection } from "@/lib/range/corrections"
 import { studentsAction, studentAttendance, studentHistory } from "@/lib/range/students"
 import { financeList, financeMeta, financePost, financeReceipt, financeSettings, financeVoid } from "@/lib/range/finance"
 import { feeList, feePost, feeVoid } from "@/lib/range/fees"
+import { transferList, transferPost, transferResolve } from "@/lib/range/transfers"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -45,6 +46,9 @@ async function handle(request: NextRequest, context: Context) {
         if (path === "fees" && request.method === "POST") return await feePost(request, actor)
         if (path === "fees/correct" && request.method === "POST") return await feePost(request, actor, true)
         if (path === "fees/void" && request.method === "POST") return await feeVoid(request, actor)
+        if (path === "transfers" && request.method === "GET") return await transferList(request, actor)
+        if (path === "transfers" && request.method === "POST") return await transferPost(request, actor)
+        if (path === "transfers/resolve" && request.method === "POST") return await transferResolve(request, actor)
         throw new RangeError("Not found.", 404)
     } catch (error) { return failure(error) }
 }

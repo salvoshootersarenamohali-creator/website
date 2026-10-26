@@ -47,6 +47,7 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
     afterAll(async () => {
         const ids = [ownerId, coachId, otherId, temporaryId]
         const financeWhere = { locationId: { in: [locationId, otherLocationId] } }
+        await prisma.rangeTransfer.deleteMany({ where: financeWhere })
         const finances = await prisma.rangeFinanceTransaction.findMany({ where: financeWhere })
         await prisma.rangeStudentFee.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
         await prisma.rangeMoneyMovement.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
@@ -266,5 +267,27 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         expect((await prisma.rangeStudentFee.findUniqueOrThrow({ where: { transactionId: replacementId } })).months).toBe(2)
         expect((await call("fees/void", coachId, { id: replacementId, version: 1, reason: "Not allowed" })).status).toBe(403)
         expect((await call("fees/void", ownerId, { id: replacementId, version: 1, reason: "Duplicate record confirmed" })).status).toBe(200)
+    })
+    it("requires owner confirmation and moves funds without creating income", async () => {
+        expect((await call("finance", coachId, saleData({ payments: [{ accountId: coachCash, method: "cash", amountPaise: 95000 }] }))).status).toBe(200)
+        const beforeIncome = (await prisma.rangeFinanceTransaction.aggregate({ where: { locationId, kind: "income", status: "posted" }, _sum: { amountPaise: true } }))._sum.amountPaise
+        const body = { locationId, fromAccountId: coachCash, toAccountId: kartikCash, amountPaise: 95000, occurredOn: rangeDay(), notes: "Collected sale proceeds handed over", submissionKey: randomUUID() }
+        const pending = await call("transfers", coachId, body)
+        expect(pending.status).toBe(200)
+        const id = (await pending.json()).transferId
+        expect((await (await call("transfers", coachId, body)).json()).transferId).toBe(id)
+        expect((await prisma.rangeTransfer.findUniqueOrThrow({ where: { id } })).transactionId).toBeNull()
+        expect((await call("transfers/resolve", coachId, { id, version: 1, action: "confirm", reason: "Cannot self-confirm" })).status).toBe(403)
+        const response = await call("transfers/resolve", ownerId, { id, version: 1, action: "confirm", reason: "Funds received" })
+        expect(response.status).toBe(200)
+        expect((await call("transfers/resolve", ownerId, { id, version: 1, action: "confirm", reason: "Retry" })).status).toBe(409)
+        const transfer = await prisma.rangeTransfer.findUniqueOrThrow({ where: { id } })
+        const movements = await prisma.rangeMoneyMovement.findMany({ where: { transactionId: transfer.transactionId! } })
+        expect(movements.map(m => m.amountPaise).sort((a, b) => a - b)).toEqual([-95000, 95000])
+        expect((await prisma.rangeFinanceTransaction.aggregate({ where: { locationId, kind: "income", status: "posted" }, _sum: { amountPaise: true } }))._sum.amountPaise).toBe(beforeIncome)
+        expect((await call("transfers", coachId, { ...body, fromAccountId: kartikCash, toAccountId: coachCash, submissionKey: randomUUID() })).status).toBe(403)
+        expect((await call("transfers", coachId, { ...body, confirmNow: true, submissionKey: randomUUID() })).status).toBe(403)
+        expect((await call("transfers/resolve", ownerId, { id, version: transfer.version, action: "reverse", reason: "Correct mistaken handover record" })).status).toBe(200)
+        expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: transfer.transactionId! } })).status).toBe("void")
     })
 })

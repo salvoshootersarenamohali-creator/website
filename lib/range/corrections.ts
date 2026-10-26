@@ -12,8 +12,11 @@ export async function correctionsAction(request: NextRequest, actor: RangeActor)
     }
     const body = await jsonBody(request), locationId = textField(body.locationId, "Location"), entityId = textField(body.entityId, "Record"), reason = textField(body.reason, "Reason", 1000)
     await locationAccess(actor, locationId)
-    if (!["coachAttendance", "studentAttendance", "finance", "studentFee"].includes(String(body.kind))) throw new RangeError("Invalid correction type.")
-    if (body.kind === "finance" || body.kind === "studentFee") {
+    if (!["coachAttendance", "studentAttendance", "finance", "studentFee", "transfer"].includes(String(body.kind))) throw new RangeError("Invalid correction type.")
+    if (body.kind === "transfer") {
+        const transfer = await prisma.rangeTransfer.findUnique({ where: { id: entityId }, include: { fromAccount: true, toAccount: true } })
+        if (!transfer || transfer.locationId !== locationId || (actor.role !== "owner" && transfer.requestedById !== actor.id && transfer.fromAccount.coachId !== actor.id && transfer.toAccount.coachId !== actor.id)) throw new RangeError("Transfer not found.", 404)
+    } else if (body.kind === "finance" || body.kind === "studentFee") {
         const entry = await prisma.rangeFinanceTransaction.findUnique({ where: { id: entityId } })
         if (!entry || entry.locationId !== locationId || (actor.role !== "owner" && entry.recordedById !== actor.id)) throw new RangeError("Entry not found.", 404)
         if (body.kind === "studentFee" ? entry.source !== "studentFee" : !["manual", "sale", "refund"].includes(entry.source)) throw new RangeError("Use the original feature to request a correction.")

@@ -18,7 +18,7 @@ export async function financeMeta(request: NextRequest, actor: RangeActor) {
     const owner = actor.role === "owner"
     const accounts = await prisma.rangeMoneyAccount.findMany({ where: { locationId, ...(owner ? {} : { active: true, OR: [{ coachId: actor.id }, { custodian: { in: ["kartik", "salvo"] } }] }) }, orderBy: { name: "asc" } })
     const balances = await accountBalances(locationId)
-    return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products: await prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }), categories: await prisma.rangeFinanceCategory.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }) })
+    return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products: await prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }), categories: await prisma.rangeFinanceCategory.findMany({ where: { locationId, kind: { in: ["income", "expense"] }, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }) })
 }
 export async function financeSettings(request: NextRequest, actor: RangeActor) {
     ownerOnly(actor)
@@ -129,7 +129,7 @@ export async function financePost(request: NextRequest, actor: RangeActor, corre
                 ownerOnly(actor)
                 const original = await tx.rangeFinanceTransaction.findUnique({ where: { id: refundOfId } })
                 const refunded = await tx.rangeFinanceTransaction.aggregate({ where: { refundOfId, status: "posted", ...(before ? { id: { not: before.id } } : {}) }, _sum: { amountPaise: true } })
-                if (!original || original.locationId !== data.locationId || original.status !== "posted" || original.source === "refund" || original.kind === data.kind || data.productId || data.occurredOn < original.occurredOn || data.amountPaise + (refunded._sum.amountPaise || 0) > original.amountPaise) throw new RangeError("Refund must follow the original payment, reverse its direction and stay within its unrefunded amount.")
+                if (!original || original.locationId !== data.locationId || original.status !== "posted" || !["income", "expense"].includes(original.kind) || original.source === "refund" || original.kind === data.kind || data.productId || data.occurredOn < original.occurredOn || data.amountPaise + (refunded._sum.amountPaise || 0) > original.amountPaise) throw new RangeError("Refund must follow the original payment, reverse its direction and stay within its unrefunded amount.")
             }
             if (before) {
                 await tx.rangeFinanceTransaction.update({ where: { id: before.id }, data: { status: "void", version: { increment: 1 } } })

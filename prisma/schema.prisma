@@ -29,6 +29,7 @@ model RangeUser {
   moneyAccounts RangeMoneyAccount[]
   financeCreated RangeFinanceTransaction[] @relation("FinanceCreator")
   financeRecorded RangeFinanceTransaction[] @relation("FinanceRecorder")
+  transfersRequested RangeTransfer[]
 }
 
 model RangeLocation {
@@ -48,6 +49,7 @@ model RangeLocation {
   products RangeProduct[]
   financeCategories RangeFinanceCategory[]
   financeTransactions RangeFinanceTransaction[]
+  transfers RangeTransfer[]
 }
 
 model RangeMoneyAccount {
@@ -64,6 +66,8 @@ model RangeMoneyAccount {
   location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
   coach RangeUser? @relation(fields: [coachId], references: [id], onDelete: Restrict)
   movements RangeMoneyMovement[]
+  transfersFrom RangeTransfer[] @relation("TransferFrom")
+  transfersTo RangeTransfer[] @relation("TransferTo")
   @@index([locationId])
 }
 
@@ -127,8 +131,36 @@ model RangeFinanceTransaction {
   refunds RangeFinanceTransaction[] @relation("FinanceRefunds")
   movements RangeMoneyMovement[]
   studentFee RangeStudentFee?
+  transfer RangeTransfer?
   @@index([locationId, occurredOn])
   @@index([recordedById])
+}
+
+model RangeTransfer {
+  id String @id @default(cuid())
+  locationId String
+  requestedById String
+  fromAccountId String
+  toAccountId String
+  amountPaise Int
+  occurredOn String
+  notes String
+  reference String?
+  status String @default("pending")
+  transactionId String? @unique
+  resolvedById String?
+  resolvedAt DateTime?
+  resolution String?
+  submissionKey String @unique
+  submissionHash String
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  requestedBy RangeUser @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  fromAccount RangeMoneyAccount @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount RangeMoneyAccount @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: Restrict)
+  transaction RangeFinanceTransaction? @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  @@index([locationId, status])
 }
 
 model RangeStudentFee {
