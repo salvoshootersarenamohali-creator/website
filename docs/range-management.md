@@ -24,6 +24,14 @@ Owners and assigned coaches can add student profiles and location enrollments. S
 
 The roll supports present, absent, leave and unmarked. Bulk marking applies only to visible, eligible, unmarked students. Coaches mark today's unmarked records; existing marks and older dates require owner correction. Bulk submissions are atomic and versioned: conflicting changes cause a refresh instead of overwriting another coach's work. No attendance row means unmarked, not absent. History records the marking coach. Owners can resolve student correction requests with a reason.
 
+## Income, expenses and balances
+
+The owner sets up real accounts, opening range-fund balances and their effective dates; no financial account or starting money is assumed. An account has a fixed holder (coach, Kartik or Salvo) and cash/online channel. Coaches may use their own or designated Kartik/Salvo accounts; shared balances are never included in coach responses. Products are an operational catalog separate from the public shop; sales do not affect inventory. Categories can be managed by the owner.
+
+Every entry records integer paise, actual activity date, recorder, category snapshot and one or more account/payment parts that must sum to the total. Product sales require quantity times actual unit price to match the total. Owner-only historical backfill is visible in historical reports, but movements before an account's dated opening balance are excluded from its current balance. Negative tracked balances are shown for review rather than blocking entry of legitimate expenses.
+
+Optional receipt images are authenticated Cloudinary assets with permission-checked, expiring links. Gallery uploads are permitted for receipts; only attendance requires live capture. Owners void and replace mistakes, preserving originals and coach attribution. Actual refunds are separate opposite-direction entries linked to the original, capped to its remaining unrefunded amount. Resolve associated refunds before voiding/correcting the original. Salary/fee records will be managed by their own features, keeping their metadata consistent. Financial POSTs are keyed to prevent duplicated submissions; all movements and audit records commit atomically.
+
 ## Future app / shooter compatibility
 
 Students have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.

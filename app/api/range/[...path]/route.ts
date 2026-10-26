@@ -5,6 +5,7 @@ import { RangeError } from "@/lib/range/shared"
 import { attendanceList, attendanceChallenge, attendancePunch, attendancePhoto, attendanceCorrect } from "@/lib/range/attendance"
 import { correctionsAction, rejectCorrection } from "@/lib/range/corrections"
 import { studentsAction, studentAttendance, studentHistory } from "@/lib/range/students"
+import { financeList, financeMeta, financePost, financeReceipt, financeSettings, financeVoid } from "@/lib/range/finance"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -32,6 +33,13 @@ async function handle(request: NextRequest, context: Context) {
         if (path === "students") return await studentsAction(request, actor)
         if (path === "students/attendance" && request.method === "POST") return await studentAttendance(request, actor)
         if (path === "students/history" && request.method === "GET") return await studentHistory(request, actor)
+        if (path === "finance" && request.method === "GET") return await financeList(request, actor)
+        if (path === "finance" && request.method === "POST") return await financePost(request, actor)
+        if (path === "finance/meta" && request.method === "GET") return await financeMeta(request, actor)
+        if (path === "finance/settings" && request.method === "POST") return await financeSettings(request, actor)
+        if (path === "finance/correct" && request.method === "POST") return await financePost(request, actor, true)
+        if (path === "finance/void" && request.method === "POST") return await financeVoid(request, actor)
+        if (path === "finance/receipt" && request.method === "GET") return await financeReceipt(request, actor)
         throw new RangeError("Not found.", 404)
     } catch (error) { return failure(error) }
 }

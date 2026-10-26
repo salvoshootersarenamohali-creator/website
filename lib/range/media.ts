@@ -24,3 +24,13 @@ export function attendancePhotoUrl(publicId: string) {
     configure()
     return cloudinary.utils.private_download_url(publicId, "jpg", { resource_type: "image", type: "authenticated", expires_at: Math.floor(Date.now() / 1000) + 60, attachment: false })
 }
+export async function uploadReceipt(file: File, locationId: string) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 3000000 || !file.size) throw new RangeError("Receipt must be a JPG, PNG or WEBP image smaller than 3 MB.")
+    configure()
+    const publicId = `salvo/range/${locationId}/receipts/${crypto.randomUUID()}`
+    await new Promise<UploadApiResponse>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream({ resource_type: "image", type: "authenticated", public_id: publicId, overwrite: false, format: "jpg", allowed_formats: ["jpg", "png", "webp"] }, (error, result) => error || !result ? reject(new RangeError("Receipt upload failed. The entry has not been saved.", 503)) : resolve(result))
+        void file.arrayBuffer().then(bytes => stream.end(Buffer.from(bytes))).catch(reject)
+    })
+    return publicId
+}

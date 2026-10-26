@@ -7,8 +7,8 @@ import { GET, POST } from "@/app/api/range/[...path]/route"
 import { locationAccess } from "@/lib/range/server"
 import { rangeDay, type RangeActor } from "@/lib/range/shared"
 
-vi.mock("@/lib/range/media", () => ({ uploadAttendancePhoto: vi.fn(async () => `test-private-${randomUUID()}`), removeAttendancePhoto: vi.fn(async () => {}), attendancePhotoUrl: vi.fn(() => "https://example.test/private-photo") }))
-import { uploadAttendancePhoto } from "@/lib/range/media"
+vi.mock("@/lib/range/media", () => ({ uploadAttendancePhoto: vi.fn(async () => `test-private-${randomUUID()}`), uploadReceipt: vi.fn(async () => `test-receipt-${randomUUID()}`), removeAttendancePhoto: vi.fn(async () => {}), attendancePhotoUrl: vi.fn(() => "https://example.test/private-photo") }))
+import { uploadAttendancePhoto, uploadReceipt } from "@/lib/range/media"
 
 const enabled = Boolean(process.env.TEST_DATABASE_URL)
 const prefix = `range-test-${randomUUID()}`
@@ -17,6 +17,8 @@ const locationId = `${prefix}-location`, otherLocationId = `${prefix}-other-loca
 const actor: RangeActor = { id: coachId, name: "Test coach", phone: "+919000000002", role: "coach", mustChangePassword: false }
 const password = "Test range password!"
 const studentIds: string[] = []
+let coachCash = "", kartikCash = "", salvoOnline = "", otherCash = "", productId = "", incomeCategory = "", expenseCategory = "", saleId = ""
+function saleData(overrides: Record<string, unknown> = {}) { return { locationId, kind: "income", amountPaise: 95000, occurredOn: rangeDay(), description: "One pellet box", categoryId: incomeCategory, productId, quantity: 1, unitPricePaise: 95000, payments: [{ accountId: coachCash, method: "cash", amountPaise: 50000 }, { accountId: salvoOnline, method: "online", amountPaise: 45000 }], submissionKey: randomUUID(), ...overrides } }
 function request(path: string, token?: string, body?: unknown) {
     return new NextRequest(`http://localhost/api/range/${path}`, { method: body === undefined ? "GET" : "POST", headers: { origin: "http://localhost", ...(token ? { cookie: `${SESSION_COOKIE}=${token}` } : {}), "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })
 }
@@ -44,6 +46,14 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
     })
     afterAll(async () => {
         const ids = [ownerId, coachId, otherId, temporaryId]
+        const financeWhere = { locationId: { in: [locationId, otherLocationId] } }
+        const finances = await prisma.rangeFinanceTransaction.findMany({ where: financeWhere })
+        await prisma.rangeMoneyMovement.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
+        await prisma.rangeFinanceTransaction.updateMany({ where: financeWhere, data: { correctsId: null, refundOfId: null } })
+        await prisma.rangeFinanceTransaction.deleteMany({ where: financeWhere })
+        await prisma.rangeMoneyAccount.deleteMany({ where: financeWhere })
+        await prisma.rangeProduct.deleteMany({ where: financeWhere })
+        await prisma.rangeFinanceCategory.deleteMany({ where: financeWhere })
         const enrollments = await prisma.rangeEnrollment.findMany({ where: { locationId: { in: [locationId, otherLocationId] } } })
         await prisma.rangeStudentAttendance.deleteMany({ where: { enrollmentId: { in: enrollments.map(e => e.id) } } })
         await prisma.rangeEnrollment.deleteMany({ where: { id: { in: enrollments.map(e => e.id) } } })
@@ -176,5 +186,65 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         expect((await call("students/attendance", ownerId, { ...data, date: rangeDay(), submissionKey: randomUUID() })).status).toBe(400)
         const history = await (await call(`students/history?enrollmentId=${student.id}`, coachId)).json()
         expect(history.history[0].status).toBe("leave")
+    })
+    it("sets up finance accounts and hides shared balances from coaches", async () => {
+        expect((await call("finance/settings", ownerId, { type: "account", locationId, name: "Future opening", custodian: "salvo", channel: "cash", openingPaise: 0, openingDate: "2099-01-01" })).status).toBe(400)
+        for (const [name, custodian, channel, coach] of [["Coach cash", "coach", "cash", coachId], ["Kartik cash", "kartik", "cash", null], ["Salvo bank", "salvo", "online", null]] as const) {
+            expect((await call("finance/settings", ownerId, { type: "account", locationId, name, custodian, channel, coachId: coach, openingPaise: 10000, openingDate: "2026-10-01" })).status).toBe(200)
+        }
+        otherCash = (await prisma.rangeMoneyAccount.create({ data: { locationId, name: "Other coach cash", custodian: "coach", coachId: otherId, channel: "cash", openingPaise: 50000, openingDate: "2026-10-01" } })).id
+        const accounts = await prisma.rangeMoneyAccount.findMany({ where: { locationId } })
+        coachCash = accounts.find(a => a.name === "Coach cash")!.id; kartikCash = accounts.find(a => a.name === "Kartik cash")!.id; salvoOnline = accounts.find(a => a.name === "Salvo bank")!.id
+        expect((await call("finance/settings", ownerId, { type: "category", locationId, name: "Product sales", kind: "income" })).status).toBe(200)
+        expect((await call("finance/settings", ownerId, { type: "category", locationId, name: "Supplies", kind: "expense" })).status).toBe(200)
+        const categories = await prisma.rangeFinanceCategory.findMany({ where: { locationId } }); incomeCategory = categories.find(c => c.kind === "income")!.id; expenseCategory = categories.find(c => c.kind === "expense")!.id
+        expect((await call("finance/settings", ownerId, { type: "product", locationId, name: "Pellet box", unit: "box", defaultPricePaise: 95000 })).status).toBe(200)
+        productId = (await prisma.rangeProduct.findFirstOrThrow({ where: { locationId } })).id
+        const coachMeta = await (await call(`finance/meta?locationId=${locationId}`, coachId)).json()
+        expect(coachMeta.accounts.some((a: { id: string }) => a.id === otherCash)).toBe(false)
+        expect(coachMeta.accounts.find((a: { id: string }) => a.id === salvoOnline).balancePaise).toBeUndefined()
+        expect(coachMeta.accounts.find((a: { id: string }) => a.id === coachCash).balancePaise).toBe(10000)
+        expect((await call("finance/settings", coachId, { type: "product", locationId })).status).toBe(403)
+    })
+    it("posts split sales once and rejects mismatches / other coach accounts atomically", async () => {
+        const data = saleData(), response = await call("finance", coachId, data)
+        expect(response.status).toBe(200); saleId = (await response.json()).transactionId
+        expect((await (await call("finance", coachId, data)).json()).transactionId).toBe(saleId)
+        expect(await prisma.rangeMoneyMovement.count({ where: { transactionId: saleId } })).toBe(2)
+        expect((await call("finance", coachId, saleData({ amountPaise: 95001 }))).status).toBe(400)
+        expect((await call("finance", coachId, saleData({ payments: [{ accountId: otherCash, method: "cash", amountPaise: 95000 }] }))).status).toBe(403)
+        expect(await prisma.rangeFinanceTransaction.count({ where: { locationId } })).toBe(1)
+        const meta = await (await call(`finance/meta?locationId=${locationId}`, ownerId)).json()
+        expect(meta.accounts.find((a: { id: string }) => a.id === coachCash).balancePaise).toBe(60000)
+        expect(meta.accounts.find((a: { id: string }) => a.id === salvoOnline).balancePaise).toBe(55000)
+    })
+    it("keeps historical entries before opening cutoffs out of current balances", async () => {
+        expect((await call("finance", ownerId, saleData({ occurredOn: "2026-09-01", productId: undefined, quantity: undefined, unitPricePaise: undefined, payments: [{ accountId: kartikCash, method: "cash", amountPaise: 95000 }] }))).status).toBe(200)
+        const meta = await (await call(`finance/meta?locationId=${locationId}`, ownerId)).json()
+        expect(meta.accounts.find((a: { id: string }) => a.id === kartikCash).balancePaise).toBe(10000)
+        const coachRecords = await (await call(`finance?locationId=${locationId}&from=2026-01-01`, coachId)).json()
+        expect(coachRecords.entries).toHaveLength(1)
+    })
+    it("voids/replaces incorrect entries with history and distinguishes actual refunds", async () => {
+        const original = await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: saleId } })
+        const corrected = await call("finance/correct", ownerId, saleData({ id: saleId, version: original.version, amountPaise: 90000, unitPricePaise: 90000, payments: [{ accountId: coachCash, method: "cash", amountPaise: 90000 }], reason: "Actual sale price was ₹900" }))
+        expect(corrected.status).toBe(200)
+        const replacementId = (await corrected.json()).transactionId
+        expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: saleId } })).status).toBe("void")
+        const replacement = await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: replacementId } })
+        expect(replacement.recordedById).toBe(coachId)
+        const refund = saleData({ kind: "expense", categoryId: expenseCategory, productId: undefined, quantity: undefined, unitPricePaise: undefined, refundOfId: replacementId, amountPaise: 10000, payments: [{ accountId: coachCash, method: "cash", amountPaise: 10000 }] })
+        expect((await call("finance", coachId, refund)).status).toBe(403)
+        expect((await call("finance", ownerId, refund)).status).toBe(200)
+        expect((await call("finance", ownerId, { ...refund, submissionKey: randomUUID(), amountPaise: 90000, payments: [{ accountId: coachCash, method: "cash", amountPaise: 90000 }] })).status).toBe(400)
+        expect((await call("finance/void", ownerId, { id: replacementId, version: replacement.version, reason: "Must resolve refund first" })).status).toBe(400)
+    })
+    it("leaves the ledger unchanged if an optional receipt upload fails", async () => {
+        const before = await prisma.rangeFinanceTransaction.count({ where: { locationId } })
+        const form = new FormData(); form.set("payload", JSON.stringify(saleData())); form.set("receipt", new File(["receipt"], "receipt.png", { type: "image/png" }))
+        vi.mocked(uploadReceipt).mockRejectedValueOnce(new Error("Receipt storage unavailable"))
+        const response = await POST(new NextRequest("http://localhost/api/range/finance", { method: "POST", headers: { origin: "http://localhost", cookie: `${SESSION_COOKIE}=${coachId}` }, body: form }), { params: Promise.resolve({ path: ["finance"] }) })
+        expect(response.status).toBe(500)
+        expect(await prisma.rangeFinanceTransaction.count({ where: { locationId } })).toBe(before)
     })
 })

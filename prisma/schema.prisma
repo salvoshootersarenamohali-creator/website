@@ -26,6 +26,9 @@ model RangeUser {
   corrections RangeCorrection[]
   enrollments RangeEnrollment[]
   studentMarks RangeStudentAttendance[]
+  moneyAccounts RangeMoneyAccount[]
+  financeCreated RangeFinanceTransaction[] @relation("FinanceCreator")
+  financeRecorded RangeFinanceTransaction[] @relation("FinanceRecorder")
 }
 
 model RangeLocation {
@@ -41,6 +44,103 @@ model RangeLocation {
   challenges RangeAttendanceChallenge[]
   corrections RangeCorrection[]
   enrollments RangeEnrollment[]
+  moneyAccounts RangeMoneyAccount[]
+  products RangeProduct[]
+  financeCategories RangeFinanceCategory[]
+  financeTransactions RangeFinanceTransaction[]
+}
+
+model RangeMoneyAccount {
+  id String @id @default(cuid())
+  locationId String
+  name String
+  custodian String
+  coachId String?
+  channel String
+  openingPaise Int @default(0)
+  openingDate String
+  active Boolean @default(true)
+  version Int @default(1)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  coach RangeUser? @relation(fields: [coachId], references: [id], onDelete: Restrict)
+  movements RangeMoneyMovement[]
+  @@index([locationId])
+}
+
+model RangeProduct {
+  id String @id @default(cuid())
+  locationId String
+  name String
+  unit String @default("item")
+  defaultPricePaise Int
+  active Boolean @default(true)
+  version Int @default(1)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  transactions RangeFinanceTransaction[]
+  @@index([locationId])
+}
+
+model RangeFinanceCategory {
+  id String @id @default(cuid())
+  locationId String
+  name String
+  kind String
+  active Boolean @default(true)
+  version Int @default(1)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  transactions RangeFinanceTransaction[]
+  @@unique([locationId, name, kind])
+}
+
+model RangeFinanceTransaction {
+  id String @id @default(cuid())
+  locationId String
+  createdById String
+  recordedById String
+  kind String
+  source String @default("manual")
+  categoryId String
+  categoryName String
+  amountPaise Int
+  occurredOn String
+  description String
+  productId String?
+  productName String?
+  quantity Int?
+  unitPricePaise Int?
+  status String @default("posted")
+  submissionKey String @unique
+  submissionHash String
+  correctsId String? @unique
+  refundOfId String?
+  receiptId String?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy RangeUser @relation("FinanceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  recordedBy RangeUser @relation("FinanceRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  product RangeProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  category RangeFinanceCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  corrects RangeFinanceTransaction? @relation("FinanceCorrections", fields: [correctsId], references: [id], onDelete: Restrict)
+  replacement RangeFinanceTransaction? @relation("FinanceCorrections")
+  refundOf RangeFinanceTransaction? @relation("FinanceRefunds", fields: [refundOfId], references: [id], onDelete: Restrict)
+  refunds RangeFinanceTransaction[] @relation("FinanceRefunds")
+  movements RangeMoneyMovement[]
+  @@index([locationId, occurredOn])
+  @@index([recordedById])
+}
+
+model RangeMoneyMovement {
+  id String @id @default(cuid())
+  transactionId String
+  accountId String
+  amountPaise Int
+  method String
+  reference String?
+  transaction RangeFinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  account RangeMoneyAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  @@index([accountId])
+  @@index([transactionId])
 }
 
 model RangeShooterProfile {
