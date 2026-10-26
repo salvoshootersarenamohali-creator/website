@@ -44,6 +44,12 @@ Coaches submit transfers out of their own holding accounts to available own/Kart
 
 Transfer history records source, recipient, amount, date, reference, requester and owner verification. Coaches can request corrections. Owners reject incorrect pending requests or reverse a mistaken confirmed ledger entry with a reason, then record a corrected transfer if needed. A reversal is bookkeeping correction, not a bank operation. If money actually moves back, record a new transfer. The system never initiates real payments.
 
+## Salary payments
+
+Only owners may list, record, correct or void salaries. Each record identifies the coach, location, salary month/year, amount actually paid, payment date, source account parts, notes and optional private image proof. Multiple payments against one coach/month are allowed and summarized in the monthly view. Inactive/former coach accounts can be selected for historical payments. No salary entitlement, attendance-based deduction or payroll calculation is performed.
+
+Each salary and its expense commit in the same transaction, with retry keys preventing duplicate expense entries. Dedicated salary corrections void the original and replace both the salary metadata and expense together; reasons and history are retained. Generic financial corrections cannot alter salaries. Coach financial queries and receipt endpoints exclude owner-recorded salary entries, and every salary API rejects coaches independently of the navigation.
+
 ## Future app / shooter compatibility
 
 Students have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.

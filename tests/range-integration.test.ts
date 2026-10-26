@@ -49,6 +49,7 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         const financeWhere = { locationId: { in: [locationId, otherLocationId] } }
         await prisma.rangeTransfer.deleteMany({ where: financeWhere })
         const finances = await prisma.rangeFinanceTransaction.findMany({ where: financeWhere })
+        await prisma.rangeSalaryPayment.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
         await prisma.rangeStudentFee.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
         await prisma.rangeMoneyMovement.deleteMany({ where: { transactionId: { in: finances.map(t => t.id) } } })
         await prisma.rangeFinanceTransaction.updateMany({ where: financeWhere, data: { correctsId: null, refundOfId: null } })
@@ -289,5 +290,29 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         expect((await call("transfers", coachId, { ...body, confirmNow: true, submissionKey: randomUUID() })).status).toBe(403)
         expect((await call("transfers/resolve", ownerId, { id, version: transfer.version, action: "reverse", reason: "Correct mistaken handover record" })).status).toBe(200)
         expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: transfer.transactionId! } })).status).toBe("void")
+    })
+    it("records multiple salary payments once, keeps them private and corrects metadata with expenses", async () => {
+        const data = { locationId, coachId, salaryMonth: rangeDay().slice(0, 7), amountPaise: 150000, occurredOn: rangeDay(), payments: [{ accountId: kartikCash, method: "cash", amountPaise: 150000 }], submissionKey: randomUUID() }
+        expect((await call(`salaries?locationId=${locationId}`, coachId)).status).toBe(403)
+        expect((await call("salaries", coachId, data)).status).toBe(403)
+        expect((await call("salaries", ownerId, { ...data, salaryMonth: "2026-13" })).status).toBe(400)
+        const response = await call("salaries", ownerId, data)
+        expect(response.status).toBe(200)
+        const firstId = (await response.json()).transactionId
+        expect((await (await call("salaries", ownerId, data)).json()).transactionId).toBe(firstId)
+        const second = await call("salaries", ownerId, { ...data, amountPaise: 200000, payments: [{ accountId: kartikCash, method: "cash", amountPaise: 200000 }], submissionKey: randomUUID() })
+        expect(second.status).toBe(200)
+        const secondId = (await second.json()).transactionId
+        const paid = await prisma.rangeFinanceTransaction.aggregate({ where: { locationId, source: "salary", status: "posted" }, _sum: { amountPaise: true } })
+        expect(paid._sum.amountPaise).toBe(350000)
+        expect(await prisma.rangeSalaryPayment.count({ where: { coachId } })).toBe(2)
+        expect((await (await call(`finance?locationId=${locationId}&id=${firstId}`, coachId)).json()).entries).toHaveLength(0)
+        expect((await call(`finance/receipt?id=${firstId}`, coachId)).status).toBe(404)
+        expect((await call("finance/void", ownerId, { id: firstId, version: 1, reason: "Salary has dedicated corrections" })).status).toBe(400)
+        const replacement = await call("salaries/correct", ownerId, { ...data, id: firstId, version: 1, amountPaise: 100000, payments: [{ accountId: kartikCash, method: "cash", amountPaise: 100000 }], reason: "Actual first payment was ₹1000", submissionKey: randomUUID() })
+        expect(replacement.status).toBe(200)
+        expect((await prisma.rangeFinanceTransaction.findUniqueOrThrow({ where: { id: firstId } })).status).toBe("void")
+        expect((await call("salaries/void", ownerId, { id: secondId, version: 1, reason: "Duplicate second record" })).status).toBe(200)
+        expect((await prisma.rangeFinanceTransaction.aggregate({ where: { locationId, source: "salary", status: "posted" }, _sum: { amountPaise: true } }))._sum.amountPaise).toBe(100000)
     })
 })

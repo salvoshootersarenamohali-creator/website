@@ -30,6 +30,7 @@ model RangeUser {
   financeCreated RangeFinanceTransaction[] @relation("FinanceCreator")
   financeRecorded RangeFinanceTransaction[] @relation("FinanceRecorder")
   transfersRequested RangeTransfer[]
+  salaryPayments RangeSalaryPayment[]
 }
 
 model RangeLocation {
@@ -132,8 +133,20 @@ model RangeFinanceTransaction {
   movements RangeMoneyMovement[]
   studentFee RangeStudentFee?
   transfer RangeTransfer?
+  salaryPayment RangeSalaryPayment?
   @@index([locationId, occurredOn])
   @@index([recordedById])
+}
+
+model RangeSalaryPayment {
+  id String @id @default(cuid())
+  transactionId String @unique
+  coachId String
+  salaryMonth String
+  notes String?
+  transaction RangeFinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  coach RangeUser @relation(fields: [coachId], references: [id], onDelete: Restrict)
+  @@index([coachId, salaryMonth])
 }
 
 model RangeTransfer {
