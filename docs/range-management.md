@@ -18,6 +18,12 @@ Cloudinary credentials must be configured. Attendance images are uploaded as aut
 
 Coaches request corrections, including entirely missed shifts. Owners review requests or add/correct times directly with a reason. Optimistic versions reject stale changes, overlaps are rejected, original camera times/photos remain available, and adjustments are labelled. Requests can be rejected with a recorded reason. Each change has an audit record.
 
+## Students and daily roll
+
+Owners and assigned coaches can add student profiles and location enrollments. Student/guardian phones are contacts, never unique identities; siblings can share them. Student creation is retry-safe. Owner edits require a reason and optimistic version. Enrollment periods and active status control attendance eligibility. The owner can explicitly enroll a known profile at another location using `profileId` through the API; no automatic matching occurs.
+
+The roll supports present, absent, leave and unmarked. Bulk marking applies only to visible, eligible, unmarked students. Coaches mark today's unmarked records; existing marks and older dates require owner correction. Bulk submissions are atomic and versioned: conflicting changes cause a refresh instead of overwriting another coach's work. No attendance row means unmarked, not absent. History records the marking coach. Owners can resolve student correction requests with a reason.
+
 ## Future app / shooter compatibility
 
-Student records will have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.
+Students have stable shooter profile IDs independent of staff credentials, with location enrollment records separate from identity. A later mobile app can attach shooter accounts to those profiles and explicitly link competition registrations. Never auto-link by name or phone: siblings can share guardian contact details. Preserve existing competition registration/results behavior. Future work includes shooter accounts, history across competitions, coaching programs and app integration; none of those are part of this rollout. Reusable server services sit behind JSON APIs so future authentication can reuse the same rules.

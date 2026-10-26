@@ -12,13 +12,16 @@ export async function correctionsAction(request: NextRequest, actor: RangeActor)
     }
     const body = await jsonBody(request), locationId = textField(body.locationId, "Location"), entityId = textField(body.entityId, "Record"), reason = textField(body.reason, "Reason", 1000)
     await locationAccess(actor, locationId)
-    if (body.kind !== "coachAttendance") throw new RangeError("Invalid correction type.")
-    if (entityId !== actor.id) {
+    if (!["coachAttendance", "studentAttendance"].includes(String(body.kind))) throw new RangeError("Invalid correction type.")
+    if (body.kind === "studentAttendance") {
+        const enrollment = await prisma.rangeEnrollment.findUnique({ where: { id: entityId } })
+        if (!enrollment || enrollment.locationId !== locationId) throw new RangeError("Student not found.", 404)
+    } else if (entityId !== actor.id) {
         const shift = await prisma.rangeShift.findUnique({ where: { id: entityId } })
         if (!shift || shift.locationId !== locationId || (actor.role !== "owner" && shift.userId !== actor.id)) throw new RangeError("Record not found.", 404)
     }
     return Response.json(await transaction(async tx => {
-        const correction = await tx.rangeCorrection.create({ data: { userId: actor.id, locationId, entityId, kind: "coachAttendance", reason, proposed: snapshot(body.proposed || {}) } })
+        const correction = await tx.rangeCorrection.create({ data: { userId: actor.id, locationId, entityId, kind: String(body.kind), reason, proposed: snapshot(body.proposed || {}) } })
         await audit(tx, actor, "correction.requested", correction.id, undefined, correction, locationId)
         return { ok: true }
     }))

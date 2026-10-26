@@ -24,6 +24,8 @@ model RangeUser {
   shifts RangeShift[]
   challenges RangeAttendanceChallenge[]
   corrections RangeCorrection[]
+  enrollments RangeEnrollment[]
+  studentMarks RangeStudentAttendance[]
 }
 
 model RangeLocation {
@@ -38,6 +40,56 @@ model RangeLocation {
   shifts RangeShift[]
   challenges RangeAttendanceChallenge[]
   corrections RangeCorrection[]
+  enrollments RangeEnrollment[]
+}
+
+model RangeShooterProfile {
+  id String @id @default(cuid())
+  name String
+  phone String?
+  guardianName String?
+  guardianPhone String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  enrollments RangeEnrollment[]
+  @@index([name])
+}
+
+model RangeEnrollment {
+  id String @id @default(cuid())
+  profileId String
+  locationId String
+  discipline String
+  startDate String
+  endDate String?
+  active Boolean @default(true)
+  createdById String
+  submissionKey String @unique
+  submissionHash String
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  profile RangeShooterProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  location RangeLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy RangeUser @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  attendance RangeStudentAttendance[]
+  @@unique([profileId, locationId])
+  @@index([locationId, active])
+}
+
+model RangeStudentAttendance {
+  id String @id @default(cuid())
+  enrollmentId String
+  date String
+  status String
+  markedById String
+  submissionKey String
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  enrollment RangeEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  markedBy RangeUser @relation(fields: [markedById], references: [id], onDelete: Restrict)
+  @@unique([enrollmentId, date])
+  @@index([date])
 }
 
 model RangeShift {

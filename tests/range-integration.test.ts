@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { digest, hashPassword, SESSION_COOKIE } from "@/lib/range/auth"
 import { GET, POST } from "@/app/api/range/[...path]/route"
 import { locationAccess } from "@/lib/range/server"
-import type { RangeActor } from "@/lib/range/shared"
+import { rangeDay, type RangeActor } from "@/lib/range/shared"
 
 vi.mock("@/lib/range/media", () => ({ uploadAttendancePhoto: vi.fn(async () => `test-private-${randomUUID()}`), removeAttendancePhoto: vi.fn(async () => {}), attendancePhotoUrl: vi.fn(() => "https://example.test/private-photo") }))
 import { uploadAttendancePhoto } from "@/lib/range/media"
@@ -16,6 +16,7 @@ const ownerId = `${prefix}-owner`, coachId = `${prefix}-coach`, otherId = `${pre
 const locationId = `${prefix}-location`, otherLocationId = `${prefix}-other-location`
 const actor: RangeActor = { id: coachId, name: "Test coach", phone: "+919000000002", role: "coach", mustChangePassword: false }
 const password = "Test range password!"
+const studentIds: string[] = []
 function request(path: string, token?: string, body?: unknown) {
     return new NextRequest(`http://localhost/api/range/${path}`, { method: body === undefined ? "GET" : "POST", headers: { origin: "http://localhost", ...(token ? { cookie: `${SESSION_COOKIE}=${token}` } : {}), "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })
 }
@@ -43,6 +44,10 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
     })
     afterAll(async () => {
         const ids = [ownerId, coachId, otherId, temporaryId]
+        const enrollments = await prisma.rangeEnrollment.findMany({ where: { locationId: { in: [locationId, otherLocationId] } } })
+        await prisma.rangeStudentAttendance.deleteMany({ where: { enrollmentId: { in: enrollments.map(e => e.id) } } })
+        await prisma.rangeEnrollment.deleteMany({ where: { id: { in: enrollments.map(e => e.id) } } })
+        await prisma.rangeShooterProfile.deleteMany({ where: { id: { in: enrollments.map(e => e.profileId) } } })
         await prisma.rangeCorrection.deleteMany({ where: { locationId: { in: [locationId, otherLocationId] } } })
         await prisma.rangeAttendanceChallenge.deleteMany({ where: { userId: { in: ids } } })
         await prisma.rangeShift.deleteMany({ where: { userId: { in: ids } } })
@@ -137,5 +142,39 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
         const correction = await prisma.rangeCorrection.findFirstOrThrow({ where: { userId: coachId, status: "pending" } })
         expect((await call("attendance/correct", ownerId, { locationId, userId: coachId, requestId: correction.id, inAt: "2026-10-02T08:00", outAt: "2026-10-02T10:00", reason: "Confirmed with coach" })).status).toBe(200)
         expect((await prisma.rangeCorrection.findUniqueOrThrow({ where: { id: correction.id } })).status).toBe("resolved")
+    })
+    it("creates stable student identities, allows shared guardian phones and deduplicates retries", async () => {
+        const data = { locationId, name: "Sibling One", guardianName: "Parent", guardianPhone: "9000000088", discipline: "pistol", startDate: "2026-01-01", submissionKey: randomUUID() }
+        const first = await call("students", coachId, data)
+        expect(first.status).toBe(200)
+        const id = (await first.json()).enrollmentId; studentIds.push(id)
+        expect((await (await call("students", coachId, data)).json()).enrollmentId).toBe(id)
+        const second = await call("students", coachId, { ...data, name: "Sibling Two", submissionKey: randomUUID() })
+        expect(second.status).toBe(200); studentIds.push((await second.json()).enrollmentId)
+        expect((await call(`students?locationId=${otherLocationId}`, coachId)).status).toBe(403)
+        const roster = await (await call(`students?locationId=${locationId}`, coachId)).json()
+        expect(roster.students).toHaveLength(2)
+        expect(roster.students.every((s: { attendance: unknown[] }) => s.attendance.length === 0)).toBe(true)
+    })
+    it("marks one student/day atomically and refuses concurrent or unauthorized overwrites", async () => {
+        const data = { locationId, date: rangeDay(), submissionKey: randomUUID(), rows: [{ enrollmentId: studentIds[0], status: "present", version: 0 }] }
+        const responses = await Promise.all([call("students/attendance", coachId, data), call("students/attendance", ownerId, { ...data, submissionKey: randomUUID(), rows: [{ ...data.rows[0], status: "absent" }] })])
+        expect(responses.map(r => r.status).sort()).toEqual([200, 409])
+        expect(await prisma.rangeStudentAttendance.count({ where: { enrollmentId: studentIds[0], date: rangeDay() } })).toBe(1)
+        const mark = await prisma.rangeStudentAttendance.findFirstOrThrow({ where: { enrollmentId: studentIds[0], date: rangeDay() } })
+        expect((await call("students/attendance", coachId, { ...data, submissionKey: randomUUID(), rows: [{ ...data.rows[0], status: "leave", version: mark.version }] })).status).toBe(403)
+        expect((await call("students/attendance", coachId, { ...data, submissionKey: randomUUID(), rows: [{ enrollmentId: studentIds[1], status: "present", version: 0 }, { enrollmentId: "forged-student", status: "present", version: 0 }] })).status).toBe(404)
+        expect(await prisma.rangeStudentAttendance.count({ where: { enrollmentId: studentIds[1] } })).toBe(0)
+    })
+    it("supports historical owner corrections and blocks attendance outside enrollment", async () => {
+        const data = { locationId, date: "2026-10-10", submissionKey: randomUUID(), rows: [{ enrollmentId: studentIds[1], status: "leave", version: 0 }] }
+        expect((await call("students/attendance", coachId, data)).status).toBe(403)
+        expect((await call("students/attendance", ownerId, data)).status).toBe(200)
+        const student = await prisma.rangeEnrollment.findUniqueOrThrow({ where: { id: studentIds[1] } })
+        expect((await call("students", coachId, { ...student, locationId, name: "Edited", guardianPhone: "9000000088" })).status).toBe(403)
+        await prisma.rangeEnrollment.update({ where: { id: student.id }, data: { active: false } })
+        expect((await call("students/attendance", ownerId, { ...data, date: rangeDay(), submissionKey: randomUUID() })).status).toBe(400)
+        const history = await (await call(`students/history?enrollmentId=${student.id}`, coachId)).json()
+        expect(history.history[0].status).toBe("leave")
     })
 })
