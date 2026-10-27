@@ -42,10 +42,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          check-latest: true
           cache: npm
 
       - run: npm ci
+
+      - name: Check dependency advisories
+        run: npm audit --audit-level=high
 
       - run: npm run prisma:generate
 

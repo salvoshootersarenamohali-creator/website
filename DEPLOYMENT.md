@@ -2,6 +2,20 @@
 
 This app is a server-rendered Next.js site with API routes, Prisma, and PostgreSQL. It should be deployed to Vercel, not GitHub Pages.
 
+## Runtime and dependency security
+
+Use Node.js 24.22.1 or newer in the 24.x line. `.nvmrc` records the minimum tested version; GitHub Actions installs the latest Node 24 release. The `engines.node` range in `package.json` selects Node 24 for Vercel builds and functions. Vercel manages minor and patch versions, so verify the deployed runtime in the build logs after redeploying. Updating dependencies locally does not update an existing deployment or the Node installation on a developer's computer.
+
+The October 27, 2026 dependency refresh includes Next.js 16.4.3, React/React DOM 19.2.9, Nodemailer 10.2.1, and SheetJS 0.20.3. SheetJS is pinned to the [maintainer's official tarball](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/) because the npm registry's `xlsx` package stops at the vulnerable 0.18.5 release. The lockfile records the tarball's integrity hash.
+
+The scoped `@prisma/config` override installs `deepmerge-ts` 8.0.2 to fix [recursive merge stack exhaustion](https://github.com/RebeccaStevens/deepmerge-ts/security/advisories/GHSA-ggr8-5vv4-36mx) while retaining Prisma 6. Prisma's configuration loader uses `deepmerge` on configuration records; version 8's changes to Map merging and `deepmergeInto` are not used by this path. Recheck and remove this override when upgrading Prisma to a release that includes a fixed dependency.
+
+CI runs `npm audit --audit-level=high` before building or accessing production. Review new advisories and refresh the lockfile before deploying if this check fails.
+
+The updated Next.js lint preset introduces React Compiler readiness diagnostics for state updates in effects, manual memoization, and render purity. These remain warnings while React Compiler is disabled; existing lint errors still block deployment.
+
+Validation on Node 24.22.1: `npm audit` reported zero known vulnerabilities; all 155 tests passed against a fresh local PostgreSQL database with all 30 migrations applied; Prisma's configuration loader and generation passed; `npm run build` passed; `npm run lint` passed with 36 warnings and no errors. A Nodemailer stream-transport check verified message construction without delivering email, and `npm ci --dry-run --ignore-scripts --no-audit` verified lockfile consistency. These checks do not verify the runtime or dependency versions of an existing production deployment.
+
 ## 1. Create The Database
 
 Create an Aiven PostgreSQL service and copy its connection string.
