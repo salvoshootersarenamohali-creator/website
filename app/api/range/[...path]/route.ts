@@ -11,6 +11,7 @@ import { transferList, transferPost, transferResolve } from "@/lib/range/transfe
 import { salaryList, salaryPost, salaryVoid } from "@/lib/range/salaries"
 import { dashboard } from "@/lib/range/dashboard"
 import { reportMeta, reports } from "@/lib/range/reports"
+import { deleteMoneyAccount } from "@/lib/range/accounts"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -43,6 +44,7 @@ async function handle(request: NextRequest, context: Context) {
         if (path === "finance" && request.method === "POST") return await financePost(request, actor)
         if (path === "finance/meta" && request.method === "GET") return await financeMeta(request, actor)
         if (path === "finance/settings" && request.method === "POST") return await financeSettings(request, actor)
+        if (path === "finance/accounts/delete" && request.method === "POST") return await deleteMoneyAccount(request, actor)
         if (path === "finance/correct" && request.method === "POST") return await financePost(request, actor, true)
         if (path === "finance/void" && request.method === "POST") return await financeVoid(request, actor)
         if (path === "finance/receipt" && request.method === "GET") return await financeReceipt(request, actor)

@@ -2,7 +2,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import type { FormEvent, ReactNode } from "react"
 import { AlertCircle, CheckCircle2, ChevronDown, Inbox, Loader2, Plus } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Button, type ButtonProps } from "@/components/ui/button"
 
 export async function rangeApi<T = Record<string, unknown>>(path: string, body?: unknown): Promise<T> {
     const response = await fetch(`/api/range/${path}`, { method: body === undefined ? "GET" : "POST", headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body), cache: "no-store" })
@@ -36,7 +36,7 @@ export function StatusBadge({ children, tone = "neutral" }: { children: ReactNod
 export function RecordHeader({ title, subtitle, amount, status, tone = "neutral" }: { title: string; subtitle: string; amount: string; status: string; tone?: "neutral" | "success" | "warning" | "danger" }) {
     return <div className="range-record-heading"><div><h3>{title}</h3><p>{subtitle}</p></div><div><strong>{amount}</strong><StatusBadge tone={tone}>{status}</StatusBadge></div></div>
 }
-export function ActionForm({ onSubmit, children, submit = "Save", busyLabel = "Saving…", successMessage = "Saved successfully.", submitDisabled = false }: { onSubmit: (form: HTMLFormElement) => Promise<void>; children: ReactNode; submit?: string; busyLabel?: string; successMessage?: string; submitDisabled?: boolean }) {
+export function ActionForm({ onSubmit, children, submit = "Save", busyLabel = "Saving…", successMessage = "Saved successfully.", submitDisabled = false, submitVariant = "default" }: { onSubmit: (form: HTMLFormElement) => Promise<void>; children: ReactNode; submit?: string; busyLabel?: string; successMessage?: string; submitDisabled?: boolean; submitVariant?: ButtonProps["variant"] }) {
     const [busy, setBusy] = useState(false), [feedback, setFeedback] = useState<{ message: string; error: boolean }>()
     const lock = useRef(false), messageRef = useRef<HTMLParagraphElement>(null)
     async function run(event: FormEvent<HTMLFormElement>) {
@@ -49,5 +49,5 @@ export function ActionForm({ onSubmit, children, submit = "Save", busyLabel = "S
         finally { lock.current = false; setBusy(false) }
     }
     useEffect(() => { if (feedback?.error) messageRef.current?.focus() }, [feedback])
-    return <form onSubmit={run} onChange={() => { if (feedback) setFeedback(undefined) }} className="range-action-form" aria-busy={busy}><fieldset disabled={busy} className="grid min-w-0 gap-4">{children}<div className="range-form-footer"><Button type="submit" disabled={submitDisabled}>{busy && <Loader2 size={16} className="mr-2 animate-spin" aria-hidden="true" />}{busy ? busyLabel : submit}</Button></div></fieldset>{feedback && <p ref={messageRef} tabIndex={-1} role={feedback.error ? "alert" : "status"} className={`range-feedback ${feedback.error ? "range-feedback-error" : "range-feedback-success"}`}>{feedback.error ? <AlertCircle size={18} aria-hidden="true" /> : <CheckCircle2 size={18} aria-hidden="true" />}{feedback.message}</p>}</form>
+    return <form onSubmit={run} onChange={() => { if (feedback) setFeedback(undefined) }} className="range-action-form" aria-busy={busy}><fieldset disabled={busy} className="grid min-w-0 gap-4">{children}<div className="range-form-footer"><Button type="submit" variant={submitVariant} disabled={submitDisabled}>{busy && <Loader2 size={16} className="mr-2 animate-spin" aria-hidden="true" />}{busy ? busyLabel : submit}</Button></div></fieldset>{feedback && <p ref={messageRef} tabIndex={-1} role={feedback.error ? "alert" : "status"} className={`range-feedback ${feedback.error ? "range-feedback-error" : "range-feedback-success"}`}>{feedback.error ? <AlertCircle size={18} aria-hidden="true" /> : <CheckCircle2 size={18} aria-hidden="true" />}{feedback.message}</p>}</form>
 }

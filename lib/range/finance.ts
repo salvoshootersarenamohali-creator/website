@@ -16,9 +16,9 @@ export async function financeMeta(request: NextRequest, actor: RangeActor) {
     const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location")
     await locationAccess(actor, locationId)
     const owner = actor.role === "owner"
-    const accounts = await prisma.rangeMoneyAccount.findMany({ where: { locationId, ...(owner ? {} : { active: true, OR: [{ coachId: actor.id }, { custodian: { in: ["kartik", "salvo"] } }] }) }, orderBy: { name: "asc" } })
+    const accounts = await prisma.rangeMoneyAccount.findMany({ where: { locationId, ...(owner ? {} : { active: true, OR: [{ coachId: actor.id }, { custodian: { in: ["kartik", "salvo"] } }] }) }, include: { _count: { select: { movements: true, transfersFrom: true, transfersTo: true } } }, orderBy: { name: "asc" } })
     const balances = await accountBalances(locationId)
-    return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products: await prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }), categories: await prisma.rangeFinanceCategory.findMany({ where: { locationId, kind: { in: ["income", "expense"] }, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }) })
+    return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, _count, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate, canDelete: !_count.movements && !_count.transfersFrom && !_count.transfersTo } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products: await prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }), categories: await prisma.rangeFinanceCategory.findMany({ where: { locationId, kind: { in: ["income", "expense"] }, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }) })
 }
 export async function financeSettings(request: NextRequest, actor: RangeActor) {
     ownerOnly(actor)

@@ -36,6 +36,8 @@ The roll supports present, absent, leave and unmarked. Bulk marking applies only
 
 ## Income, expenses and balances
 
+Owners can delete an unused holding account created by mistake from Accounts, products & categories. Deletion requires the exact account name and a reason, removes its opening balance from tracked funds, and keeps an audit snapshot. Any financial movement (including voided records) or handover (including pending, rejected, or reversed requests) blocks deletion; deactivate such accounts with Edit instead. Stale versions and concurrent activity cannot erase financial history.
+
 The owner sets up real accounts, opening range-fund balances and their effective dates; no financial account or starting money is assumed. An account has a fixed holder (coach, Kartik or Salvo) and cash/online channel. Coaches may use their own or designated Kartik/Salvo accounts; shared balances are never included in coach responses. Products are an operational catalog separate from the public shop; sales do not affect inventory. Categories can be managed by the owner.
 
 Every entry records integer paise, actual activity date, recorder, category snapshot and one or more account/payment parts that must sum to the total. Product sales require quantity times actual unit price to match the total. Owner-only historical backfill is visible in historical reports, but movements before an account's dated opening balance are excluded from its current balance. Negative tracked balances are shown for review rather than blocking entry of legitimate expenses.
