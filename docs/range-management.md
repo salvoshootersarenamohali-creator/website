@@ -2,6 +2,16 @@
 
 Private staff workspace: `/range`, sign in: `/range/login`. Competition PINs never authorize this workspace. Accounts are owner-managed; there is no public sign-up.
 
+## Using the workspace
+
+The staff and owner panels use a dedicated light workspace with grouped navigation. On phones, open the menu at the top left. Navigation links keep their section in the URL so refresh and browser back/forward work. The location selector applies to the current section; all dates and operational times use India Standard Time.
+
+Overview separates today’s attendance from the selected financial period. Start with the quick actions for common daily work. Entry forms open on demand; reviewing a record brings its correction form into view. Owners see management, salaries and reports; coaches see their assigned daily work. Accounts requiring a password change show only account security until that step is complete.
+
+Students & attendance has Daily attendance, Student roster and Corrections views. Status totals include eligible students for the selected date; search and status filters narrow the visible roll. Bulk marking only changes visible, eligible students that are still unmarked, preserving individual choices already made. Save attendance commits all pending changes. Use Student roster for profile edits and contact information.
+
+Owner handovers open on Pending; select All to see history. Reports show the common filters first, with staff, student and account filters under More filters. Apply filters before downloading Excel; the displayed applied dates describe the records being exported.
+
 ## Owner setup / recovery
 
 Apply migrations and generate Prisma Client first. In a trusted interactive terminal with the intended `DATABASE_URL` set, run `node scripts/range-owner.mjs`. The command asks for name, phone, and a hidden password, creates or resets an owner, and revokes previous sessions. It refuses to promote an existing coach phone. Do not pass passwords on the command line or commit them. Process-only `RANGE_OWNER_NAME`, `RANGE_OWNER_PHONE`, and `RANGE_OWNER_PASSWORD` also support secure provisioning. No owner password is seeded or built into the app.
