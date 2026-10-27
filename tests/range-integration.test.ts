@@ -388,4 +388,24 @@ describe.skipIf(!enabled)("range APIs against isolated PostgreSQL", () => {
             await expect(prisma.rangeShift.create({ data: { userId: coachId, locationId: otherLocationId, inAt: new Date(), openKey: coachId } })).rejects.toThrow()
         } finally { await prisma.rangeShift.delete({ where: { id: shift.id } }) }
     })
+    it("includes an earlier payment after correcting the account tracking start without posting it twice", async () => {
+        const today = rangeDay(), yesterday = rangeDay(new Date(Date.now() - 86400000))
+        const accountSettings = { type: "account", locationId, name: "Running balance regression", custodian: "kartik", channel: "online", openingPaise: 0, openingDate: today }
+        expect((await call("finance/settings", ownerId, accountSettings)).status).toBe(200)
+        const account = await prisma.rangeMoneyAccount.findFirstOrThrow({ where: { locationId, name: accountSettings.name } })
+        const payment = saleData({ occurredOn: yesterday, amountPaise: 65000, productId: undefined, quantity: undefined, unitPricePaise: undefined, payments: [{ accountId: account.id, method: "online", amountPaise: 65000 }] })
+        expect((await call("finance", ownerId, payment)).status).toBe(200)
+        const before = await (await call(`finance/meta?locationId=${locationId}`, ownerId)).json()
+        expect(before.accounts.find((a: { id: string }) => a.id === account.id).balancePaise).toBe(0)
+        const reason = "Include the first receipt in the tracking period"
+        expect((await call("finance/settings", ownerId, { ...accountSettings, id: account.id, version: account.version, active: true, openingDate: yesterday, reason })).status).toBe(200)
+        const after = await (await call(`finance/meta?locationId=${locationId}`, ownerId)).json()
+        expect(after.accounts.find((a: { id: string }) => a.id === account.id)).toMatchObject({ openingDate: yesterday, balancePaise: 65000 })
+        const dashboard = await (await call(`dashboard?locationId=${locationId}&from=${today}&to=${today}`, ownerId)).json()
+        expect(dashboard.accounts.find((a: { id: string }) => a.id === account.id).balancePaise).toBe(65000)
+        expect(await prisma.rangeFinanceTransaction.count({ where: { submissionKey: payment.submissionKey } })).toBe(1)
+        const audit = await prisma.rangeAudit.findFirstOrThrow({ where: { entityId: account.id, reason } })
+        expect(audit.before).toMatchObject({ openingDate: today })
+        expect(audit.after).toMatchObject({ openingDate: yesterday })
+    })
 })
