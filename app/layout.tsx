@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import { SiteChrome } from "@/components/layout/SiteChrome";
 
@@ -35,6 +36,9 @@ export default function RootLayout({
         className={`${outfit.variable} antialiased bg-black text-foreground min-h-screen flex flex-col font-sans selection:bg-primary selection:text-black`}
       >
         <SiteChrome>{children}</SiteChrome>
+        {process.env.NODE_ENV === "production" && (
+          <GoogleAnalytics gaId="G-SGQQ8TFER3" />
+        )}
       </body>
     </html>
   );

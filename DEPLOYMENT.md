@@ -67,6 +67,7 @@ Vercel runtime PostgreSQL clients default to `connection_limit=1` to limit each 
 
 ## Notes
 
+- Google Analytics 4 uses measurement ID `G-SGQQ8TFER3` in the root layout through `@next/third-parties/google`. The tag loads in production builds; local development does not send analytics. Keep Enhanced measurement and its browser-history page-change option enabled in the web stream so Next.js navigation records page views automatically. After deployment, verify traffic in the Analytics Realtime report.
 - Search engines can discover the public site at `/sitemap.xml`, advertised by `/robots.txt`. The sitemap reads published competitions on each request and includes registration/results URLs only when those features are published or open. Courses and technique guides come from their existing data files. After deployment, submit `https://salvoshootersarena.com/sitemap.xml` in Google Search Console.
 - Coach admin is at `/admin/salvo-cup-36` and uses `ADMIN_PIN`.
 - `ADMIN_PIN` is the master credential for the competition manager and all competition dashboards. Each competition can also use its own 4-8 digit PIN for its scoped dashboard.
