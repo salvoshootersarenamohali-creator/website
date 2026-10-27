@@ -47,7 +47,9 @@ VERCEL_PROJECT_ID="project-id-from-vercel"
 DATABASE_URL="postgres://USER:PASSWORD@HOST:PORT/defaultdb?sslmode=require"
 ```
 
-The workflow in `.github/workflows/deploy.yml` runs on pushes to `main`. It installs dependencies, generates Prisma Client, applies database migrations, builds with Vercel, and deploys the prebuilt production artifact.
+The workflow in `.github/workflows/deploy.yml` runs on pushes to `main`. It installs dependencies, generates Prisma Client, applies every migration to disposable PostgreSQL and runs tests/lint. Production migrations run when `prisma/schema.prisma` or `prisma/migrations` differs from the last successful deployment, then Vercel builds and deploys the artifact. Comparing against the last successful deployment ensures migrations from a failed release are retried; missing history, fetch failures and comparison errors all default to running migrations. A UI-only release with an unchanged database can deploy even when the live database is temporarily short of connection slots.
+
+Vercel runtime PostgreSQL clients default to `connection_limit=1` to limit each function's pool on small Aiven plans. Explicit URL pool settings are respected, and local environments are unchanged. SSL options and credentials are preserved. High concurrent function counts can still require Aiven connection pooling or a larger database plan; do not raise connection limits without checking the service capacity. See [Prisma's serverless connection guide](https://www.prisma.io/docs/orm/v6/prisma-client/setup-and-configuration/databases-connections#serverless-environments-faas).
 
 ## Notes
 
