@@ -22,7 +22,7 @@ describe("database connection pools", () => {
         expect(databaseUrlForRuntime(undefined, true)).toBeUndefined()
         expect(databaseUrlForRuntime("prisma://example.test/?api_key=placeholder", true)).toBe("prisma://example.test/?api_key=placeholder")
     })
-    it("does not echo an invalid connection credential in its error", () => {
-        expect(() => databaseUrlForRuntime("invalid-private-credential", true)).toThrow(/^DATABASE_URL must be a valid connection string\.$/)
+    it("preserves unresolved build-time secrets for Prisma to validate when connecting", () => {
+        expect(databaseUrlForRuntime("unresolved-build-secret", true)).toBe("unresolved-build-secret")
     })
 })
