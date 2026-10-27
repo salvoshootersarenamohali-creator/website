@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
+import { SiteChrome } from "@/components/layout/SiteChrome";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -35,11 +34,7 @@ export default function RootLayout({
       <body
         className={`${outfit.variable} antialiased bg-black text-foreground min-h-screen flex flex-col font-sans selection:bg-primary selection:text-black`}
       >
-        <Header />
-        <main className="flex-grow pt-20">
-          {children}
-        </main>
-        <Footer />
+        <SiteChrome>{children}</SiteChrome>
       </body>
     </html>
   );

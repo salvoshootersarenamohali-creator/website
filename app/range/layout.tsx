@@ -1,3 +1,4 @@
 import type { ReactNode } from "react"
-export const metadata = { robots: { index: false, follow: false } }
-export default function RangeLayout({ children }: { children: ReactNode }) { return children }
+import "./range.css"
+export const metadata = { title: "Range workspace | Salvo", robots: { index: false, follow: false } }
+export default function RangeLayout({ children }: { children: ReactNode }) { return <div className="range-app">{children}</div> }
