@@ -1,12 +1,12 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { normalizePhone, RangeActor, RangeError, textField } from "./shared"
+import { loginIdentity, normalizePhone, RangeActor, RangeError, textField } from "./shared"
 import { audit, jsonBody, ownerOnly, transaction } from "./server"
 
 export const SESSION_COOKIE = "salvo-range-session"
 const SESSION_SECONDS = 7 * 24 * 60 * 60
-const publicUser = { id: true, name: true, phone: true, role: true, active: true, mustChangePassword: true, memberships: { select: { locationId: true } } } as const
+const publicUser = { id: true, name: true, phone: true, username: true, role: true, active: true, mustChangePassword: true, memberships: { select: { locationId: true } } } as const
 export function digest(value: string) { return createHash("sha256").update(value).digest("hex") }
 export function validatePassword(value: unknown): asserts value is string {
     if (typeof value !== "string" || value.length < 12 || value.length > 128) throw new RangeError("Use a password of 12 to 128 characters.")
@@ -29,7 +29,7 @@ export async function currentActor(request: NextRequest): Promise<RangeActor> {
     if (!token) throw new RangeError("Please sign in.", 401)
     const session = await prisma.rangeSession.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
     if (!session || session.expiresAt <= new Date() || !session.user.active) throw new RangeError("Your session has expired. Please sign in.", 401)
-    return { id: session.user.id, name: session.user.name, phone: session.user.phone, role: session.user.role, mustChangePassword: session.user.mustChangePassword }
+    return { id: session.user.id, name: session.user.name, phone: session.user.phone, username: session.user.username, role: session.user.role, mustChangePassword: session.user.mustChangePassword }
 }
 function sessionResponse(token: string, actor: RangeActor) {
     const response = NextResponse.json({ user: actor })
@@ -38,9 +38,9 @@ function sessionResponse(token: string, actor: RangeActor) {
 }
 export async function login(request: NextRequest) {
     const body = await jsonBody(request)
-    const phone = normalizePhone(body.phone)
+    const identity = loginIdentity(body.identifier ?? body.phone)
     const password = typeof body.password === "string" && body.password.length <= 128 ? body.password : ""
-    const phoneHash = digest(phone)
+    const phoneHash = digest("phone" in identity ? identity.phone : identity.username)
     const ipHash = digest(request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local")
     await transaction(async tx => {
         const since = new Date(Date.now() - 15 * 60 * 1000)
@@ -48,13 +48,13 @@ export async function login(request: NextRequest) {
         if (phones >= 5 || ips >= 30) throw new RangeError("Too many attempts. Try again in 15 minutes.", 429)
         await tx.rangeLoginAttempt.create({ data: { phoneHash, ipHash } })
     })
-    const user = await prisma.rangeUser.findUnique({ where: { phone } })
+    const user = await prisma.rangeUser.findUnique({ where: identity })
     // A dummy derivation also makes unknown-account login attempts expensive.
     const valid = await verifyPassword(password, user?.passwordHash ?? `scrypt$00000000000000000000000000000000$${"0".repeat(128)}`)
-    if (!valid || !user?.active) throw new RangeError("Invalid phone number or password.", 401)
+    if (!valid || !user?.active) throw new RangeError("Invalid username, phone number or password.", 401)
     const token = randomBytes(32).toString("hex")
     await prisma.rangeSession.create({ data: { tokenHash: digest(token), userId: user.id, expiresAt: new Date(Date.now() + SESSION_SECONDS * 1000) } })
-    return sessionResponse(token, { id: user.id, name: user.name, phone: user.phone, role: user.role, mustChangePassword: user.mustChangePassword })
+    return sessionResponse(token, { id: user.id, name: user.name, phone: user.phone, username: user.username, role: user.role, mustChangePassword: user.mustChangePassword })
 }
 export async function logout(request: NextRequest) {
     const token = request.cookies.get(SESSION_COOKIE)?.value

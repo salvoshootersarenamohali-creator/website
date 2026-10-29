@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { NextRequest } from "next/server"
 import { hashPassword, verifyPassword, validatePassword } from "@/lib/range/auth"
-import { dailyShiftTotals, dateField, normalizePhone, rangeDay } from "@/lib/range/shared"
+import { dailyShiftTotals, dateField, loginIdentity, normalizePhone, normalizeUsername, rangeDay } from "@/lib/range/shared"
 import { assertSameOrigin, ownerOnly } from "@/lib/range/server"
 
 describe("range credentials and boundaries", () => {
@@ -22,6 +22,14 @@ describe("range credentials and boundaries", () => {
         expect(await verifyPassword("My strong password!", first)).toBe(true)
         expect(await verifyPassword("My strong password", first)).toBe(false)
         expect(() => validatePassword("12345678")).toThrow()
+        await expect(hashPassword("abc")).rejects.toThrow()
+    })
+    it("accepts normalized usernames while preserving phone sign-in", () => {
+        expect(loginIdentity(" OWNER ")).toEqual({ username: "owner" })
+        expect(loginIdentity("98765 43210")).toEqual({ phone: "+919876543210" })
+        expect(loginIdentity("+1 (604) 555-1234")).toEqual({ phone: "+16045551234" })
+        expect(normalizeUsername("Owner.Test_1")).toBe("owner.test_1")
+        for (const value of ["ab", "1owner", "a".repeat(33), "owner@example.com", "owner user", "", null]) expect(() => normalizeUsername(value)).toThrow()
     })
     it("rejects cross-site and missing-origin mutations", () => {
         expect(() => assertSameOrigin(new NextRequest("https://salvo.test/api/range/staff"))).toThrow()

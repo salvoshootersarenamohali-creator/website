@@ -1,0 +1,46 @@
+name: Create range owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: Owner username
+        required: true
+        type: string
+      name:
+        description: Owner display name
+        required: true
+        type: string
+      temporary_password_hash:
+        description: Salted scrypt hash of the temporary password (never the password itself)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: range-owner-provisioning
+  cancel-in-progress: false
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - name: Create owner with mandatory first-login password change
+        run: node scripts/range-owner.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RANGE_OWNER_USERNAME: ${{ inputs.username }}
+          RANGE_OWNER_NAME: ${{ inputs.name }}
+          RANGE_OWNER_PASSWORD_HASH: ${{ inputs.temporary_password_hash }}
+          RANGE_OWNER_TEMPORARY: 'true'
+          RANGE_OWNER_CREATE_ONLY: 'true'

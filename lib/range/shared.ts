@@ -1,4 +1,4 @@
-export type RangeActor = { id: string; name: string; phone: string; role: string; mustChangePassword: boolean }
+export type RangeActor = { id: string; name: string; phone: string | null; username?: string | null; role: string; mustChangePassword: boolean }
 export type LocationOption = { id: string; name: string; slug: string; timeZone: string }
 
 export class RangeError extends Error {
@@ -15,6 +15,17 @@ export function normalizePhone(value: unknown) {
     const result = /^\d{10}$/.test(phone) ? `+91${phone}` : phone
     if (!/^\+[1-9]\d{7,14}$/.test(result)) throw new RangeError("Enter a valid phone number, including country code for numbers outside India.")
     return result
+}
+
+export function normalizeUsername(value: unknown) {
+    const username = typeof value === "string" ? value.trim().toLowerCase() : ""
+    if (!/^[a-z][a-z0-9._-]{2,31}$/.test(username)) throw new RangeError("Use a username of 3 to 32 letters, numbers, dots, underscores or hyphens, starting with a letter.")
+    return username
+}
+
+export function loginIdentity(value: unknown): { phone: string } | { username: string } {
+    const identity = typeof value === "string" ? value.trim() : ""
+    return /^[a-z]/i.test(identity) ? { username: normalizeUsername(identity) } : { phone: normalizePhone(identity) }
 }
 
 export function rangeDay(value = new Date()) {
