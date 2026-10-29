@@ -45,7 +45,7 @@ export function Header() {
             )}
         >
             <div className="container mx-auto px-4 flex min-h-20 items-center justify-between">
-                <Link href="/" className="flex items-center">
+                <Link href="/" className="flex shrink-0 flex-col items-center gap-1">
                     <Image
                         src="/salvo-logo.png"
                         alt="Salvo Shooters Arena"
@@ -54,6 +54,9 @@ export function Header() {
                         priority
                         className="h-14 w-auto md:h-16"
                     />
+                    <span className="whitespace-nowrap text-[9px] font-semibold uppercase leading-none tracking-[0.16em] text-[#D4AF37] md:text-[10px]">
+                        Premium Shooting Range
+                    </span>
                 </Link>
 
                 {/* Desktop Navigation */}
