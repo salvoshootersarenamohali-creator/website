@@ -1,8 +1,8 @@
 import { v2 as cloudinary, UploadApiResponse } from "cloudinary"
 import { RangeError } from "./shared"
 
-function configure() {
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) throw new RangeError("Attendance photo storage is not configured. Contact the owner.", 503)
+export function configure() {
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) throw new RangeError("Private file storage is not configured. Contact the owner.", 503)
     cloudinary.config({ cloud_name: process.env.CLOUDINARY_CLOUD_NAME, api_key: process.env.CLOUDINARY_API_KEY, api_secret: process.env.CLOUDINARY_API_SECRET, secure: true })
 }
 export async function uploadAttendancePhoto(file: File, locationId: string) {
