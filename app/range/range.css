@@ -1,4 +1,80 @@
 /* The private workspace has its own visual system; public pages retain their theme. */
+.training-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 20px; }
+.training-tabs, .training-filters, .training-card-actions, .training-picker-toolbar, .training-pager { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.training-tabs { padding: 0 0 8px; }
+.training-filters { align-items: end; padding-bottom: 22px; }
+.training-filters .range-field { flex: 1 1 145px; }
+.training-card, .training-preview-row { border: 1px solid #dfe7dc; padding: 22px; border-radius: 12px; background: #fff; }
+.training-card-heading { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.training-card-heading h3 { margin-top: 5px; font-size: 19px; font-weight: 600; }
+.training-prose { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; }
+.training-checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 18px; }
+.training-checklist > label { display: flex; align-items: center; min-height: 42px; padding: 8px; border-radius: 6px; background: #f5f8f2; overflow-wrap: anywhere; }
+.training-student-picker { padding: 16px; border: 1px solid #dfe7dc; border-radius: 10px; }
+.training-student-picker legend { font-weight: 600; padding: 0 6px; }
+.training-picker-toolbar { margin-bottom: 15px; }
+.training-picker-toolbar .range-field { margin-left: auto; }
+.training-pager { justify-content: flex-end; margin-top: 16px; color: #68776c; font-size: 12px; }
+.training-pager > span { margin-right: auto; }
+.training-plan-content { min-width: 0; }
+.training-plan-aside { padding: 20px; border: 1px solid #dfe7dc; border-radius: 12px; background: #f5f8f2; }
+.training-plan-aside h3 { color: #47613e; font-weight: 600; margin-bottom: 15px; }
+.training-files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.training-files a { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 8px; background: #edf3e8; color: #285443; font-size: 12px; overflow-wrap: anywhere; }
+.training-targets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 15px 0; }
+.training-targets a { display: block; color: #285443; font-size: 12px; overflow-wrap: anywhere; }
+.training-targets img { width: 100%; height: 180px; object-fit: contain; background: #f5f7f4; border: 1px solid #e1e7df; border-radius: 8px; margin-bottom: 6px; }
+.training-upload { display: grid; gap: 8px; }
+.training-session-metrics { display: flex; flex-wrap: wrap; gap: 10px 25px; margin: 16px 0; color: #68776c; font-size: 12px; }
+.training-session-metrics strong { font-size: 19px; color: #285443; font-weight: 600; margin-right: 4px; }
+.training-remarks { display: grid; gap: 10px; margin-top: 15px; }
+.training-remark { border-left: 3px solid #a9bc96; background: #f5f8f2; padding: 13px 16px; border-radius: 0 7px 7px 0; }
+.training-history { padding: 12px; margin-top: 12px; background: #f3f6f0; border-radius: 8px; display: grid; gap: 12px; }
+.training-history > div + div { border-top: 1px solid #dfe7dc; padding-top: 14px; }
+.training-profile-picker { padding: 18px 22px; border: 1px solid #dfe7dc; background: #edf3e8; border-radius: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 25px; }
+.training-profile-picker .range-field { flex: 1; max-width: 430px; }
+.training-stat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.training-stat { padding: 16px; background: #f4f7f0; border: 1px solid #e4ebdd; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; }
+.training-stat span { color: #68776c; font-size: 11px; }
+.training-stat strong { font-weight: 600; color: #285443; font-size: 27px; line-height: 1.1; }
+.training-graphs { display: grid; gap: 20px; margin-top: 24px; }
+.training-graph-options { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }
+.training-chart { padding: 18px; min-width: 0; border: 1px solid #dfe7dc; border-radius: 10px; }
+.training-chart h3 { font-weight: 600; color: #38563b; margin-bottom: 10px; }
+.training-chart svg { width: 100%; height: auto; overflow: visible; }
+.training-student-header { background: #183e30; display: flex; align-items: center; justify-content: space-between; padding-right: max(25px, calc((100vw - 1200px) / 2)); }
+.training-student-header .range-brand { padding-left: max(25px, calc((100vw - 1200px) / 2)); }
+.training-student-account { display: flex; align-items: center; gap: 20px; color: #dbe6dc; }
+.training-student-nav { display: flex; gap: 5px; overflow-x: auto; padding: 12px max(20px, calc((100vw - 1200px) / 2)); background: #fff; border-bottom: 1px solid #dfe7dc; }
+.training-student-nav a { white-space: nowrap; padding: 11px 15px; border-radius: 7px; color: #587058; }
+.training-student-nav a[aria-current] { background: #edf3e8; color: #285443; font-weight: 600; }
+.training-student-main { width: min(1240px, 100%); padding: 35px 20px 20px; margin: 0 auto; }
+.training-overview-hero { display: flex; justify-content: space-between; align-items: center; gap: 25px; padding: 32px; background: #e8eedf; border: 1px solid #dce5cf; border-radius: 14px; }
+.training-overview-hero h2 { font-size: clamp(25px, 3vw, 36px); line-height: 1.25; font-weight: 550; color: #285443; margin: 12px 0; }
+.training-overview-hero p:last-child { color: #65755d; max-width: 480px; }
+.training-coach { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #e1e7df; border-radius: 8px; }
+@media (max-width: 900px) {
+  .training-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .training-columns { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .training-student-header { padding-right: 15px; }
+  .training-student-header .range-brand { padding: 22px 15px; }
+  .training-student-header .range-brand > span { font-size: 19px; }
+  .training-student-account > span { display: none; }
+  .training-student-nav { padding: 9px 10px; }
+  .training-student-main { padding: 25px 15px 15px; }
+  .training-overview-hero { align-items: start; flex-direction: column; padding: 23px; }
+  .training-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-stat { padding: 13px; }
+  .training-checklist { grid-template-columns: minmax(0, 1fr); }
+  .training-card, .training-preview-row { padding: 16px; }
+  .training-targets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-targets img { height: 135px; }
+  .training-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-picker-toolbar .range-field { width: 100%; }
+  .training-chart { padding: 12px; }
+}
 .range-app {
   --background: #f5f7f4; --foreground: #22382e; --primary: #285443;
   --primary-foreground: #fff; --secondary: #edf2ed; --secondary-foreground: #285443;

@@ -14,8 +14,11 @@ import { Transfers } from "./Transfers"
 import { Salaries } from "./Salaries"
 import { Dashboard } from "./Dashboard"
 import { Reports } from "./Reports"
+import { Training } from "./Training"
+import { PasswordForm } from "./AccountSecurity"
 
 const sections = [
+    { key: "training", label: "Training & progress", icon: Crosshair, group: "Workspace", description: "Plan training, review diaries, and follow your students’ progress." },
     { key: "home", label: "Overview", icon: LayoutDashboard, group: "Workspace", description: "Your range at a glance, with the next steps that matter." },
     { key: "attendance", label: "Coach attendance", coachLabel: "My attendance", icon: ClipboardCheck, group: "Workspace", description: "Review coach shifts, completed hours, and attendance requests.", coachDescription: "Check in, check out, and keep track of your shifts." },
     { key: "students", label: "Students & attendance", icon: Users, group: "Workspace", description: "Your student roster and daily attendance, in one place." },
@@ -31,7 +34,7 @@ type Staff = RangeActor & { active: boolean; memberships: { locationId: string }
 export function Workspace() {
     const [user, setUser] = useState<RangeActor>(), [locations, setLocations] = useState<LocationOption[]>([]), [locationId, setLocationId] = useState(""), [error, setError] = useState(""), [tab, setTab] = useState("home"), [menuOpen, setMenuOpen] = useState(false), [signingOut, setSigningOut] = useState(false)
     const heading = useRef<HTMLHeadingElement>(null), focusContentAfterMenu = useRef(false)
-    const load = useCallback(async () => { try { const data = await rangeApi<{ user: RangeActor; locations: LocationOption[] }>("session"); setUser(data.user); setLocations(data.locations); setError(""); setLocationId(current => data.locations.some(l => l.id === current) ? current : data.locations[0]?.id || "") } catch (e) { setError(e instanceof Error ? e.message : "Unable to load workspace.") } }, [])
+    const load = useCallback(async () => { try { const data = await rangeApi<{ user: RangeActor; locations: LocationOption[] }>("session"); if (data.user.role === "student") { window.location.replace("/range/student"); return }; setUser(data.user); setLocations(data.locations); setError(""); setLocationId(current => data.locations.some(l => l.id === current) ? current : data.locations[0]?.id || "") } catch (e) { setError(e instanceof Error ? e.message : "Unable to load workspace.") } }, [])
     useEffect(() => { void Promise.resolve().then(load) }, [load])
     useEffect(() => {
         const sync = () => { const next = window.location.hash.slice(1); if (next === "workspace-content") return; setTab(sections.some(s => s.key === next && (!s.owner || user?.role === "owner")) ? next : "home") }
@@ -61,7 +64,8 @@ export function Workspace() {
         <div id="workspace-content" className="range-content"><div className="range-page-heading"><div><p className="range-eyebrow">{owner ? "Owner workspace" : "Coach workspace"}</p><h1 ref={heading} tabIndex={-1}>{user.mustChangePassword ? "Let’s secure your account" : tab === "home" ? `Welcome back, ${user.name.split(" ")[0]}.` : label}</h1><p>{user.mustChangePassword ? "Choose your own password to get started." : !owner && current.coachDescription ? current.coachDescription : current.description}</p></div><span className="range-role-pill"><ShieldCheck size={15} aria-hidden="true" />{owner ? "Owner access" : "Coach access"}</span></div>
         {error && <p className="range-feedback range-feedback-error" role="alert">{error}</p>}
         {user.mustChangePassword ? <Panel title="Set your own password" className="range-narrow"><PasswordForm onDone={load} /></Panel> : <>
-            {!locationId && !["staff", "password"].includes(tab) && <EmptyState title="No locations assigned yet" description={owner ? "Add a location in Staff & locations to set up your workspace." : "Ask the owner to assign you a location to get started."} action={owner ? <Button onClick={() => navigate("staff")}>Set up a location</Button> : undefined} />}
+            {!locationId && !["staff", "password", "training"].includes(tab) && <EmptyState title="No locations assigned yet" description={owner ? "Add a location in Staff & locations to set up your workspace." : "Ask the owner to assign you a location to get started."} action={owner ? <Button onClick={() => navigate("staff")}>Set up a location</Button> : undefined} />}
+            {tab === "training" && <Training user={user} />}
             {tab === "home" && locationId && <Dashboard key={locationId} user={user} locationId={locationId} navigate={navigate} />}
             {tab === "staff" && owner && <StaffSettings locations={locations} reload={load} />}
             {tab === "attendance" && locationId && <Attendance key={locationId} user={user} locationId={locationId} />}
@@ -76,7 +80,6 @@ export function Workspace() {
         <div className="range-workspace-footer"><span><Crosshair size={13} aria-hidden="true" />Salvo Shooters Arena</span><span>Range dates & times use India Standard Time</span></div></div>
     </div></div>
 }
-function PasswordForm({ onDone }: { onDone: () => Promise<void> }) { return <ActionForm onSubmit={async form => { const data = new FormData(form); if (data.get("password") !== data.get("confirm")) throw new Error("New passwords do not match."); await rangeApi("password", { currentPassword: data.get("currentPassword"), password: data.get("password") }); form.reset(); await onDone() }} submit="Change password"><Field label="Current password"><input className="field" name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} /></Field><Field label="New password (at least 12 characters)"><input className="field" name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" required /></Field><Field label="Confirm new password"><input className="field" name="confirm" type="password" minLength={12} maxLength={128} autoComplete="new-password" required /></Field></ActionForm> }
 function StaffSettings({ locations, reload }: { locations: LocationOption[]; reload: () => Promise<void> }) {
     const [staff, setStaff] = useState<Staff[]>([]), [editing, setEditing] = useState<Staff>(), [creating, setCreating] = useState(false), [error, setError] = useState(""), [loading, setLoading] = useState(true)
     const load = useCallback(async () => { setLoading(true); try { setStaff((await rangeApi<{ staff: Staff[] }>("staff")).staff); setError("") } catch (e) { setError(e instanceof Error ? e.message : "Unable to load staff.") } finally { setLoading(false) } }, [])
