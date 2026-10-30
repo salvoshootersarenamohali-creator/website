@@ -16,7 +16,12 @@ export function ownerOnly(actor: RangeActor) {
     if (actor.role !== "owner") throw new RangeError("Owner access required.", 403)
 }
 
+export function staffOnly(actor: RangeActor) {
+    if (!["owner", "coach"].includes(actor.role)) throw new RangeError("Staff access required.", 403)
+}
+
 export async function locationAccess(actor: RangeActor, locationId: string, db: Prisma.TransactionClient = prisma) {
+    staffOnly(actor)
     const location = await db.rangeLocation.findUnique({ where: { id: locationId } })
     if (!location?.active) throw new RangeError("Location not found.", 404)
     if (actor.role !== "owner" && !await db.rangeMembership.findUnique({ where: { userId_locationId: { userId: actor.id, locationId } } })) throw new RangeError("Location access denied.", 403)

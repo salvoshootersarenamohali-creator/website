@@ -29,7 +29,7 @@ export async function currentActor(request: NextRequest): Promise<RangeActor> {
     if (!token) throw new RangeError("Please sign in.", 401)
     const session = await prisma.rangeSession.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
     if (!session || session.expiresAt <= new Date() || !session.user.active) throw new RangeError("Your session has expired. Please sign in.", 401)
-    return { id: session.user.id, name: session.user.name, phone: session.user.phone, username: session.user.username, role: session.user.role, mustChangePassword: session.user.mustChangePassword }
+    return { id: session.user.id, name: session.user.name, phone: session.user.phone, username: session.user.username, shooterProfileId: session.user.shooterProfileId, role: session.user.role, mustChangePassword: session.user.mustChangePassword }
 }
 function sessionResponse(token: string, actor: RangeActor) {
     const response = NextResponse.json({ user: actor })
@@ -54,7 +54,7 @@ export async function login(request: NextRequest) {
     if (!valid || !user?.active) throw new RangeError("Invalid username, phone number or password.", 401)
     const token = randomBytes(32).toString("hex")
     await prisma.rangeSession.create({ data: { tokenHash: digest(token), userId: user.id, expiresAt: new Date(Date.now() + SESSION_SECONDS * 1000) } })
-    return sessionResponse(token, { id: user.id, name: user.name, phone: user.phone, username: user.username, role: user.role, mustChangePassword: user.mustChangePassword })
+    return sessionResponse(token, { id: user.id, name: user.name, phone: user.phone, username: user.username, shooterProfileId: user.shooterProfileId, role: user.role, mustChangePassword: user.mustChangePassword })
 }
 export async function logout(request: NextRequest) {
     const token = request.cookies.get(SESSION_COOKIE)?.value
@@ -81,11 +81,12 @@ export async function changePassword(request: NextRequest, actor: RangeActor) {
     return sessionResponse(token, { ...actor, mustChangePassword: false })
 }
 export async function listLocations(actor: RangeActor) {
+    if (actor.role === "student") return []
     return prisma.rangeLocation.findMany({ where: { active: true, ...(actor.role === "owner" ? {} : { memberships: { some: { userId: actor.id } } }) }, select: { id: true, name: true, slug: true, timeZone: true }, orderBy: { name: "asc" } })
 }
 export async function staffAction(request: NextRequest, actor: RangeActor) {
     ownerOnly(actor)
-    if (request.method === "GET") return Response.json({ staff: await prisma.rangeUser.findMany({ select: publicUser, orderBy: { name: "asc" } }) })
+    if (request.method === "GET") return Response.json({ staff: await prisma.rangeUser.findMany({ where: { role: { in: ["owner", "coach"] } }, select: publicUser, orderBy: { name: "asc" } }) })
     const body = await jsonBody(request)
     const id = typeof body.id === "string" ? body.id : undefined
     const name = textField(body.name, "Name", 100)
@@ -99,6 +100,7 @@ export async function staffAction(request: NextRequest, actor: RangeActor) {
         const before = id ? await tx.rangeUser.findUnique({ where: { id }, select: publicUser }) : null
         if (id && !before) throw new RangeError("Staff account not found.", 404)
         if (before?.role === "owner") throw new RangeError("Owner accounts are managed through the recovery tool.", 403)
+        if (before && before.role !== "coach") throw new RangeError("Use student account management for this account.", 403)
         if (await tx.rangeLocation.count({ where: { id: { in: locationIds }, active: true } }) !== locationIds.length) throw new RangeError("Select active locations.")
         const user = id ? await tx.rangeUser.update({ where: { id }, data: { name, phone, active: body.active as boolean, ...(passwordHash ? { passwordHash, mustChangePassword: true } : {}) }, select: publicUser }) : await tx.rangeUser.create({ data: { name, phone, passwordHash: passwordHash!, role: "coach" }, select: publicUser })
         await tx.rangeMembership.deleteMany({ where: { userId: user.id } })

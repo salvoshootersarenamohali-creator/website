@@ -1,4 +1,4 @@
-export type RangeActor = { id: string; name: string; phone: string | null; username?: string | null; role: string; mustChangePassword: boolean }
+export type RangeActor = { id: string; name: string; phone: string | null; username?: string | null; shooterProfileId?: string | null; role: string; mustChangePassword: boolean }
 export type LocationOption = { id: string; name: string; slug: string; timeZone: string }
 
 export class RangeError extends Error {

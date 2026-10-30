@@ -33,7 +33,7 @@ export async function reportMeta(request: NextRequest, actor: RangeActor) {
     ownerOnly(actor)
     const locations = await reportScope(request, actor), ids = locations.map(l => l.id)
     const [people, students, accounts, categories] = await Promise.all([
-        prisma.rangeUser.findMany({ select: { id: true, name: true, role: true, active: true }, orderBy: { name: "asc" } }),
+        prisma.rangeUser.findMany({ where: { role: { in: ["owner", "coach"] } }, select: { id: true, name: true, role: true, active: true }, orderBy: { name: "asc" } }),
         prisma.rangeShooterProfile.findMany({ where: { enrollments: { some: { locationId: { in: ids } } } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
         prisma.rangeMoneyAccount.findMany({ where: { locationId: { in: ids } }, select: { id: true, name: true, location: { select: { name: true } } }, orderBy: { name: "asc" } }),
         prisma.rangeFinanceCategory.findMany({ where: { locationId: { in: ids } }, select: { id: true, name: true, kind: true }, orderBy: { name: "asc" } }),

@@ -17,6 +17,14 @@ model RangeUser {
   role String @default("coach")
   active Boolean @default(true)
   mustChangePassword Boolean @default(true)
+  shooterProfileId String? @unique
+  version Int @default(1)
+  shooterProfile RangeShooterProfile? @relation(fields: [shooterProfileId], references: [id], onDelete: Restrict)
+  trainingAssignments RangeTrainingCoach[]
+  trainingPlanEdits RangeTrainingPlanRevision[]
+  trainingReviews RangeTrainingReview[]
+  trainingMedia RangeTrainingMedia[]
+  trainingSubmissions RangeTrainingSubmission[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   memberships RangeMembership[]
@@ -212,8 +220,138 @@ model RangeShooterProfile {
   guardianPhone String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  trainingVersion Int @default(1)
+  account RangeUser?
+  trainingCoaches RangeTrainingCoach[]
+  trainingPlans RangeTrainingPlan[]
+  trainingSessions RangeTrainingSession[]
   enrollments RangeEnrollment[]
   @@index([name])
+}
+
+model RangeTrainingCoach {
+  coachId String
+  profileId String
+  active Boolean @default(true)
+  coach RangeUser @relation(fields: [coachId], references: [id], onDelete: Restrict)
+  profile RangeShooterProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  @@id([coachId, profileId])
+  @@index([profileId, active])
+}
+
+model RangeTrainingPlan {
+  id String @id @default(cuid())
+  profileId String
+  date String
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+  profile RangeShooterProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  revisions RangeTrainingPlanRevision[]
+  @@unique([profileId, date])
+}
+
+model RangeTrainingPlanRevision {
+  id String @id @default(cuid())
+  planId String
+  version Int
+  authorId String
+  title String
+  instructions String
+  createdAt DateTime @default(now())
+  plan RangeTrainingPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  author RangeUser @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  attachments RangeTrainingMedia[] @relation("TrainingPlanMedia")
+  sessionRevisions RangeTrainingSessionRevision[]
+  @@unique([planId, version])
+}
+
+model RangeTrainingSession {
+  id String @id @default(cuid())
+  profileId String
+  date String
+  discipline String
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  profile RangeShooterProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  revisions RangeTrainingSessionRevision[]
+  reviews RangeTrainingReview[]
+  @@index([profileId, date])
+}
+
+model RangeTrainingSessionRevision {
+  id String @id @default(cuid())
+  sessionId String
+  version Int
+  date String
+  discipline String
+  label String
+  notes String
+  durationMinutes Int?
+  shotCount Int?
+  score Decimal? @db.Decimal(12, 2)
+  maximumScore Decimal? @db.Decimal(12, 2)
+  planRevisionId String?
+  createdAt DateTime @default(now())
+  session RangeTrainingSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  planRevision RangeTrainingPlanRevision? @relation(fields: [planRevisionId], references: [id], onDelete: Restrict)
+  attachments RangeTrainingMedia[] @relation("TrainingTargetMedia")
+  @@unique([sessionId, version])
+}
+
+model RangeTrainingReview {
+  id String @id @default(cuid())
+  sessionId String
+  coachId String
+  version Int @default(1)
+  sessionVersion Int
+  remarks String
+  reviewed Boolean
+  updatedAt DateTime @updatedAt
+  session RangeTrainingSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  coach RangeUser @relation(fields: [coachId], references: [id], onDelete: Restrict)
+  revisions RangeTrainingReviewRevision[]
+  @@unique([sessionId, coachId])
+}
+
+model RangeTrainingReviewRevision {
+  id String @id @default(cuid())
+  reviewId String
+  version Int
+  sessionVersion Int
+  remarks String
+  reviewed Boolean
+  createdAt DateTime @default(now())
+  review RangeTrainingReview @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+  @@unique([reviewId, version])
+}
+
+model RangeTrainingMedia {
+  id String @id @default(cuid())
+  ownerId String
+  publicId String @unique
+  purpose String
+  name String
+  format String
+  resourceType String
+  mimeType String
+  bytes Int
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  owner RangeUser @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  planRevisions RangeTrainingPlanRevision[] @relation("TrainingPlanMedia")
+  sessionRevisions RangeTrainingSessionRevision[] @relation("TrainingTargetMedia")
+  @@index([expiresAt])
+}
+
+model RangeTrainingSubmission {
+  key String @id
+  actorId String
+  kind String
+  hash String
+  result Json
+  createdAt DateTime @default(now())
+  actor RangeUser @relation(fields: [actorId], references: [id], onDelete: Restrict)
 }
 
 model RangeEnrollment {
