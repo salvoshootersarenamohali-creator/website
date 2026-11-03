@@ -27,10 +27,10 @@ export async function trainingSessions(request: NextRequest, actor: RangeActor) 
         if (status && !["unreviewed", "changed", "reviewed"].includes(status)) throw new RangeError("Invalid review filter.")
         if (status) {
             const candidates = await prisma.rangeTrainingSession.findMany({ where, select: { id: true, version: true, reviews: { select: { coachId: true, reviewed: true, sessionVersion: true } } } })
-            where.id = { in: candidates.filter(item => reviewStatus(item.version, item.reviews, actor.role === "coach" ? actor.id : undefined) === status).map(item => item.id) }
+            where.id = { in: candidates.filter(item => reviewStatus(item.version, item.reviews, (actor.role === "coach" || actor.isMaster) ? actor.id : undefined) === status).map(item => item.id) }
         }
         const [sessions, total] = await prisma.$transaction([prisma.rangeTrainingSession.findMany({ where, include: sessionInclude, orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "asc" }], skip: (page - 1) * 50, take: 50 }), prisma.rangeTrainingSession.count({ where })])
-        return Response.json({ sessions: sessions.map(session => ({ ...session, reviewStatus: reviewStatus(session.version, session.reviews, actor.role === "coach" ? actor.id : undefined) })), total, page })
+        return Response.json({ sessions: sessions.map(session => ({ ...session, reviewStatus: reviewStatus(session.version, session.reviews, (actor.role === "coach" || actor.isMaster) ? actor.id : undefined) })), total, page })
     }
     if (actor.role !== "student") throw new RangeError("Only students can write their diary.", 403)
     const body = await jsonBody(request), fields = sessionFields(body), attachmentIds = mediaIds(body.attachmentIds, 10)

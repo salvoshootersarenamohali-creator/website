@@ -303,6 +303,12 @@ const ownerLessons: TutorialLesson[] = [
     },
 ]
 
+export const masterTutorialGuide: TutorialGuide = {
+    title: "Your master guide",
+    introduction: "Your coaching, range management, and financial controls in one account.",
+    lessons: ["Getting started", "Daily operations", "Training", "Money", "Review & reporting"].flatMap(group => [...ownerLessons, ...coachLessons.filter(lesson => ["coach-day", "coach-shifts"].includes(lesson.id))].filter(lesson => lesson.group === group)),
+}
+
 export const tutorialGuides: Record<TutorialRole, TutorialGuide> = {
     finance: { title: "Your finance guide", introduction: "Record financial changes directly and keep a clear history for the master account.", lessons: ownerLessons.filter(lesson => ["account-security", "financial-setup", "student-fees", "income-expenses", "owner-handovers", "salary-payments"].includes(lesson.id)) },
     student: { title: "Your student guide", introduction: "Follow your plan, keep a useful diary, and turn coach feedback into progress.", lessons: studentLessons },

@@ -33,13 +33,13 @@ export async function studentAccounts(request: NextRequest, actor: RangeActor) {
 
 export async function trainingAssignments(request: NextRequest, actor: RangeActor) {
     ownerOnly(actor)
-    if (request.method === "GET") return Response.json({ coaches: await prisma.rangeUser.findMany({ where: { role: "coach", active: true }, select: trainingAuthor, orderBy: { name: "asc" } }) })
+    if (request.method === "GET") return Response.json({ coaches: await prisma.rangeUser.findMany({ where: { active: true, OR: [{ role: "coach" }, { role: "owner", isMaster: true }] }, select: trainingAuthor, orderBy: { name: "asc" } }) })
     const body = await jsonBody(request), profileId = textField(body.profileId, "Student"), version = expectedVersion(body.version)
     if (!Array.isArray(body.coachIds) || body.coachIds.some(id => typeof id !== "string") || new Set(body.coachIds).size !== body.coachIds.length) throw new RangeError("Choose different coaches.")
     const coachIds = body.coachIds as string[]
     return Response.json(await trainingMutation(actor, "training.assignments", body, async db => {
         await trainingAccess(actor, profileId, db)
-        if (await db.rangeUser.count({ where: { id: { in: coachIds }, role: "coach", active: true } }) !== coachIds.length) throw new RangeError("Choose active coaches.")
+        if (await db.rangeUser.count({ where: { id: { in: coachIds }, active: true, OR: [{ role: "coach" }, { role: "owner", isMaster: true }] } }) !== coachIds.length) throw new RangeError("Choose active coaches.")
         const changed = await db.rangeShooterProfile.updateMany({ where: { id: profileId, trainingVersion: version }, data: { trainingVersion: { increment: 1 } } })
         if (!changed.count) throw new RangeError("Coach assignments changed. Refresh before saving.", 409)
         const before = await db.rangeTrainingCoach.findMany({ where: { profileId, active: true }, select: { coachId: true } })

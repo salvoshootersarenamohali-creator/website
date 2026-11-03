@@ -63,6 +63,7 @@ describe.skipIf(!enabled)("finance staff and master activity against isolated Po
         await prisma.rangeEnrollment.deleteMany({ where: { locationId } })
         if (profileId) await prisma.rangeShooterProfile.deleteMany({ where: { id: profileId } })
         await prisma.rangeAudit.deleteMany({ where: { actorId: { in: ids } } })
+        await prisma.rangeAttendanceChallenge.deleteMany({ where: { userId: { in: ids } } })
         await prisma.rangeUser.deleteMany({ where: { id: { in: ids } } })
         await prisma.rangeLocation.deleteMany({ where: { id: { in: [locationId, outsideId] } } })
         await prisma.rangeLoginAttempt.deleteMany({ where: { phoneHash: digest(username) } })
@@ -84,6 +85,12 @@ describe.skipIf(!enabled)("finance staff and master activity against isolated Po
         expect((await call("staff", financeToken, {})).status).toBe(403)
         const staff = await (await call("staff", financeToken)).json()
         expect(staff.staff.every((user: { role: string; passwordHash?: unknown; phone?: unknown }) => user.role === "coach" && !user.passwordHash && !user.phone)).toBe(true)
+    })
+    it("retains Kartik’s master controls and enables his coaching identity and self attendance", async () => {
+        const choices = await (await call("training/assignments", masterId)).json()
+        expect(choices.coaches.some((coach: { id: string }) => coach.id === masterId)).toBe(true)
+        expect((await call("attendance/challenge", masterId, { locationId, action: "in" })).status).toBe(200)
+        expect((await call("attendance/challenge", otherOwnerId, { locationId, action: "in" })).status).toBe(403)
     })
     it("records income, corrections and deletions immediately with audit history", async () => {
         for (const name of ["Direct cash", "Second cash"]) expect((await call("finance/settings", financeToken, { type: "account", locationId, name, custodian: "salvo", channel: "cash", openingPaise: 500000, openingDate: rangeDay() })).status).toBe(200)

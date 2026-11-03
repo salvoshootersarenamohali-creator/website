@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCircle2, CirclePlay, MousePointer2, RotateCcw, Search, ShieldCheck, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { RangeActor } from "@/lib/range/shared"
-import { readTutorialProgress, searchTutorialLessons, tutorialGuides, type TutorialProgress, type TutorialRole } from "@/lib/range/tutorials"
+import { readTutorialProgress, searchTutorialLessons, tutorialGuides, masterTutorialGuide, type TutorialProgress, type TutorialRole } from "@/lib/range/tutorials"
 import { getWalkthrough } from "@/lib/range/tutorial-walkthroughs"
 import { EmptyState } from "./shared"
 import { VisualWalkthrough } from "./tutorial/VisualWalkthrough"
@@ -15,7 +15,7 @@ export function Tutorial({ user, navigate }: { user: RangeActor; navigate: (sect
 }
 
 function RoleTutorial({ user, role, navigate }: { user: RangeActor; role: TutorialRole; navigate: (section: string) => void }) {
-    const guide = tutorialGuides[role]
+    const guide = user.isMaster && role === "owner" ? masterTutorialGuide : tutorialGuides[role]
     const storageKey = `salvo:tutorial:v2:${role}:${user.id}`
     const [progress, setProgress] = useState<TutorialProgress>({ lessonId: guide.lessons[0].id, completed: [] })
     const [ready, setReady] = useState(false), [storageError, setStorageError] = useState(false), [query, setQuery] = useState(""), [tourId, setTourId] = useState<string>()

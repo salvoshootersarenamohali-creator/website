@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { RangeActor, RangeError, dateWindow, indiaTime, rangeDay, textField } from "./shared"
+import { canCoach, RangeActor, RangeError, dateWindow, indiaTime, rangeDay, textField } from "./shared"
 import { audit, jsonBody, locationAccess, ownerOnly, transaction } from "./server"
 import { attendancePhotoUrl, removeAttendancePhoto, uploadAttendancePhoto } from "./media"
 
@@ -15,7 +15,7 @@ export async function attendanceList(request: NextRequest, actor: RangeActor) {
     return Response.json({ shifts: shifts.map(({ inPhoto, outPhoto, ...shift }) => ({ ...shift, hasInPhoto: Boolean(inPhoto), hasOutPhoto: Boolean(outPhoto) })), openShift })
 }
 export async function attendanceChallenge(request: NextRequest, actor: RangeActor) {
-    if (actor.role !== "coach") throw new RangeError("Attendance is recorded for coach accounts.", 403)
+    if (!canCoach(actor)) throw new RangeError("Attendance is recorded for coach accounts.", 403)
     const body = await jsonBody(request), locationId = textField(body.locationId, "Location")
     await locationAccess(actor, locationId)
     const action = textField(body.action, "Action")
@@ -32,7 +32,7 @@ export async function attendancePunch(request: NextRequest, actor: RangeActor) {
     if (Number(request.headers.get("content-length")) > 1700000) throw new RangeError("Camera image is too large.", 413)
     const form = await request.formData(), challengeId = textField(form.get("challengeId"), "Capture challenge")
     const initial = await prisma.rangeAttendanceChallenge.findUnique({ where: { id: challengeId } })
-    if (!initial || initial.userId !== actor.id || actor.role !== "coach") throw new RangeError("Invalid capture challenge.", 403)
+    if (!initial || initial.userId !== actor.id || !canCoach(actor)) throw new RangeError("Invalid capture challenge.", 403)
     await locationAccess(actor, initial.locationId)
     if (initial.usedAt) return Response.json({ ok: true, shiftId: initial.outcomeShiftId })
     if (initial.expiresAt < receivedAt) throw new RangeError("Capture expired. Open the camera again.", 409)
@@ -44,7 +44,7 @@ export async function attendancePunch(request: NextRequest, actor: RangeActor) {
         const result = await transaction(async tx => {
             await locationAccess(actor, initial.locationId, tx)
             const user = await tx.rangeUser.findUnique({ where: { id: actor.id } })
-            if (!user?.active) throw new RangeError("Account is inactive.", 403)
+            if (!user?.active || !canCoach(user)) throw new RangeError("Account is inactive.", 403)
             const challenge = await tx.rangeAttendanceChallenge.findUniqueOrThrow({ where: { id: challengeId } })
             if (challenge.usedAt) return { ok: true, shiftId: challenge.outcomeShiftId, reused: true }
             if (challenge.expiresAt < receivedAt) throw new RangeError("Capture expired. Open the camera again.", 409)
@@ -80,7 +80,7 @@ export async function attendanceCorrect(request: NextRequest, actor: RangeActor)
         if (before && before.version !== body.version) throw new RangeError("Shift changed. Refresh before correcting.", 409)
         const userId = before?.userId || textField(body.userId, "Coach")
         const coach = await tx.rangeUser.findUnique({ where: { id: userId } })
-        if (coach?.role !== "coach" || (!before && !await tx.rangeMembership.findUnique({ where: { userId_locationId: { userId, locationId } } }))) throw new RangeError("Select a coach assigned to this location.")
+        if (!coach || !canCoach(coach) || (!before && coach.role !== "owner" && !await tx.rangeMembership.findUnique({ where: { userId_locationId: { userId, locationId } } }))) throw new RangeError("Select a coach assigned to this location.")
         const overlap = await tx.rangeShift.findFirst({ where: { userId, ...(before ? { id: { not: before.id } } : {}), ...(outAt ? { inAt: { lt: outAt } } : {}), OR: [{ outAt: null }, { outAt: { gt: inAt } }] } })
         if (overlap) throw new RangeError("These times overlap another shift. Correct the existing shift first.", 409)
         if (body.requestId) {

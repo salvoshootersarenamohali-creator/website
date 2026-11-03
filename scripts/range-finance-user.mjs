@@ -1,9 +1,10 @@
 import { PrismaClient } from '@prisma/client'
+import { createHash } from 'node:crypto'
 const db = new PrismaClient()
 try {
     if (process.env.RANGE_FINANCE_OPERATION === 'inspect') {
-        const accounts = await db.rangeUser.findMany({ where: { OR: [{ role: 'owner' }, { username: process.env.RANGE_FINANCE_USERNAME || 'sachin' }] }, select: { id: true, name: true, username: true, role: true, active: true }, orderBy: { name: 'asc' } })
-        console.log(JSON.stringify({ accounts }))
+        const accounts = await db.rangeUser.findMany({ where: { OR: [{ role: 'owner' }, { username: process.env.RANGE_FINANCE_USERNAME || 'sachin' }] }, select: { id: true, name: true, username: true, phone: true, role: true, active: true }, orderBy: { name: 'asc' } })
+        console.log(JSON.stringify({ accounts: accounts.map(({ phone, ...account }) => ({ ...account, ...(process.env.RANGE_EXPECTED_PHONE_HASH ? { matchesExpectedPhone: createHash('sha256').update(phone || '').digest('hex') === process.env.RANGE_EXPECTED_PHONE_HASH } : {}) })) }))
     } else {
         const masterId = process.env.RANGE_MASTER_ID
         const username = (process.env.RANGE_FINANCE_USERNAME || '').trim().toLowerCase()
@@ -25,7 +26,7 @@ try {
             const user = await tx.rangeUser.create({ data: { name, username, role: 'finance', passwordHash: hash, mustChangePassword: true, memberships: { create: locations.map(location => ({ locationId: location.id })) } } })
             await tx.rangeAudit.create({ data: { actorId: masterId, action: 'finance.access.created', entityId: user.id, after: { id: user.id, name, username, role: 'finance', locationIds: locations.map(location => location.id) } } })
             return { created: true, username, master: master.name }
-        }, { isolationLevel: 'Serializable' })
+        }, { isolationLevel: 'Serializable', timeout: 30000, maxWait: 15000 })
         console.log(JSON.stringify({ ...result, passwordChangeRequired: true, existingCredentialsPreserved: !result.created }))
     }
 } catch (error) { console.error(error.code ? `Provisioning failed (${error.code}).` : error.message); process.exitCode = 1 }

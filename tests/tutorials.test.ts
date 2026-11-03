@@ -2,7 +2,8 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import { Tutorial } from "@/components/range/Tutorial"
-import { readTutorialProgress, searchTutorialLessons, tutorialGuides, type TutorialRole } from "@/lib/range/tutorials"
+import { masterTutorialGuide, readTutorialProgress, searchTutorialLessons, tutorialGuides, type TutorialRole } from "@/lib/range/tutorials"
+import { getWalkthrough } from "@/lib/range/tutorial-walkthroughs"
 
 const destinations = {
     finance: ["password", "finance", "fees", "transfers", "salaries"],
@@ -12,6 +13,13 @@ const destinations = {
 }
 
 describe("account tutorials", () => {
+    it("provides Kartik a master guide with both coaching and management walkthroughs", () => {
+        const html = renderToStaticMarkup(createElement(Tutorial, { user: { id: "master", name: "Kartik", phone: null, role: "owner", isMaster: true, mustChangePassword: false }, navigate: () => {} }))
+        expect(html).toContain("Your master guide")
+        expect(masterTutorialGuide.lessons.map(lesson => lesson.id)).toEqual(expect.arrayContaining(["coach-day", "coach-shifts", "assign-plans", "review-diaries", "salary-payments"]))
+        expect(new Set(masterTutorialGuide.lessons.map(lesson => lesson.id)).size).toBe(masterTutorialGuide.lessons.length)
+        expect(getWalkthrough("coach-shifts", "owner").screen).toBe("Coach attendance")
+    })
     it.each<TutorialRole>(["student", "coach", "owner", "finance"])("keeps %s lessons within that account's available screens", role => {
         const guide = tutorialGuides[role]
         expect(new Set(guide.lessons.map(lesson => lesson.id)).size).toBe(guide.lessons.length)
