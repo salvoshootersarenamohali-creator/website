@@ -1,7 +1,7 @@
 "use client"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowLeft, ArrowRightLeft, BarChart3, CalendarDays, ChevronRight, ClipboardCheck, Crosshair, LayoutDashboard, LockKeyhole, LogOut, MapPin, Menu, ReceiptText, Settings2, ShieldCheck, Users, Wallet } from "lucide-react"
+import { ArrowLeft, ArrowRightLeft, BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, Crosshair, LayoutDashboard, LockKeyhole, LogOut, MapPin, Menu, ReceiptText, Settings2, ShieldCheck, Users, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { RangeActor, LocationOption } from "@/lib/range/shared"
@@ -16,6 +16,7 @@ import { Dashboard } from "./Dashboard"
 import { Reports } from "./Reports"
 import { Training } from "./Training"
 import { PasswordForm } from "./AccountSecurity"
+import { Tutorial } from "./Tutorial"
 
 const sections = [
     { key: "training", label: "Training & progress", icon: Crosshair, group: "Workspace", description: "Plan training, review diaries, and follow your students’ progress." },
@@ -29,6 +30,7 @@ const sections = [
     { key: "reports", label: "Reports & history", icon: BarChart3, group: "Management", owner: true, description: "Find the records you need and download them to Excel." },
     { key: "staff", label: "Staff & locations", icon: Settings2, group: "Management", owner: true, description: "Manage your team, their location access, and your ranges." },
     { key: "password", label: "Account security", icon: LockKeyhole, group: "Account", description: "Keep your workspace account secure with a personal password." },
+    { key: "tutorial", label: "Tutorial", icon: BookOpen, group: "Account", description: "Step-by-step help for the tools available in your account." },
 ]
 type Staff = RangeActor & { active: boolean; memberships: { locationId: string }[] }
 export function Workspace() {
@@ -49,22 +51,24 @@ export function Workspace() {
     }
     async function signOut() { setSigningOut(true); try { await rangeApi("logout", {}); window.location.assign("/range/login") } catch (e) { setError(e instanceof Error ? e.message : "Unable to sign out."); setSigningOut(false) } }
     if (!user) return <div className="range-start"><div className="range-brand"><Crosshair size={30} /><span>SALVO<small>Range workspace</small></span></div>{error ? <EmptyState title="We couldn’t open your workspace" description={error} action={<Button onClick={load}>Try again</Button>} /> : <LoadingState />}</div>
-    const owner = user.role === "owner", current = sections.find(s => s.key === (user.mustChangePassword ? "password" : tab)) || sections[0], label = !owner && current.coachLabel ? current.coachLabel : current.label
+    const passwordRequired = user.mustChangePassword && tab !== "tutorial"
+    const owner = user.role === "owner", current = sections.find(s => s.key === (passwordRequired ? "password" : tab)) || sections[0], label = !owner && current.coachLabel ? current.coachLabel : current.label
     const date = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" }).format(new Date())
     const sidebar = <>
         <Link href="/range" className="range-brand"><Crosshair size={29} strokeWidth={1.6} aria-hidden="true" /><span>SALVO<small>Range workspace</small></span></Link>
         <nav aria-label="Range workspace" className="range-nav">{["Workspace", "Money", "Management", "Account"].map(group => {
-            const items = sections.filter(s => s.group === group && (!s.owner || owner) && (!user.mustChangePassword || s.key === "password"))
-            return items.length > 0 && <div key={group} className="range-nav-group"><p>{group}</p>{items.map(item => <a key={item.key} href={`#${item.key}`} aria-current={tab === item.key ? "page" : undefined} onClick={event => { event.preventDefault(); navigate(item.key) }}><item.icon size={18} strokeWidth={1.7} aria-hidden="true" /><span>{!owner && item.coachLabel ? item.coachLabel : item.label}</span>{tab === item.key && <span className="range-nav-dot" />}</a>)}</div>
+            const items = sections.filter(s => s.group === group && (!s.owner || owner) && (!user.mustChangePassword || ["password", "tutorial"].includes(s.key)))
+            return items.length > 0 && <div key={group} className="range-nav-group"><p>{group}</p>{items.map(item => <a key={item.key} href={`#${item.key}`} aria-current={current.key === item.key ? "page" : undefined} onClick={event => { event.preventDefault(); navigate(item.key) }}><item.icon size={18} strokeWidth={1.7} aria-hidden="true" /><span>{!owner && item.coachLabel ? item.coachLabel : item.label}</span>{current.key === item.key && <span className="range-nav-dot" />}</a>)}</div>
         })}</nav>
         <div className="range-sidebar-bottom"><div className="range-user"><span className="range-avatar">{user.name.split(/\s+/).map(n => n[0]).slice(0, 2).join("")}</span><div><strong>{user.name}</strong><small>{owner ? "Owner" : "Coach"} workspace</small></div><ShieldCheck size={17} aria-hidden="true" /></div><button className="range-signout" disabled={signingOut} onClick={signOut}><LogOut size={17} aria-hidden="true" />{signingOut ? "Signing out…" : "Sign out"}</button><Link href="/" className="range-site-link"><ArrowLeft size={14} aria-hidden="true" />Back to Salvo website</Link></div>
     </>
     return <div className="range-shell"><a className="range-skip" href="#workspace-content">Skip to content</a><aside className="range-sidebar">{sidebar}</aside><div className="range-main">
         <header className="range-topbar"><div className="flex min-w-0 items-center gap-3"><Sheet open={menuOpen} onOpenChange={setMenuOpen}><SheetTrigger asChild><Button variant="outline" size="icon" className="range-menu-button" aria-label="Open workspace navigation"><Menu size={20} /></Button></SheetTrigger><SheetContent side="left" className="range-app range-mobile-sheet" onCloseAutoFocus={event => { if (focusContentAfterMenu.current) { event.preventDefault(); focusContentAfterMenu.current = false; heading.current?.focus() } }}><SheetTitle className="sr-only">Workspace navigation</SheetTitle><SheetDescription className="sr-only">Navigate your Salvo range workspace.</SheetDescription>{sidebar}</SheetContent></Sheet><span className="range-breadcrumb">Workspace <ChevronRight size={14} aria-hidden="true" /><strong>{label}</strong></span></div><div className="range-topbar-tools"><span className="range-date"><CalendarDays size={15} aria-hidden="true" />{date}<span>IST</span></span><label className="range-location"><MapPin size={16} aria-hidden="true" /><span className="sr-only">Location</span><select aria-label="Location" value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!locations.length}>{!locations.length && <option value="">No location</option>}{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label></div></header>
-        <div id="workspace-content" className="range-content"><div className="range-page-heading"><div><p className="range-eyebrow">{owner ? "Owner workspace" : "Coach workspace"}</p><h1 ref={heading} tabIndex={-1}>{user.mustChangePassword ? "Let’s secure your account" : tab === "home" ? `Welcome back, ${user.name.split(" ")[0]}.` : label}</h1><p>{user.mustChangePassword ? "Choose your own password to get started." : !owner && current.coachDescription ? current.coachDescription : current.description}</p></div><span className="range-role-pill"><ShieldCheck size={15} aria-hidden="true" />{owner ? "Owner access" : "Coach access"}</span></div>
+        <div id="workspace-content" className="range-content"><div className="range-page-heading"><div><p className="range-eyebrow">{owner ? "Owner workspace" : "Coach workspace"}</p><h1 ref={heading} tabIndex={-1}>{passwordRequired ? "Let’s secure your account" : tab === "home" ? `Welcome back, ${user.name.split(" ")[0]}.` : label}</h1><p>{passwordRequired ? "Choose your own password to get started." : !owner && current.coachDescription ? current.coachDescription : current.description}</p></div><span className="range-role-pill"><ShieldCheck size={15} aria-hidden="true" />{owner ? "Owner access" : "Coach access"}</span></div>
         {error && <p className="range-feedback range-feedback-error" role="alert">{error}</p>}
-        {user.mustChangePassword ? <Panel title="Set your own password" className="range-narrow"><PasswordForm onDone={load} /></Panel> : <>
-            {!locationId && !["staff", "password", "training"].includes(tab) && <EmptyState title="No locations assigned yet" description={owner ? "Add a location in Staff & locations to set up your workspace." : "Ask the owner to assign you a location to get started."} action={owner ? <Button onClick={() => navigate("staff")}>Set up a location</Button> : undefined} />}
+        {passwordRequired ? <Panel title="Set your own password" className="range-narrow"><PasswordForm onDone={load} /></Panel> : <>
+            {!locationId && !["staff", "password", "training", "tutorial"].includes(tab) && <EmptyState title="No locations assigned yet" description={owner ? "Add a location in Staff & locations to set up your workspace." : "Ask the owner to assign you a location to get started."} action={owner ? <Button onClick={() => navigate("staff")}>Set up a location</Button> : undefined} />}
+            {tab === "tutorial" && <Tutorial user={user} navigate={navigate} />}
             {tab === "training" && <Training user={user} />}
             {tab === "home" && locationId && <Dashboard key={locationId} user={user} locationId={locationId} navigate={navigate} />}
             {tab === "staff" && owner && <StaffSettings locations={locations} reload={load} />}

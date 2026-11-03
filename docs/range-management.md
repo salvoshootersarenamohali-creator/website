@@ -6,11 +6,17 @@ Private staff workspace: `/range`, sign in: `/range/login`. Competition PINs nev
 
 The staff and owner panels use a dedicated light workspace with grouped navigation. On phones, open the menu at the top left. Navigation links keep their section in the URL so refresh and browser back/forward work. The location selector applies to the current section; all dates and operational times use India Standard Time.
 
-Overview separates today’s attendance from the selected financial period. Start with the quick actions for common daily work. Entry forms open on demand; reviewing a record brings its correction form into view. Owners see management, salaries and reports; coaches see their assigned daily work. Accounts requiring a password change show only account security until that step is complete.
+Overview separates today’s attendance from the selected financial period. Start with the quick actions for common daily work. Entry forms open on demand; reviewing a record brings its correction form into view. Owners see management, salaries and reports; coaches see their assigned daily work. Accounts requiring a password change can open Account security and the read-only Tutorial; operational screens remain locked until the password is changed.
 
 Students & attendance has Daily attendance, Student roster and Corrections views. Status totals include eligible students for the selected date; search and status filters narrow the visible roll. Bulk marking only changes visible, eligible students that are still unmarked, preserving individual choices already made. Save attendance commits all pending changes. Use Student roster for profile edits and contact information.
 
 Owner handovers open on Pending; select All to see history. Reports show the common filters first, with staff, student and account filters under More filters. Apply filters before downloading Excel; the displayed applied dates describe the records being exported.
+
+## Account tutorials
+
+Select **Tutorial** in the workspace menu (or the student portal menu) to open the guide for the signed-in role. On phones, use the menu button. Students have 6 lessons, coaches 9, and owners 13, covering their available workflows with numbered instructions and links to the relevant screens. Tutorials remain available before the mandatory first-login password change; their action buttons direct locked accounts to Account security.
+
+Search matches titles, instructions, and tips. Users can mark lessons complete, navigate with Previous/Next, and reset tutorial progress. Reading position and completed lessons are stored only in browser local storage, separately for each user ID and role. Progress does not sync between devices. Unavailable browser storage does not prevent reading or using the guide during the current visit. No operational records are changed by reading or completing lessons.
 
 ## Owner setup / recovery
 
