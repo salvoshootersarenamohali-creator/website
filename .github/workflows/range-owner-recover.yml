@@ -1,0 +1,45 @@
+name: Recover range owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner_id:
+        description: Verified existing active owner account ID
+        required: true
+        type: string
+      expected_phone_hash:
+        description: SHA-256 fingerprint of the verified normalized account phone
+        required: true
+        type: string
+      temporary_password_hash:
+        description: Salted scrypt hash only; never enter the temporary password
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: range-owner-provisioning
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npx vitest run tests/range-owner-recovery.test.mjs
+      - name: Recover only the verified existing owner and revoke sessions
+        run: node scripts/range-owner-recover.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RANGE_RECOVERY_OWNER_ID: ${{ inputs.owner_id }}
+          RANGE_RECOVERY_PHONE_HASH: ${{ inputs.expected_phone_hash }}
+          RANGE_RECOVERY_PASSWORD_HASH: ${{ inputs.temporary_password_hash }}
