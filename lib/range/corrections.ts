@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { RangeActor, RangeError, textField } from "./shared"
+import { canManageFinance, RangeActor, RangeError, textField } from "./shared"
 import { audit, jsonBody, locationAccess, ownerOnly, snapshot, transaction } from "./server"
 
 export async function correctionsAction(request: NextRequest, actor: RangeActor) {
     if (request.method === "GET") {
         const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location")
         await locationAccess(actor, locationId)
-        const requests = await prisma.rangeCorrection.findMany({ where: { locationId, ...(actor.role === "owner" ? {} : { userId: actor.id }) }, include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 200 })
+        const requests = await prisma.rangeCorrection.findMany({ where: { locationId, ...(actor.role === "finance" ? { kind: { in: ["finance", "studentFee", "transfer"] } } : {}), ...(canManageFinance(actor) ? {} : { userId: actor.id }) }, include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 200 })
         return Response.json({ requests })
     }
     const body = await jsonBody(request), locationId = textField(body.locationId, "Location"), entityId = textField(body.entityId, "Record"), reason = textField(body.reason, "Reason", 1000)
@@ -34,11 +34,12 @@ export async function correctionsAction(request: NextRequest, actor: RangeActor)
     }))
 }
 export async function rejectCorrection(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    if (actor.role !== "finance") ownerOnly(actor)
     const body = await jsonBody(request), id = textField(body.id, "Request"), reason = textField(body.reason, "Resolution reason", 1000)
     return Response.json(await transaction(async tx => {
         const before = await tx.rangeCorrection.findUnique({ where: { id } })
         if (!before || before.status !== "pending") throw new RangeError("Request is no longer pending.", 409)
+        if (actor.role === "finance" && !["finance", "studentFee", "transfer"].includes(before.kind)) throw new RangeError("Finance correction access required.", 403)
         await locationAccess(actor, before.locationId, tx)
         const after = await tx.rangeCorrection.update({ where: { id }, data: { status: "rejected", resolution: reason, resolvedAt: new Date(), resolvedById: actor.id } })
         await audit(tx, actor, "correction.rejected", id, before, after, before.locationId, reason)

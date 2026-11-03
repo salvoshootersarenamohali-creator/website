@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { RangeActor, RangeError } from "./shared"
+import { canManageFinance, RangeActor, RangeError } from "./shared"
 
 export async function transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt++) {
@@ -17,7 +17,17 @@ export function ownerOnly(actor: RangeActor) {
 }
 
 export function staffOnly(actor: RangeActor) {
-    if (!["owner", "coach"].includes(actor.role)) throw new RangeError("Staff access required.", 403)
+    if (!["owner", "coach", "finance"].includes(actor.role)) throw new RangeError("Staff access required.", 403)
+}
+
+export function financeOnly(actor: RangeActor) { if (!canManageFinance(actor)) throw new RangeError("Finance management access required.", 403) }
+export function masterOnly(actor: RangeActor) { if (actor.role !== "owner" || !actor.isMaster) throw new RangeError("Master account access required.", 403) }
+
+export function financeRouteAccess(actor: RangeActor, path: string, method: string) {
+    if (actor.role !== "finance") return
+    const read = ["finance", "finance/meta", "finance/receipt", "fees", "transfers", "salaries", "students", "staff", "locations", "corrections"]
+    const write = ["finance", "finance/settings", "finance/accounts/delete", "finance/correct", "finance/void", "fees", "fees/correct", "fees/void", "transfers", "transfers/resolve", "salaries", "salaries/correct", "salaries/void", "corrections/reject"]
+    if (!(method === "GET" ? read : write).includes(path)) throw new RangeError("This account has finance access only.", 403)
 }
 
 export async function locationAccess(actor: RangeActor, locationId: string, db: Prisma.TransactionClient = prisma) {

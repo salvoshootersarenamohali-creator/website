@@ -7,7 +7,7 @@ import { demoFieldsValid, getWalkthrough } from "@/lib/range/tutorial-walkthroug
 import { tutorialGuides, type TutorialRole } from "@/lib/range/tutorials"
 
 describe("visual tutorial isolation and workflows", () => {
-    it.each<TutorialRole>(["student", "coach", "owner"])("lets every %s walkthrough reach its final demo result", role => {
+    it.each<TutorialRole>(["student", "coach", "owner", "finance"])("lets every %s walkthrough reach its final demo result", role => {
         for (const lesson of tutorialGuides[role].lessons) {
             const walk = getWalkthrough(lesson.id, role)
             let state = createDemoState()

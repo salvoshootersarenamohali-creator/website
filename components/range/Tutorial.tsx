@@ -10,7 +10,7 @@ import { EmptyState } from "./shared"
 import { VisualWalkthrough } from "./tutorial/VisualWalkthrough"
 
 export function Tutorial({ user, navigate }: { user: RangeActor; navigate: (section: string) => void }) {
-    if (user.role !== "student" && user.role !== "coach" && user.role !== "owner") return null
+    if (user.role !== "student" && user.role !== "coach" && user.role !== "owner" && user.role !== "finance") return null
     return <RoleTutorial key={`${user.id}-${user.role}`} user={user} role={user.role} navigate={navigate} />
 }
 

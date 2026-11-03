@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { digest } from "./auth"
 import { RangeActor, RangeError, dateField, textField } from "./shared"
-import { audit, jsonBody, locationAccess, ownerOnly, transaction } from "./server"
+import { audit, jsonBody, locationAccess, financeOnly, transaction } from "./server"
 import { financeInclude, normalizeFinance, postFinance, readFinanceBody } from "./finance"
 import { removeAttendancePhoto, uploadReceipt } from "./media"
 
@@ -13,14 +13,14 @@ function salaryMonth(value: unknown) {
     return month
 }
 export async function salaryList(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location"), month = request.nextUrl.searchParams.get("month")
     await locationAccess(actor, locationId)
     const salaries = await prisma.rangeSalaryPayment.findMany({ where: { ...(month ? { salaryMonth: salaryMonth(month) } : {}), transaction: { locationId } }, include: { coach: { select: { id: true, name: true, active: true } }, transaction: { include: financeInclude } }, orderBy: [{ salaryMonth: "desc" }, { transaction: { createdAt: "desc" } }], take: 500 })
     return Response.json({ salaries: salaries.map(({ transaction: { receiptId, ...entry }, ...salary }) => ({ ...salary, transaction: { ...entry, hasReceipt: Boolean(receiptId) } })) })
 }
 export async function salaryPost(request: NextRequest, actor: RangeActor, correcting = false) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const { body, file } = await readFinanceBody(request), locationId = textField(body.locationId, "Location"), coachId = textField(body.coachId, "Coach"), month = salaryMonth(body.salaryMonth), notes = body.notes ? textField(body.notes, "Notes", 1000) : null
     await locationAccess(actor, locationId)
     const coach = await prisma.rangeUser.findUnique({ where: { id: coachId } })
@@ -56,7 +56,7 @@ export async function salaryPost(request: NextRequest, actor: RangeActor, correc
     } finally { if (!keep && receiptId) await removeAttendancePhoto(receiptId) }
 }
 export async function salaryVoid(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const body = await jsonBody(request), id = textField(body.id, "Salary payment"), reason = textField(body.reason, "Reason", 1000)
     return Response.json(await transaction(async tx => {
         const before = await tx.rangeFinanceTransaction.findUnique({ where: { id }, include: { salaryPayment: true, movements: true } })

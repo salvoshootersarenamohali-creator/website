@@ -1,4 +1,6 @@
-export type RangeActor = { id: string; name: string; phone: string | null; username?: string | null; shooterProfileId?: string | null; role: string; mustChangePassword: boolean }
+export type RangeActor = { id: string; name: string; phone: string | null; username?: string | null; shooterProfileId?: string | null; role: string; isMaster?: boolean; mustChangePassword: boolean }
+
+export function canManageFinance(actor: Pick<RangeActor, "role">) { return actor.role === "owner" || actor.role === "finance" }
 export type LocationOption = { id: string; name: string; slug: string; timeZone: string }
 
 export class RangeError extends Error {

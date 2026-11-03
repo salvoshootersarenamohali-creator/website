@@ -1,12 +1,12 @@
 import { Prisma } from "@prisma/client"
 import { NextRequest } from "next/server"
 import { RangeActor, RangeError, textField } from "./shared"
-import { audit, jsonBody, locationAccess, ownerOnly, transaction } from "./server"
+import { audit, jsonBody, locationAccess, financeOnly, transaction } from "./server"
 
 const historyMessage = "This account has financial records or handovers and cannot be deleted. Use Edit to deactivate it instead."
 
 export async function deleteMoneyAccount(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const body = await jsonBody(request)
     const id = textField(body.id, "Account"), locationId = textField(body.locationId, "Location")
     const reason = textField(body.reason, "Reason for deletion", 1000), confirmName = textField(body.confirmName, "Account name confirmation", 100)

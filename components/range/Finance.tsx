@@ -21,7 +21,7 @@ export function PaymentParts({ accounts, value, onChange }: { accounts: MoneyAcc
 }
 export function Finance({ user, locationId }: { user: RangeActor; locationId: string }) {
     const [meta, setMeta] = useState<FinanceMeta>({ accounts: [], products: [], categories: [] }), [entries, setEntries] = useState<FinanceEntry[]>([]), [error, setError] = useState(""), [from, setFrom] = useState(rangeDay(new Date(Date.now() - 30 * 86400000))), [to, setTo] = useState(rangeDay()), [editing, setEditing] = useState<FinanceEntry>(), [request, setRequest] = useState<Correction>(), [refresh, setRefresh] = useState(0), [correctionEntry, setCorrectionEntry] = useState<FinanceEntry>()
-    const owner = user.role === "owner"
+    const owner = user.role === "owner" || user.role === "finance"
     const [loading, setLoading] = useState(true), loadId = useRef(0)
     const load = useCallback(async () => {
         const current = ++loadId.current

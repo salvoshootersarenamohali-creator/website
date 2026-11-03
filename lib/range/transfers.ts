@@ -2,15 +2,15 @@ import { NextRequest } from "next/server"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { digest } from "./auth"
-import { RangeActor, RangeError, dateField, rangeDay, textField } from "./shared"
-import { audit, jsonBody, locationAccess, ownerOnly, transaction } from "./server"
+import { canManageFinance, RangeActor, RangeError, dateField, rangeDay, textField } from "./shared"
+import { audit, jsonBody, locationAccess, financeOnly, transaction } from "./server"
 import { paise } from "./money"
 
 const transferInclude = { requestedBy: { select: { name: true } }, fromAccount: { select: { name: true } }, toAccount: { select: { name: true } } } as const
 export async function transferList(request: NextRequest, actor: RangeActor) {
     const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location"), id = request.nextUrl.searchParams.get("id")
     await locationAccess(actor, locationId)
-    const transfers = await prisma.rangeTransfer.findMany({ where: { locationId, ...(id ? { id } : {}), ...(actor.role === "owner" ? {} : { OR: [{ requestedById: actor.id }, { fromAccount: { coachId: actor.id } }, { toAccount: { coachId: actor.id } }] }) }, include: transferInclude, orderBy: { createdAt: "desc" }, take: 500 })
+    const transfers = await prisma.rangeTransfer.findMany({ where: { locationId, ...(id ? { id } : {}), ...(canManageFinance(actor) ? {} : { OR: [{ requestedById: actor.id }, { fromAccount: { coachId: actor.id } }, { toAccount: { coachId: actor.id } }] }) }, include: transferInclude, orderBy: { createdAt: "desc" }, take: 500 })
     return Response.json({ transfers })
 }
 async function confirmTransfer(tx: Prisma.TransactionClient, actor: RangeActor, before: NonNullable<Awaited<ReturnType<typeof prisma.rangeTransfer.findUnique>>>, reason: string) {
@@ -27,8 +27,8 @@ export async function transferPost(request: NextRequest, actor: RangeActor) {
     await locationAccess(actor, locationId)
     if (fromAccountId === toAccountId || occurredOn > rangeDay()) throw new RangeError("Choose different accounts and a date that is not in the future.")
     if (body.confirmNow !== undefined && typeof body.confirmNow !== "boolean") throw new RangeError("Invalid confirmation choice.")
-    if (actor.role !== "owner" && (occurredOn !== rangeDay() || body.confirmNow)) throw new RangeError("Owner confirmation is required; coaches can submit today's handovers.", 403)
-    const hash = digest(JSON.stringify({ locationId, fromAccountId, toAccountId, amountPaise, occurredOn, notes, reference, confirmNow: Boolean(body.confirmNow) }))
+    if (!canManageFinance(actor) && (occurredOn !== rangeDay() || body.confirmNow)) throw new RangeError("Owner confirmation is required; coaches can submit today's handovers.", 403)
+    const hash = digest(JSON.stringify({ locationId, fromAccountId, toAccountId, amountPaise, occurredOn, notes, reference, confirmNow: actor.role === "finance" || Boolean(body.confirmNow) }))
     return Response.json(await transaction(async tx => {
         const replay = await tx.rangeTransfer.findUnique({ where: { submissionKey: key } })
         if (replay) {
@@ -36,15 +36,15 @@ export async function transferPost(request: NextRequest, actor: RangeActor) {
             return { ok: true, transferId: replay.id }
         }
         const from = await tx.rangeMoneyAccount.findUnique({ where: { id: fromAccountId } }), to = await tx.rangeMoneyAccount.findUnique({ where: { id: toAccountId } })
-        if (!from?.active || !to?.active || from.locationId !== locationId || to.locationId !== locationId || (actor.role !== "owner" && (from.custodian !== "coach" || from.coachId !== actor.id || (to.custodian === "coach" && to.coachId !== actor.id)))) throw new RangeError("You can hand over funds from your own account to an available account at this location.", 403)
+        if (!from?.active || !to?.active || from.locationId !== locationId || to.locationId !== locationId || (!canManageFinance(actor) && (from.custodian !== "coach" || from.coachId !== actor.id || (to.custodian === "coach" && to.coachId !== actor.id)))) throw new RangeError("You can hand over funds from your own account to an available account at this location.", 403)
         const transfer = await tx.rangeTransfer.create({ data: { locationId, requestedById: actor.id, fromAccountId, toAccountId, amountPaise, occurredOn, notes, reference, submissionKey: key, submissionHash: hash } })
         await audit(tx, actor, "transfer.requested", transfer.id, undefined, transfer, locationId)
-        if (body.confirmNow && actor.role === "owner") await confirmTransfer(tx, actor, transfer, textField(body.reason, "Confirmation note", 1000))
+        if ((actor.role === "finance" || body.confirmNow) && canManageFinance(actor)) await confirmTransfer(tx, actor, transfer, body.reason ? textField(body.reason, "Confirmation note", 1000) : "Recorded directly by finance manager")
         return { ok: true, transferId: transfer.id }
     }))
 }
 export async function transferResolve(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const body = await jsonBody(request), id = textField(body.id, "Transfer"), reason = textField(body.reason, "Owner note", 1000), action = textField(body.action, "Action")
     return Response.json(await transaction(async tx => {
         const before = await tx.rangeTransfer.findUnique({ where: { id } })

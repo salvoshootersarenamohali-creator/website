@@ -1,4 +1,4 @@
-export type TutorialRole = "student" | "coach" | "owner"
+export type TutorialRole = "student" | "coach" | "owner" | "finance"
 export type TutorialLesson = {
     id: string
     group: string
@@ -304,6 +304,7 @@ const ownerLessons: TutorialLesson[] = [
 ]
 
 export const tutorialGuides: Record<TutorialRole, TutorialGuide> = {
+    finance: { title: "Your finance guide", introduction: "Record financial changes directly and keep a clear history for the master account.", lessons: ownerLessons.filter(lesson => ["account-security", "financial-setup", "student-fees", "income-expenses", "owner-handovers", "salary-payments"].includes(lesson.id)) },
     student: { title: "Your student guide", introduction: "Follow your plan, keep a useful diary, and turn coach feedback into progress.", lessons: studentLessons },
     coach: { title: "Your coach guide", introduction: "Plan your students' training and handle the daily work at your range with confidence.", lessons: coachLessons },
     owner: { title: "Your owner guide", introduction: "Set up your range, support your team, and keep training and financial records accurate.", lessons: ownerLessons },

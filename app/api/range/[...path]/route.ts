@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { currentActor, login, logout, changePassword, listLocations, staffAction, locationAction } from "@/lib/range/auth"
-import { assertSameOrigin, failure, staffOnly } from "@/lib/range/server"
+import { assertSameOrigin, failure, financeRouteAccess, staffOnly } from "@/lib/range/server"
 import { RangeError } from "@/lib/range/shared"
 import { attendanceList, attendanceChallenge, attendancePunch, attendancePhoto, attendanceCorrect } from "@/lib/range/attendance"
 import { correctionsAction, rejectCorrection } from "@/lib/range/corrections"
@@ -16,6 +16,7 @@ import { studentAccounts, trainingAssignments, trainingRoster } from "@/lib/rang
 import { previewPlans, trainingPlanHistory, trainingPlans } from "@/lib/range/training-plans"
 import { trainingAnalytics, trainingReview, trainingSessionHistory, trainingSessions } from "@/lib/range/training-sessions"
 import { trainingMedia } from "@/lib/range/training-media"
+import { financialActivity } from "@/lib/range/financial-activity"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -32,6 +33,8 @@ async function handle(request: NextRequest, context: Context) {
         if (path === "session" && request.method === "GET") return Response.json({ user: actor, locations: await listLocations(actor) })
         if (path === "password" && request.method === "POST") return await changePassword(request, actor)
         if (actor.mustChangePassword) throw new RangeError("Change your temporary password first.", 403)
+        if (path === "financial-activity") return await financialActivity(request, actor)
+        financeRouteAccess(actor, path, request.method)
         if (path === "training/roster" && request.method === "GET") return await trainingRoster(actor)
         if (path === "training/accounts" && request.method === "POST") return await studentAccounts(request, actor)
         if (path === "training/assignments") return await trainingAssignments(request, actor)

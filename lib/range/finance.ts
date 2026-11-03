@@ -2,8 +2,8 @@ import { Prisma } from "@prisma/client"
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { digest } from "./auth"
-import { RangeActor, RangeError, dateField, rangeDay, textField } from "./shared"
-import { audit, jsonBody, locationAccess, ownerOnly, transaction } from "./server"
+import { canManageFinance, RangeActor, RangeError, dateField, rangeDay, textField } from "./shared"
+import { audit, jsonBody, locationAccess, financeOnly, transaction } from "./server"
 import { paise } from "./money"
 import { attendancePhotoUrl, removeAttendancePhoto, uploadReceipt } from "./media"
 
@@ -15,13 +15,13 @@ export async function accountBalances(locationId: string, through = rangeDay()) 
 export async function financeMeta(request: NextRequest, actor: RangeActor) {
     const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location")
     await locationAccess(actor, locationId)
-    const owner = actor.role === "owner"
+    const owner = canManageFinance(actor)
     const accounts = await prisma.rangeMoneyAccount.findMany({ where: { locationId, ...(owner ? {} : { active: true, OR: [{ coachId: actor.id }, { custodian: { in: ["kartik", "salvo"] } }] }) }, include: { _count: { select: { movements: true, transfersFrom: true, transfersTo: true } } }, orderBy: { name: "asc" } })
     const balances = await accountBalances(locationId)
     return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, _count, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate, canDelete: !_count.movements && !_count.transfersFrom && !_count.transfersTo } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products: await prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }), categories: await prisma.rangeFinanceCategory.findMany({ where: { locationId, kind: { in: ["income", "expense"] }, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }) })
 }
 export async function financeSettings(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const body = await jsonBody(request), locationId = textField(body.locationId, "Location"), name = textField(body.name, "Name", 100), id = typeof body.id === "string" ? body.id : undefined
     await locationAccess(actor, locationId)
     const reason = id ? textField(body.reason, "Reason for change", 1000) : undefined
@@ -88,7 +88,7 @@ export async function postFinance(tx: Prisma.TransactionClient, actor: RangeActo
     if (data.productId && (!product?.active || product.locationId !== data.locationId)) throw new RangeError("Product not available at this location.")
     for (const payment of data.payments) {
         const account = await tx.rangeMoneyAccount.findUnique({ where: { id: payment.accountId } })
-        if (!account?.active || account.locationId !== data.locationId || account.channel !== payment.method || (actor.role !== "owner" && account.custodian === "coach" && account.coachId !== actor.id)) throw new RangeError("Payment account is not available to you for this location or method.", 403)
+        if (!account?.active || account.locationId !== data.locationId || account.channel !== payment.method || (!canManageFinance(actor) && account.custodian === "coach" && account.coachId !== actor.id)) throw new RangeError("Payment account is not available to you for this location or method.", 403)
     }
     const { payments, ...fields } = data
     const record = await tx.rangeFinanceTransaction.create({ data: { ...fields, ...options, createdById: actor.id, recordedById: options.recordedById || actor.id, categoryName: category.name, productName: product?.name, source: options.source || (product ? "sale" : "manual"), movements: { create: payments.map(p => ({ ...p, amountPaise: p.amountPaise * (data.kind === "income" ? 1 : -1) })) } }, include: financeInclude })
@@ -106,10 +106,10 @@ export async function readFinanceBody(request: NextRequest) {
     return { body, file: file instanceof File && file.size ? file : undefined }
 }
 export async function financePost(request: NextRequest, actor: RangeActor, correction = false) {
-    if (correction) ownerOnly(actor)
+    if (correction) financeOnly(actor)
     const { body, file } = await readFinanceBody(request), data = normalizeFinance(body), key = textField(body.submissionKey, "Submission key", 100)
     await locationAccess(actor, data.locationId)
-    if (actor.role !== "owner" && data.occurredOn !== rangeDay()) throw new RangeError("Only the owner can enter earlier financial activity.", 403)
+    if (!canManageFinance(actor) && data.occurredOn !== rangeDay()) throw new RangeError("Only the owner can enter earlier financial activity.", 403)
     const hash = digest(JSON.stringify({ data, correctsId: correction ? body.id : null, refundOfId: body.refundOfId || null, file: file ? digest(Buffer.from(await file.arrayBuffer()).toString("base64")) : null }))
     const existing = await prisma.rangeFinanceTransaction.findUnique({ where: { submissionKey: key } })
     if (existing) {
@@ -126,7 +126,7 @@ export async function financePost(request: NextRequest, actor: RangeActor, corre
             if (before && await tx.rangeFinanceTransaction.count({ where: { refundOfId: before.id, status: "posted" } })) throw new RangeError("Correct or void associated refunds first.")
             const refundOfId = body.refundOfId ? textField(body.refundOfId, "Refunded entry") : before?.refundOfId || undefined
             if (refundOfId) {
-                ownerOnly(actor)
+                financeOnly(actor)
                 const original = await tx.rangeFinanceTransaction.findUnique({ where: { id: refundOfId } })
                 const refunded = await tx.rangeFinanceTransaction.aggregate({ where: { refundOfId, status: "posted", ...(before ? { id: { not: before.id } } : {}) }, _sum: { amountPaise: true } })
                 if (!original || original.locationId !== data.locationId || original.status !== "posted" || !["income", "expense"].includes(original.kind) || original.source === "refund" || original.kind === data.kind || data.productId || data.occurredOn < original.occurredOn || data.amountPaise + (refunded._sum.amountPaise || 0) > original.amountPaise) throw new RangeError("Refund must follow the original payment, reverse its direction and stay within its unrefunded amount.")
@@ -137,7 +137,7 @@ export async function financePost(request: NextRequest, actor: RangeActor, corre
             }
             const record = await postFinance(tx, actor, data, { submissionKey: key, submissionHash: hash, receiptId: receiptId || before?.receiptId, correctsId: before?.id, recordedById: before?.recordedById, refundOfId, source: refundOfId ? "refund" : undefined })
             if (body.requestId) {
-                ownerOnly(actor)
+                financeOnly(actor)
                 const c = await tx.rangeCorrection.findUnique({ where: { id: String(body.requestId) } })
                 if (!c || c.kind !== "finance" || c.entityId !== before?.id || c.locationId !== data.locationId || c.status !== "pending") throw new RangeError("Correction request does not match this entry.", 409)
                 await tx.rangeCorrection.update({ where: { id: c.id }, data: { status: "resolved", resolution: String(body.reason), resolvedAt: new Date(), resolvedById: actor.id } })
@@ -149,7 +149,7 @@ export async function financePost(request: NextRequest, actor: RangeActor, corre
     } finally { if (!keep && receiptId) await removeAttendancePhoto(receiptId) }
 }
 export async function financeVoid(request: NextRequest, actor: RangeActor) {
-    ownerOnly(actor)
+    financeOnly(actor)
     const body = await jsonBody(request), id = textField(body.id, "Entry"), reason = textField(body.reason, "Reason", 1000)
     return Response.json(await transaction(async tx => {
         const before = await tx.rangeFinanceTransaction.findUnique({ where: { id }, include: financeInclude })
@@ -171,12 +171,12 @@ export async function financeList(request: NextRequest, actor: RangeActor) {
     const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location")
     await locationAccess(actor, locationId)
     const id = request.nextUrl.searchParams.get("id"), from = dateField(request.nextUrl.searchParams.get("from") || rangeDay(new Date(Date.now() - 30 * 86400000))), to = dateField(request.nextUrl.searchParams.get("to") || rangeDay())
-    const entries = await prisma.rangeFinanceTransaction.findMany({ where: { locationId, ...(actor.role === "owner" ? {} : { recordedById: actor.id }), ...(id ? { id } : { occurredOn: { gte: from, lte: to } }) }, include: financeInclude, orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }], take: 300 })
+    const entries = await prisma.rangeFinanceTransaction.findMany({ where: { locationId, ...(canManageFinance(actor) ? {} : { recordedById: actor.id }), ...(id ? { id } : { occurredOn: { gte: from, lte: to } }) }, include: financeInclude, orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }], take: 300 })
     return Response.json({ entries: entries.map(({ receiptId, ...entry }) => ({ ...entry, hasReceipt: Boolean(receiptId) })) })
 }
 export async function financeReceipt(request: NextRequest, actor: RangeActor) {
     const entry = await prisma.rangeFinanceTransaction.findUnique({ where: { id: request.nextUrl.searchParams.get("id") || "" } })
-    if (!entry?.receiptId || (actor.role !== "owner" && entry.recordedById !== actor.id)) throw new RangeError("Receipt not found.", 404)
+    if (!entry?.receiptId || (!canManageFinance(actor) && entry.recordedById !== actor.id)) throw new RangeError("Receipt not found.", 404)
     await locationAccess(actor, entry.locationId)
     return new Response(null, { status: 302, headers: { Location: attendancePhotoUrl(entry.receiptId), "Referrer-Policy": "no-referrer" } })
 }

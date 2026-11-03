@@ -10,6 +10,10 @@ export async function studentsAction(request: NextRequest, actor: RangeActor) {
     if (request.method === "GET") {
         const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location"), date = dateField(request.nextUrl.searchParams.get("date") || rangeDay())
         await locationAccess(actor, locationId)
+        if (actor.role === "finance") {
+            const students = await prisma.rangeEnrollment.findMany({ where: { locationId }, select: { id: true, active: true, profile: { select: { id: true, name: true } } }, orderBy: { profile: { name: "asc" } }, take: 1000 })
+            return Response.json({ students })
+        }
         const students = await prisma.rangeEnrollment.findMany({ where: { locationId }, include: { profile: true, attendance: { where: { date }, include: { markedBy: { select: { name: true } } } } }, orderBy: { profile: { name: "asc" } }, take: 1000 })
         return Response.json({ students, date })
     }

@@ -482,3 +482,5 @@
   .training-student-header .range-brand small { font-size: 9px; }
   .training-student-account [data-slot=button] { padding-left: 10px; padding-right: 10px; flex-shrink: 0; white-space: nowrap; }
 }
+
+.range-notification-count { display: inline-grid; place-items: center; background: #9a5835; color: #fff; font-size: 10px; border-radius: 20px; min-width: 19px; min-height: 19px; padding: 1px 4px; }

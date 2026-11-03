@@ -5,13 +5,14 @@ import { Tutorial } from "@/components/range/Tutorial"
 import { readTutorialProgress, searchTutorialLessons, tutorialGuides, type TutorialRole } from "@/lib/range/tutorials"
 
 const destinations = {
+    finance: ["password", "finance", "fees", "transfers", "salaries"],
     student: ["overview", "plans", "diary", "progress", "security"],
     coach: ["home", "training", "students", "attendance", "fees", "finance", "transfers", "password"],
     owner: ["home", "training", "students", "attendance", "fees", "finance", "transfers", "password", "staff", "salaries", "reports"],
 }
 
 describe("account tutorials", () => {
-    it.each<TutorialRole>(["student", "coach", "owner"])("keeps %s lessons within that account's available screens", role => {
+    it.each<TutorialRole>(["student", "coach", "owner", "finance"])("keeps %s lessons within that account's available screens", role => {
         const guide = tutorialGuides[role]
         expect(new Set(guide.lessons.map(lesson => lesson.id)).size).toBe(guide.lessons.length)
         for (const lesson of guide.lessons) {
@@ -22,7 +23,7 @@ describe("account tutorials", () => {
         expect(html).toContain(guide.title)
         expect(html).toContain("change your temporary password")
         expect(html).toContain("Start visual walkthrough")
-        if (role !== "owner") {
+        if (!["owner", "finance"].includes(role)) {
             expect(html).not.toContain("Record and correct salary payments")
             expect(html).not.toContain("Set up locations and coach accounts")
         }

@@ -12,7 +12,7 @@ import { Correction, Corrections } from "./Corrections"
 type Fee = { id: string; enrollmentId: string; type: string; months: number; coverageStart: string; coverageEnd: string; notes: string | null; enrollment: Student; transaction: FinanceEntry }
 export function Fees({ user, locationId }: { user: RangeActor; locationId: string }) {
     const [fees, setFees] = useState<Fee[]>([]), [students, setStudents] = useState<Student[]>([]), [meta, setMeta] = useState<FinanceMeta>({ accounts: [], products: [], categories: [] }), [error, setError] = useState(""), [editing, setEditing] = useState<Fee>(), [request, setRequest] = useState<Correction>(), [requestFee, setRequestFee] = useState<Fee>(), [refresh, setRefresh] = useState(0), [search, setSearch] = useState("")
-    const owner = user.role === "owner"
+    const owner = user.role === "owner" || user.role === "finance"
     const [loading, setLoading] = useState(true)
     const load = useCallback(async () => { setLoading(true); try { const [data, roster, settings] = await Promise.all([rangeApi<{ fees: Fee[] }>(`fees?locationId=${locationId}`), rangeApi<{ students: Student[] }>(`students?locationId=${locationId}`), rangeApi<FinanceMeta>(`finance/meta?locationId=${locationId}`)]); setFees(data.fees); setStudents(roster.students); setMeta(settings); setError("") } catch (e) { setError(e instanceof Error ? e.message : "Unable to load student payments.") } finally { setLoading(false) } }, [locationId])
     useEffect(() => { void Promise.resolve().then(load) }, [load])

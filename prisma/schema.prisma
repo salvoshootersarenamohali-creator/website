@@ -15,6 +15,8 @@ model RangeUser {
   username String? @unique
   passwordHash String
   role String @default("coach")
+  isMaster Boolean @default(false)
+  financeNotificationSince DateTime?
   active Boolean @default(true)
   mustChangePassword Boolean @default(true)
   shooterProfileId String? @unique
@@ -40,6 +42,7 @@ model RangeUser {
   financeRecorded RangeFinanceTransaction[] @relation("FinanceRecorder")
   transfersRequested RangeTransfer[]
   salaryPayments RangeSalaryPayment[]
+  financeNotificationReads RangeFinanceNotificationRead[]
 }
 
 model RangeLocation {
@@ -483,8 +486,20 @@ model RangeAudit {
   createdAt DateTime @default(now())
   actor RangeUser @relation(fields: [actorId], references: [id], onDelete: Restrict)
   location RangeLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  financeNotificationReads RangeFinanceNotificationRead[]
   @@index([locationId, createdAt])
   @@index([entityId])
+  @@index([action, createdAt])
+}
+
+model RangeFinanceNotificationRead {
+  userId String
+  auditId String
+  readAt DateTime @default(now())
+  user RangeUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audit RangeAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  @@id([userId, auditId])
+  @@index([auditId])
 }
 
 model Registration {

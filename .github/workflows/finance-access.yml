@@ -1,0 +1,48 @@
+name: Manage finance access
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect existing account identities or provision finance access
+        required: true
+        type: choice
+        options: [inspect, provision]
+      master_id:
+        description: Verified existing Kartik owner account ID (provision only)
+        type: string
+      username:
+        description: Finance username
+        default: sachin
+        type: string
+      name:
+        description: Finance display name
+        default: Sachin
+        type: string
+      temporary_password_hash:
+        description: Salted scrypt hash only; never enter a password here
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: finance-access-provisioning
+  cancel-in-progress: false
+jobs:
+  manage:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: node scripts/range-finance-user.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RANGE_FINANCE_OPERATION: ${{ inputs.operation }}
+          RANGE_MASTER_ID: ${{ inputs.master_id }}
+          RANGE_FINANCE_USERNAME: ${{ inputs.username }}
+          RANGE_FINANCE_NAME: ${{ inputs.name }}
+          RANGE_FINANCE_PASSWORD_HASH: ${{ inputs.temporary_password_hash }}
