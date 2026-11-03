@@ -6,7 +6,7 @@ Private staff workspace: `/range`, sign in: `/range/login`. Competition PINs nev
 
 The staff and owner panels use a dedicated light workspace with grouped navigation. On phones, open the menu at the top left. Navigation links keep their section in the URL so refresh and browser back/forward work. The location selector applies to the current section; all dates and operational times use India Standard Time.
 
-Overview separates today’s attendance from the selected financial period. Start with the quick actions for common daily work. Entry forms open on demand; reviewing a record brings its correction form into view. Owners see management, salaries and reports; coaches see their assigned daily work. Accounts requiring a password change can open Account security and the read-only Tutorial; operational screens remain locked until the password is changed.
+Overview separates today’s attendance from the selected financial period. Start with the quick actions for common daily work. Entry forms open on demand; reviewing a record brings its correction form into view. Owners see management, salaries and reports; coaches see their assigned daily work. Accounts requiring a password change can open Account security and Tutorial; operational screens remain locked until the password is changed.
 
 Students & attendance has Daily attendance, Student roster and Corrections views. Status totals include eligible students for the selected date; search and status filters narrow the visible roll. Bulk marking only changes visible, eligible students that are still unmarked, preserving individual choices already made. Save attendance commits all pending changes. Use Student roster for profile edits and contact information.
 
@@ -14,9 +14,11 @@ Owner handovers open on Pending; select All to see history. Reports show the com
 
 ## Account tutorials
 
-Select **Tutorial** in the workspace menu (or the student portal menu) to open the guide for the signed-in role. On phones, use the menu button. Students have 6 lessons, coaches 9, and owners 13, covering their available workflows with numbered instructions and links to the relevant screens. Tutorials remain available before the mandatory first-login password change; their action buttons direct locked accounts to Account security.
+Select **Tutorial** from the workspace or student menu to start a visual guided walkthrough for the signed-in role. Students have 6 walkthroughs, coaches 9, and owners 13. A fullscreen practice workspace highlights one menu item, form, action, or result at a time. Users can interact with the highlighted area, use **Show me**, revisit steps, or exit at any point. On phones the guide sits below the scrollable demo screen. The lesson picker also provides search, replay, and optional written references.
 
-Search matches titles, instructions, and tips. Users can mark lessons complete, navigate with Previous/Next, and reset tutorial progress. Reading position and completed lessons are stored only in browser local storage, separately for each user ID and role. Progress does not sync between devices. Unavailable browser storage does not prevent reading or using the guide during the current visit. No operational records are changed by reading or completing lessons.
+Each walkthrough uses fictional, tutorial-only data: sample students, coaching plans, diary sessions, targets, attendance, funds, handovers, salaries, and reports. Demo forms and saves use component-local state. They do not call operational APIs, intercept global fetch, create accounts, upload files, access the camera, export real reports, or read or write real range records. Exiting, replaying, changing walkthrough, or leaving Tutorial discards the sample state. Only reading position and completed walkthrough IDs are saved in browser local storage, keyed by user ID and role (v2). No example form values or records are stored there. Completion of the old written guides does not count as completing these visual walkthroughs.
+
+Tutorials remain available before the mandatory first-login password change. Their simulated account-security example does not change a real password, and real operational screens remain locked until the user completes the real password change. Unavailable browser storage does not block the walkthroughs.
 
 ## Owner setup / recovery
 

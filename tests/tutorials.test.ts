@@ -20,8 +20,8 @@ describe("account tutorials", () => {
         }
         const html = renderToStaticMarkup(createElement(Tutorial, { user: { id: "test-account", name: "Test User", phone: null, role, mustChangePassword: true }, navigate: () => {} }))
         expect(html).toContain(guide.title)
-        expect(html).toContain("Change your temporary password")
-        expect(html).toContain("Open Account security")
+        expect(html).toContain("change your temporary password")
+        expect(html).toContain("Start visual walkthrough")
         if (role !== "owner") {
             expect(html).not.toContain("Record and correct salary payments")
             expect(html).not.toContain("Set up locations and coach accounts")
