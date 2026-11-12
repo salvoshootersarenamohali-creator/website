@@ -1994,10 +1994,13 @@ function RegistrationEditForm({
     const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
     const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
     const selectedDiscipline = selectedEvents[0]?.discipline
-    const selectedSlots = React.useMemo(
-        () => config.slotOptions.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
-        [config.slotOptions, form.preferredDate]
-    )
+    const bookedDate = dateOnly(registration.preferredDate)
+    const bookedDay = config.slotOptions.find((day) => day.date === bookedDate)
+    const availableDays = config.slotOptions.filter((day) => day.slots.length > 0 || day.date === bookedDate)
+    const availableSlots = config.slotOptions.find((day) => day.date === form.preferredDate)?.slots ?? []
+    const selectedSlots = form.preferredDate === bookedDate && !availableSlots.includes(registration.preferredSlot)
+        ? [registration.preferredSlot, ...availableSlots]
+        : availableSlots
     const categoriesByEvent = React.useMemo(() => {
         const map = new Map<string, CategoryOption[]>()
         for (const event of config.events) {
@@ -2067,7 +2070,7 @@ function RegistrationEditForm({
             setError("Select at least one event category.")
             return
         }
-        if (config.relayBooking.enabled && !form.preferredSlot) { setError("Select an available relay."); return }
+        if (!form.preferredSlot) { setError("Select an available relay."); return }
         if (invalidEntries.length) {
             setError("Remove or replace categories that are no longer eligible for this shooter.")
             return
@@ -2169,13 +2172,20 @@ function RegistrationEditForm({
                 )}
                 {config.relayBooking.enabled ? <div className="md:col-span-2"><RelaySelector competition={{ slug: competitionSlug, config } as PublicCompetition} entries={entries} gender={form.gender} dateOfBirth={form.dateOfBirth} date={form.preferredDate} slot={form.preferredSlot} currentBooking={registration.relayBooking} refreshKey={relayRefresh} onChange={(preferredDate, preferredSlot) => setForm((current) => ({ ...current, preferredDate, preferredSlot }))} /></div> : <><label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Competition Date</span>
-                    <select value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
-                        {config.slotOptions.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
+                    <select value={form.preferredDate} onChange={(event) => {
+                        const preferredDate = event.target.value
+                        const slots = availableDays.find((day) => day.date === preferredDate)?.slots ?? []
+                        const preferredSlot = preferredDate === bookedDate ? registration.preferredSlot : slots.includes(form.preferredSlot) ? form.preferredSlot : ""
+                        setForm({ ...form, preferredDate, preferredSlot })
+                    }} className="field">
+                        {!bookedDay && <option value={bookedDate}>{bookedDate}</option>}
+                        {availableDays.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
                     </select>
                 </label>
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Time Slot</span>
                     <select value={form.preferredSlot} onChange={(event) => setForm({ ...form, preferredSlot: event.target.value })} className="field">
+                        <option value="">Select a time slot</option>
                         {selectedSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
                     </select>
                 </label></>}

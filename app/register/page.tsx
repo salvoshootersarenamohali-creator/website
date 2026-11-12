@@ -787,13 +787,13 @@ function CompetitorCard({ registration, competition, onNew }: { registration: Sa
                 <FaridkotProvisionalForm registration={registration} competition={competition} />
             ) : (
                 <div className="print-card overflow-hidden rounded-lg bg-white text-black shadow-2xl">
-                    <div className="bg-neutral-950 px-8 py-6 text-white">
+                    <div className="bg-neutral-950 px-8 py-6 text-white print:bg-white print:px-4 print:py-2 print:text-black">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <Medal className="h-12 w-12 text-[#D4AF37]" />
                                 <div>
-                                    <p className="text-3xl font-black text-[#D4AF37]">{(competition?.shortTitle ?? "Competition").toUpperCase()}</p>
-                                    <p className="text-sm uppercase tracking-[0.24em] text-white/60">Competitor Card</p>
+                                    <p className="text-3xl font-black text-[#D4AF37] print:text-2xl print:text-black">{(competition?.shortTitle ?? "Competition").toUpperCase()}</p>
+                                    <p className="text-sm uppercase tracking-[0.24em] text-white/60 print:text-black">Competitor Card</p>
                                 </div>
                             </div>
                             <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={180} height={72} className="h-12 w-auto" />
@@ -882,19 +882,19 @@ function FormLine({ label, value }: { label: string; value: string }) {
 
 function CardBody({ registration, competition, title }: { registration: SavedRegistration; competition: PublicCompetition | null; title: string }) {
     return (
-        <div className="px-8 py-7 font-serif text-lg">
-            <div className="mb-6 grid grid-cols-[1fr_auto] items-end gap-4 border-b-2 border-black pb-2">
-                <h3 className="text-center text-xl font-bold underline">{title}</h3>
+        <div className="px-8 py-7 font-serif text-lg print:break-inside-avoid print:px-4 print:py-3 print:text-sm">
+            <div className="mb-6 grid grid-cols-[1fr_auto] items-end gap-4 border-b-2 border-black pb-2 print:mb-2">
+                <h3 className="text-center text-xl font-bold underline print:text-base">{title}</h3>
                 <p><span className="font-bold">Date:</span> {formatDateLabel(registration.preferredDate.slice(0, 10), competition)}</p>
             </div>
-            <div className="space-y-5">
+            <div className="space-y-5 print:space-y-1">
                 <CardLine label="1. Name" value={registration.name} />
                 <CardLine label="2. Club Name" value={registration.academy} />
                 {registration.coachName && <CardLine label="2a. Coach Name" value={registration.coachName} />}
                 <CardLine label="3. Contact" value={registration.phone} />
                 <div>
                     <p className="font-bold">4. Category/Event:</p>
-                    <div className="mt-2 space-y-2 pl-10">
+                    <div className="mt-2 space-y-2 pl-10 print:mt-1 print:space-y-0">
                         {registration.entries.map((entry, index) => (
                             <p key={entry.id} className="border-b border-dotted border-black pb-1">
                                 {String.fromCharCode(97 + index)}) {entry.categoryCode} - {entry.categoryLabel}
@@ -906,7 +906,7 @@ function CardBody({ registration, competition, title }: { registration: SavedReg
                 {registration.relayBooking && <CardLine label="Lane" value={`${registration.relayBooking.pool === "special" ? "Special" : "Standard"} lane ${registration.relayBooking.lane}`} />}
                 <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${getPaymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`} />
             </div>
-            <div className="mt-12 flex justify-between">
+            <div className="mt-12 flex justify-between print:mt-5">
                 <p>Official Signature</p>
                 <p>Shooter Signature</p>
             </div>

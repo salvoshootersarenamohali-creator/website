@@ -63,14 +63,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             entries: body.entries,
         })
 
-        const resolvedEntries = resolveRegistrationEntries(data, { ...config, allowedPaymentModes: ["cash", "upi", "neft", "imps", "rtgs"], requiresCoachName: false })
-
         const existing = await prisma.registration.findUnique({
             where: { id },
             include: { entries: true },
         })
         if (!existing) return Response.json({ error: "Registration not found." }, { status: 404 })
         if (existing.competitionId !== competition.id) return Response.json({ error: "Registration not found for this competition." }, { status: 404 })
+
+        const existingSlot = { preferredDate: existing.preferredDate.toISOString().slice(0, 10), preferredSlot: existing.preferredSlot }
+        const resolvedEntries = resolveRegistrationEntries(
+            data,
+            { ...config, allowedPaymentModes: ["cash", "upi", "neft", "imps", "rtgs"], requiresCoachName: false },
+            existingSlot,
+        )
+        const keepsExistingSlot = data.preferredDate === existingSlot.preferredDate && data.preferredSlot === existingSlot.preferredSlot
 
         const existingByKey = new Map(existing.entries.map((entry) => [entryKey(entry), entry]))
         const registrationIsParaShooter = existing.entries.length > 0 && existing.entries.every((entry) => entry.isPara)
@@ -121,6 +127,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             if (JSON.stringify(current.config) !== JSON.stringify(competition.config)) throw new RegistrationValidationError("Competition settings changed during this edit. Refresh before saving again.")
             if (config.relayBooking.enabled) {
                 await reserveRelay(tx, competition.id, id, resolveRelaySelection(data.preferredDate, data.preferredSlot, pricedEntries, config))
+            } else if (keepsExistingSlot) {
+                const currentSlot = await tx.registration.findUniqueOrThrow({ where: { id }, select: { preferredDate: true, preferredSlot: true } })
+                if (currentSlot.preferredDate.getTime() !== existing.preferredDate.getTime() || currentSlot.preferredSlot !== existingSlot.preferredSlot) {
+                    throw new RegistrationValidationError("The registration slot changed during this edit. Refresh before saving again.")
+                }
             }
             if (removedEntries.length) {
                 await tx.registrationEntry.deleteMany({
@@ -171,7 +182,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     dateOfBirth: new Date(`${data.dateOfBirth}T00:00:00`),
                     phone: data.phone,
                     address: data.address || null,
-                    preferredDate: new Date(`${data.preferredDate}T00:00:00`),
+                    preferredDate: keepsExistingSlot ? existing.preferredDate : new Date(`${data.preferredDate}T00:00:00.000Z`),
                     preferredSlot: config.relayBooking.enabled ? resolveRelaySelection(data.preferredDate, data.preferredSlot, pricedEntries, config).label : data.preferredSlot,
                     paymentMode: nextPaymentMode,
                     paymentStatus: nextPaymentStatus,

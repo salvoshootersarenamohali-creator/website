@@ -377,33 +377,43 @@ body {
     background: white !important;
   }
 
-  body * {
+  body:not(:has(.print-card)) * {
     visibility: hidden !important;
   }
 
   header,
   footer,
-  .print-card ~ *,
-  body > div:not(:has(.print-card)):not(:has(.print-details)) {
+  body:not(:has(.print-card)) > div:not(:has(.print-details)) {
     display: none !important;
   }
 
-  .no-print {
+  .no-print,
+  body:has(.print-card) :not(.print-card, .print-card *, :has(.print-card)) {
     display: none !important;
   }
 
-  .print-card,
-  .print-card *,
+  /* Keep only the card in normal page flow, without the screen layout's spacing. */
+  body:has(.print-card),
+  body:has(.print-card) :has(.print-card) {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
   .print-details,
   .print-details * {
     visibility: visible !important;
   }
 
   .print-card {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }

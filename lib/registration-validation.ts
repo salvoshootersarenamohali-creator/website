@@ -100,7 +100,11 @@ export function normalizeRegistrationData(data: Partial<IncomingRegistrationData
     }
 }
 
-export function resolveRegistrationEntries(data: IncomingRegistrationData, config: CompetitionConfig = defaultCompetitionConfig): ResolvedRegistrationEntry[] {
+export function resolveRegistrationEntries(
+    data: IncomingRegistrationData,
+    config: CompetitionConfig = defaultCompetitionConfig,
+    existingSlot?: Pick<IncomingRegistrationData, "preferredDate" | "preferredSlot">,
+): ResolvedRegistrationEntry[] {
     if (!data.name || !data.academy || !data.gender || !data.dateOfBirth || !data.phone || !data.preferredDate || !data.preferredSlot || !data.paymentMode) {
         validationError("Please complete all required fields.")
     }
@@ -127,7 +131,8 @@ export function resolveRegistrationEntries(data: IncomingRegistrationData, confi
             : "Please select a valid payment mode.")
     }
     const selectedDay = config.slotOptions.find((slot) => slot.date === data.preferredDate)
-    if (!config.relayBooking.enabled && (!selectedDay || !selectedDay.slots.includes(data.preferredSlot))) {
+    const keepsExistingSlot = existingSlot?.preferredDate === data.preferredDate && existingSlot.preferredSlot === data.preferredSlot
+    if (!config.relayBooking.enabled && !selectedDay?.slots.includes(data.preferredSlot) && !keepsExistingSlot) {
         validationError("Please select a valid relay date and time slot.")
     }
     if (!data.entries.length) {
