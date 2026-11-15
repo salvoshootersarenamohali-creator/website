@@ -26,18 +26,18 @@ export default async function RecordedResultsPage({ params }: { params: Promise<
         select: {
             id: true, eventId: true, categoryCode: true, isPara: true, seriesScores: true, totalScore: true, innerTenCount: true,
             registration: { select: { name: true, academy: true, gender: true } },
-            bharatCupResult: { select: { matchDate: true, sourceRow: true, reportedMatch: true, flaggedSeriesTwo: true } },
+            bharatCupResult: { select: { matchDate: true, sourceRow: true, reportedMatch: true, flaggedSeriesTwo: true, didNotFinish: true } },
         },
     })
     const recorded = entries.flatMap((entry) => entry.bharatCupResult ? [{ entry, result: entry.bharatCupResult }] : [])
     if (!recorded.length) notFound()
     const finals = getBharatCupFinals(entries, normalizeCompetitionConfig(competition.config).events)
     recorded.sort((a, b) => a.result.matchDate.getTime() - b.result.matchDate.getTime() || a.result.sourceRow - b.result.sourceRow)
-    const rows = recorded.map(({ result: { matchDate, reportedMatch, flaggedSeriesTwo }, entry }) => {
+    const rows = recorded.map(({ result: { matchDate, reportedMatch, flaggedSeriesTwo, didNotFinish }, entry }) => {
         const scores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
         return {
             id: entry.id, date: matchDate.toISOString().slice(0, 10), reportedMatch, categoryCode: entry.categoryCode,
-            shooter: entry.registration.name, academy: entry.registration.academy, total: entry.totalScore, innerTens: entry.innerTenCount,
+            shooter: entry.registration.name, academy: entry.registration.academy, total: entry.totalScore, innerTens: entry.innerTenCount, didNotFinish,
             scores: Array.from({ length: 6 }, (_, index) => typeof scores[index] === "number" ? scores[index] : null),
             seriesTwoUnderReview: flaggedSeriesTwo !== null && typeof scores[1] !== "number",
         }

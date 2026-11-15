@@ -657,6 +657,7 @@ model BharatCupRecordedResult {
   sourceDigest     String
   reportedMatch    String
   flaggedSeriesTwo Float?
+  didNotFinish     Boolean           @default(false)
   entry            RegistrationEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 
   @@unique([matchDate, sourceRow])

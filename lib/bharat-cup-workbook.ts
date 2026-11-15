@@ -22,6 +22,7 @@ export type BharatCupWorkbookRow = {
     totalScore: number | null
     innerTenCount: number
     flaggedSeriesTwo: number | null
+    didNotFinish?: boolean
 }
 
 export function normalizeBharatCupMatchCode(value: string) {

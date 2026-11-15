@@ -46,7 +46,7 @@ it("shows finalists above the archive and includes newly posted scores that have
         categoryLabel: "NR Air Pistol Senior Men", fee: 0, shotScores: null, seriesInnerTenCounts: null,
         createdAt: new Date("2026-11-12"), updatedAt: new Date("2026-11-12"),
         registration: { name: "Imported shooter", academy: "Academy", gender: "" },
-        bharatCupResult: { matchDate: new Date("2026-11-12"), sourceRow: 3, reportedMatch: "S-11", flaggedSeriesTwo: null },
+        bharatCupResult: { matchDate: new Date("2026-11-12"), sourceRow: 3, reportedMatch: "S-11", flaggedSeriesTwo: null, didNotFinish: false },
     }
     const posted = {
         ...imported, id: "b", registrationId: "b-reg", totalScore: 380, seriesScores: [95, 95, 95, 95],

@@ -90,6 +90,7 @@ export async function importBharatCupResults(tx: Prisma.TransactionClient, rows:
         provenance.push({
             entryId, matchDate: new Date(row.matchDate + "T00:00:00.000Z"), sourceRow: row.sourceRow,
             sourceDigest: row.sourceDigest, reportedMatch: row.reportedMatch, flaggedSeriesTwo: row.flaggedSeriesTwo,
+            didNotFinish: row.didNotFinish ?? false,
         })
     }
     if (registrations.length) await tx.registration.createMany({ data: registrations })

@@ -14,6 +14,7 @@ type RecordedResult = {
     scores: (number | null)[]
     total: number | null
     innerTens: number
+    didNotFinish: boolean
     seriesTwoUnderReview: boolean
 }
 
@@ -86,7 +87,9 @@ export function BharatCupRecordedResults({ rows }: { rows: RecordedResult[] }) {
                                     {index === 1 && row.seriesTwoUnderReview ? <span className="text-amber-200">Under review</span> : score ?? "—"}
                                 </td>)}
                                 <td className="px-3 py-3 tabular-nums">{row.innerTens}</td>
-                                <td className="whitespace-nowrap px-3 py-3 font-bold tabular-nums text-[#E5C558]">{row.total ?? "Pending"}</td>
+                                <td className="whitespace-nowrap px-3 py-3 font-bold tabular-nums text-[#E5C558]">
+                                    {row.didNotFinish ? <abbr title="Did not finish">DNF</abbr> : row.total ?? "Pending"}
+                                </td>
                             </tr>)}
                         </tbody>
                     </table>
