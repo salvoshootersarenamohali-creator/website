@@ -512,10 +512,10 @@ model Registration {
   motherName     String?
   fatherName     String?
   gender         String
-  dateOfBirth    DateTime
+  dateOfBirth    DateTime?
   phone          String
   address        String?
-  preferredDate  DateTime
+  preferredDate  DateTime?
   preferredSlot  String
   paymentMode    String
   paymentStatus  String
@@ -643,9 +643,23 @@ model RegistrationEntry {
   registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
   teamMemberships TeamEntryMember[]
 
+  bharatCupResult BharatCupRecordedResult?
+
   @@index([eventId])
   @@index([categoryCode])
   @@index([ruleSet])
+}
+
+model BharatCupRecordedResult {
+  entryId          String            @id
+  matchDate        DateTime          @db.Date
+  sourceRow        Int
+  sourceDigest     String
+  reportedMatch    String
+  flaggedSeriesTwo Float?
+  entry            RegistrationEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([matchDate, sourceRow])
 }
 
 model TeamEntry {

@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server"
+import { BHARAT_CUP_REGISTRATION_FIELDS, BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
 import { ImageUploadError, uploadImageToCloudinary } from "@/lib/cloudinary-upload"
 import { getCompetitionBySlugOrActive } from "@/lib/competition-server"
 import { isCompetitionRegistrationAvailable, isOnlinePaymentMode, normalizeCompetitionConfig } from "@/lib/competition"
 import { readRequiredDocumentFiles, uploadRequiredDocuments } from "@/lib/registration-documents"
-import { RegistrationValidationError, assertPublicPayment, getErrorMessage, getResolvedRegistrationAmount, normalizeRegistrationData, resolveRegistrationEntries } from "@/lib/registration-validation"
+import { RegistrationValidationError, assertPublicPayment, getErrorMessage, getResolvedRegistrationAmount, normalizeRegistrationData, resolveBharatCupRegistration, resolveRegistrationEntries } from "@/lib/registration-validation"
 import { RelayCapacityError, resolveRelaySelection } from "@/lib/relay-booking"
 import { reserveRelay, serializableTransaction } from "@/lib/relay-booking-server"
 import { prisma } from "@/lib/prisma"
@@ -15,6 +16,32 @@ export async function submitRegistration(request: NextRequest, slug: string | nu
         const competition = await getCompetitionBySlugOrActive(slug)
         if (!competition || !competition.isPublished) return Response.json({ error: "Competition not found." }, { status: 404 })
         if (!isCompetitionRegistrationAvailable(competition)) return Response.json({ error: "Registration is not open for this competition." }, { status: 403 })
+        if (competition.slug === BHARAT_CUP_SLUG) {
+            if (batchMode) return Response.json({ error: "Coach batch registration is not enabled." }, { status: 403 })
+            const form = await request.formData()
+            const data = normalizeRegistrationData({
+                ...Object.fromEntries(BHARAT_CUP_REGISTRATION_FIELDS.map((field) => [field, String(form.get(field) ?? "")])),
+                entries: JSON.parse(String(form.get("entries") ?? "[]")),
+            })
+            const registration = await serializableTransaction(async (tx) => {
+                const current = await tx.competition.findUniqueOrThrow({ where: { id: competition.id } })
+                if (!isCompetitionRegistrationAvailable(current)) throw new RegistrationValidationError("Registration has closed. Please contact the organizer.")
+                const entries = resolveBharatCupRegistration(data, normalizeCompetitionConfig(current.config))
+                return tx.registration.create({
+                    data: {
+                        competitionId: current.id, name: data.name, academy: data.academy, coachName: data.coachName,
+                        dateOfBirth: new Date(data.dateOfBirth + "T00:00:00.000Z"), phone: data.phone, gender: data.gender,
+                        preferredSlot: "", paymentMode: "", paymentStatus: UNRECORDED_PAYMENT, amount: getResolvedRegistrationAmount(entries),
+                        entries: { create: entries },
+                    },
+                    select: {
+                        id: true, name: true, phone: true, dateOfBirth: true, academy: true, coachName: true, gender: true,
+                        entries: { select: { id: true, categoryCode: true, categoryLabel: true } },
+                    },
+                })
+            })
+            return Response.json({ registration }, { status: 201 })
+        }
         const config = normalizeCompetitionConfig(competition.config)
         if (batchMode && !config.coachBatchEnabled) return Response.json({ error: "Coach batch registration is not enabled." }, { status: 403 })
         const form = await request.formData()

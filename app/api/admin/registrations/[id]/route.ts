@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
+import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
 import { getRegistrationEntryFee, isOnlinePaymentMode, normalizeCompetitionConfig } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { AUTOMATIC_PARA_SPONSOR } from "@/lib/para-registration"
@@ -11,7 +12,9 @@ import {
     getErrorMessage,
     getPaymentReferenceError,
     getResolvedRegistrationAmount,
+    isPaymentMode,
     normalizeRegistrationData,
+    resolveBharatCupRegistration,
     resolveRegistrationEntries,
 } from "@/lib/registration-validation"
 
@@ -38,11 +41,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const competition = await getCompetitionBySlugOrActive(slug)
         if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
         const config = normalizeCompetitionConfig(competition.config)
+        const bharatCup = competition.slug === BHARAT_CUP_SLUG
         const body = await request.json()
         const paymentStatus = String(body.paymentStatus ?? "").trim()
         const allowScoredEntryRemoval = body.allowScoredEntryRemoval === true
 
-        if (!paymentStatuses.has(paymentStatus)) {
+        if (!paymentStatuses.has(paymentStatus) && !(bharatCup && paymentStatus === UNRECORDED_PAYMENT)) {
             return Response.json({ error: "Payment status must be Pending, Paid, or Sponsored." }, { status: 400 })
         }
 
@@ -65,31 +69,55 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
         const existing = await prisma.registration.findUnique({
             where: { id },
-            include: { entries: true },
+            include: { entries: { include: { bharatCupResult: { select: { entryId: true } } } } },
         })
         if (!existing) return Response.json({ error: "Registration not found." }, { status: 404 })
         if (existing.competitionId !== competition.id) return Response.json({ error: "Registration not found for this competition." }, { status: 404 })
 
-        const existingSlot = { preferredDate: existing.preferredDate.toISOString().slice(0, 10), preferredSlot: existing.preferredSlot }
-        const resolvedEntries = resolveRegistrationEntries(
+        const existingSlot = { preferredDate: existing.preferredDate?.toISOString().slice(0, 10) ?? "", preferredSlot: existing.preferredSlot }
+        const keepsExistingSlot = data.preferredDate === existingSlot.preferredDate && data.preferredSlot === existingSlot.preferredSlot
+        const existingByKey = new Map(existing.entries.map((entry) => [entryKey(entry), entry]))
+        const resolvedEntries = bharatCup && !config.relayBooking.enabled ? (() => {
+            if (!data.name || !data.academy || !data.entries.length) throw new RegistrationValidationError("Enter the shooter, academy, and at least one match.")
+            const keep = data.entries.flatMap((entry) => {
+                const saved = entry && existingByKey.get(entryKey(entry))
+                return saved?.bharatCupResult ? [saved] : []
+            })
+            const newSelections = data.entries.filter((entry) => !entry || !keep.some((saved) => entryKey(saved) === entryKey(entry)))
+            if (new Set(keep.map(entryKey)).size !== keep.length) throw new RegistrationValidationError("Each match can only be selected once.")
+            if (!keepsExistingSlot && !config.slotOptions.some((day) => day.date === data.preferredDate && day.slots.includes(data.preferredSlot))) {
+                throw new RegistrationValidationError("Select a valid relay date and time slot.")
+            }
+            if (!newSelections.length) {
+                const birthDate = new Date(data.dateOfBirth + "T00:00:00.000Z")
+                if (data.dateOfBirth && (!Number.isFinite(birthDate.getTime()) || birthDate.toISOString().slice(0, 10) !== data.dateOfBirth)) {
+                    throw new RegistrationValidationError("Enter a valid date of birth.")
+                }
+                if (data.gender && data.gender !== "male" && data.gender !== "female") throw new RegistrationValidationError("Select a valid gender.")
+                return keep
+            }
+            return [...keep, ...resolveBharatCupRegistration({ ...data, entries: newSelections }, config)]
+        })() : resolveRegistrationEntries(
             data,
             { ...config, allowedPaymentModes: ["cash", "upi", "neft", "imps", "rtgs"], requiresCoachName: false },
             existingSlot,
         )
-        const keepsExistingSlot = data.preferredDate === existingSlot.preferredDate && data.preferredSlot === existingSlot.preferredSlot
-
-        const existingByKey = new Map(existing.entries.map((entry) => [entryKey(entry), entry]))
         const registrationIsParaShooter = existing.entries.length > 0 && existing.entries.every((entry) => entry.isPara)
         const pricedEntries = resolvedEntries.map((entry) => {
             const existingEntry = existingByKey.get(entryKey(entry))
             const isPara = existingEntry?.isPara ?? registrationIsParaShooter
-            return { ...entry, isPara, fee: getRegistrationEntryFee(entry, config, isPara) }
+            const fee = existingEntry?.bharatCupResult && existing.paymentStatus === UNRECORDED_PAYMENT && paymentStatus === UNRECORDED_PAYMENT
+                ? existingEntry.fee : getRegistrationEntryFee(entry, config, isPara)
+            return { ...entry, isPara, fee }
         })
         const automaticallySponsored = pricedEntries.length > 0
             && pricedEntries.every((entry) => entry.isPara)
             && config.paraEntryMode === "sponsored"
         const nextPaymentMode = automaticallySponsored ? "cash" : data.paymentMode
         const nextPaymentStatus = automaticallySponsored ? "Sponsored" : paymentStatus
+        if (bharatCup && (nextPaymentMode ? !isPaymentMode(nextPaymentMode) : nextPaymentStatus !== UNRECORDED_PAYMENT)) {
+            return Response.json({ error: "Select a payment mode when recording payment details." }, { status: 400 })
+        }
 
         const referenceError = nextPaymentStatus === "Paid" ? getPaymentReferenceError(nextPaymentMode, data.utrNumber) : null
         if (referenceError) {
@@ -117,10 +145,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         const amount = getResolvedRegistrationAmount(pricedEntries)
         const confirmedAt = automaticallySponsored
             ? existing.paymentStatus === "Sponsored" && existing.paymentConfirmedBy === AUTOMATIC_PARA_SPONSOR ? existing.paymentConfirmedAt : new Date()
-            : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedAt : nextPaymentStatus === "Pending" ? null : new Date()
+            : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedAt : nextPaymentStatus === "Pending" || nextPaymentStatus === UNRECORDED_PAYMENT ? null : new Date()
         const confirmedBy = automaticallySponsored
             ? AUTOMATIC_PARA_SPONSOR
-            : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedBy : nextPaymentStatus === "Pending" ? null : existing.paymentConfirmedBy
+            : existing.paymentStatus === nextPaymentStatus ? existing.paymentConfirmedBy : nextPaymentStatus === "Pending" || nextPaymentStatus === UNRECORDED_PAYMENT ? null : existing.paymentConfirmedBy
 
         const registration = await serializableTransaction(async (tx) => {
             const current = await tx.competition.findUniqueOrThrow({ where: { id: competition.id } })
@@ -129,7 +157,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                 await reserveRelay(tx, competition.id, id, resolveRelaySelection(data.preferredDate, data.preferredSlot, pricedEntries, config))
             } else if (keepsExistingSlot) {
                 const currentSlot = await tx.registration.findUniqueOrThrow({ where: { id }, select: { preferredDate: true, preferredSlot: true } })
-                if (currentSlot.preferredDate.getTime() !== existing.preferredDate.getTime() || currentSlot.preferredSlot !== existingSlot.preferredSlot) {
+                if (currentSlot.preferredDate?.getTime() !== existing.preferredDate?.getTime() || currentSlot.preferredSlot !== existingSlot.preferredSlot) {
                     throw new RegistrationValidationError("The registration slot changed during this edit. Refresh before saving again.")
                 }
             }
@@ -179,7 +207,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                     motherName: data.motherName || null,
                     fatherName: data.fatherName || null,
                     gender: data.gender,
-                    dateOfBirth: new Date(`${data.dateOfBirth}T00:00:00`),
+                    dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00.000Z`) : null,
                     phone: data.phone,
                     address: data.address || null,
                     preferredDate: keepsExistingSlot ? existing.preferredDate : new Date(`${data.preferredDate}T00:00:00.000Z`),

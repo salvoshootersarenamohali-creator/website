@@ -47,8 +47,11 @@ import { getRegistrationParaState } from "@/lib/para-registration"
 import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
 import { RelaySelector } from "@/components/RelaySelector"
 import { BookedDetailsView } from "@/components/BookedDetailsView"
+import { BharatCupResultImport } from "@/components/BharatCupResultImport"
+import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
+type RegistrationPaymentStatus = PaymentStatus | typeof UNRECORDED_PAYMENT
 
 type AdminEntry = {
     id: string
@@ -59,12 +62,13 @@ type AdminEntry = {
     categoryCode: string
     categoryLabel: string
     fee: number
-    seriesScores: number[] | null
+    seriesScores: (number | null)[] | null
     shotScores: number[] | null
     seriesInnerTenCounts: number[] | null
     innerTenCount: number
     totalScore: number | null
     isPara: boolean
+    bharatCupResult?: { flaggedSeriesTwo: number | null } | null
 }
 
 type AdminRegistration = {
@@ -77,13 +81,13 @@ type AdminRegistration = {
     motherName: string | null
     fatherName: string | null
     gender: string
-    dateOfBirth: string
+    dateOfBirth: string | null
     phone: string
     address: string | null
-    preferredDate: string
+    preferredDate: string | null
     preferredSlot: string
-    paymentMode: PaymentMode
-    paymentStatus: PaymentStatus
+    paymentMode: PaymentMode | ""
+    paymentStatus: RegistrationPaymentStatus
     paymentConfirmedBy: string | null
     paymentConfirmedAt: string | null
     amount: number
@@ -155,8 +159,12 @@ function scopedAdminPath(competitionSlug: string, path: string) {
     return `/api/admin/competitions/${competitionSlug}${path}`
 }
 
-function dateOnly(value: string) {
-    return value.slice(0, 10)
+function dateOnly(value: string | null) {
+    return value?.slice(0, 10) ?? ""
+}
+
+function registrationRelayLabel(registration: AdminRegistration) {
+    return registration.preferredDate ? `${dateOnly(registration.preferredDate)} | ${registration.preferredSlot}` : "Relay unrecorded"
 }
 
 function selectedDateSortValue(registration: AdminRegistration, config: CompetitionConfig) {
@@ -171,17 +179,19 @@ function selectedDateSortValue(registration: AdminRegistration, config: Competit
     }
 }
 
-function paymentBadgeClass(status: PaymentStatus) {
+function paymentBadgeClass(status: RegistrationPaymentStatus) {
     if (status === "Paid") return "bg-emerald-500/15 text-emerald-200"
     if (status === "Sponsored") return "bg-sky-500/15 text-sky-200"
+    if (status === UNRECORDED_PAYMENT) return "bg-white/10 text-white/65"
     return "bg-amber-500/15 text-amber-200"
 }
 
-function paymentModeLabel(mode: PaymentMode) {
-    return getPaymentModeLabel(mode)
+function paymentModeLabel(mode: PaymentMode | "") {
+    return mode ? getPaymentModeLabel(mode) : UNRECORDED_PAYMENT
 }
 
 function formatPaymentAmount(registration: AdminRegistration) {
+    if (registration.paymentStatus === UNRECORDED_PAYMENT) return "Payment unrecorded"
     return `${formatCurrency(registration.amount)} (${paymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`
 }
 
@@ -554,6 +564,10 @@ export default function SalvoCupAdminPage() {
 
                         {error && <p className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
 
+                        {competitionSlug === BHARAT_CUP_SLUG && view === "results" && (
+                            <BharatCupResultImport path={scopedAdminPath(competitionSlug, "/recorded-results")} adminPin={activePin} onImported={() => loadRegistrations()} />
+                        )}
+
                         {view === "stats" ? (
                             <StatsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} onChanged={() => loadRegistrations()} />
                         ) : view === "team-entries" && competitionConfig.teamEntriesEnabled ? (
@@ -626,7 +640,7 @@ export default function SalvoCupAdminPage() {
                                                             {registration.paymentStatus}
                                                         </span>
                                                     </div>
-                                                    <p className="mt-2 text-xs text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
+                                                    <p className="mt-2 text-xs text-white/45">{registrationRelayLabel(registration)}</p>
                                                     <div className="mt-2 flex flex-wrap items-center gap-2">
                                                         <p className="text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entries.length} entries</p>
                                                         {!registration.studentPhotoPath && (
@@ -1243,7 +1257,7 @@ function StatsView({ registrations, adminPin, competitionSlug, onChanged }: { re
     const expectedAmount = registrations.reduce((sum, registration) => sum + registration.amount, 0)
     const rangeRows = React.useMemo(() => buildRangeRows(registrations), [registrations])
     const categoryRows = React.useMemo(() => buildEntryRows(entries, (entry) => `${entry.categoryCode} - ${entry.categoryLabel}`), [entries])
-    const slotRows = React.useMemo(() => buildRegistrationRows(registrations, (registration) => `${dateOnly(registration.preferredDate)} | ${registration.preferredSlot}`), [registrations])
+    const slotRows = React.useMemo(() => buildRegistrationRows(registrations, registrationRelayLabel), [registrations])
     const ruleRows = React.useMemo(() => buildEntryRows(entries, (entry) => entry.ruleSet), [entries])
     const disciplineRows = React.useMemo(() => buildEntryRows(entries, (entry) => entry.discipline), [entries])
 
@@ -1320,7 +1334,7 @@ function StatsView({ registrations, adminPin, competitionSlug, onChanged }: { re
                                                 <tr key={registration.id} className="border-b border-white/5 last:border-0">
                                                     <td className="py-2 pr-3 font-bold">{registration.name}</td>
                                                     <td className="py-2 pr-3 text-white/65">{registration.phone}</td>
-                                                    <td className="py-2 pr-3 text-white/65">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</td>
+                                                    <td className="py-2 pr-3 text-white/65">{registrationRelayLabel(registration)}</td>
                                                     <td className="py-2 pr-3 text-white/65">{registration.paymentStatus}</td>
                                                     <td className="py-2 text-right text-[#D4AF37]">{registration.entries.length}</td>
                                                 </tr>
@@ -1724,7 +1738,7 @@ function RegistrationDetail({
                     </div>
                     <p className="text-white/55">{registration.academy} | {registration.phone}</p>
                     {registration.coachName && <p className="mt-1 text-sm text-white/55">Coach: {registration.coachName}</p>}
-                    <p className="mt-2 text-sm text-white/45">{dateOnly(registration.preferredDate)} | {registration.preferredSlot}</p>
+                    <p className="mt-2 text-sm text-white/45">{registrationRelayLabel(registration)}</p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
                     <button onClick={() => setEditing((current) => !current)} className="admin-button">
@@ -1771,7 +1785,7 @@ function RegistrationDetail({
 
             <div className="mb-6 grid gap-3 md:grid-cols-4">
                 <Stat label="Amount" value={formatCurrency(registration.amount)} />
-                <Stat label="Payment" value={`${registration.paymentMode} / ${registration.paymentStatus}`} />
+                <Stat label="Payment" value={registration.paymentMode ? `${paymentModeLabel(registration.paymentMode)} / ${registration.paymentStatus}` : UNRECORDED_PAYMENT} />
                 <Stat label="Payment Reference" value={registration.utrNumber ?? "-"} />
                 <Stat label="Confirmed By" value={registration.paymentConfirmedBy ?? "-"} />
             </div>
@@ -1942,8 +1956,8 @@ type RegistrationEditFormState = {
     address: string
     preferredDate: string
     preferredSlot: string
-    paymentMode: PaymentMode
-    paymentStatus: PaymentStatus
+    paymentMode: PaymentMode | ""
+    paymentStatus: RegistrationPaymentStatus
     utrNumber: string
 }
 
@@ -1962,6 +1976,7 @@ function RegistrationEditForm({
     onCancel: () => void
     onChanged: () => void
 }) {
+    const bharatCup = competitionSlug === BHARAT_CUP_SLUG
     const [form, setForm] = React.useState<RegistrationEditFormState>(() => ({
         name: registration.name,
         academy: registration.academy,
@@ -2009,6 +2024,7 @@ function RegistrationEditForm({
         return map
     }, [age, config, form.gender])
     const invalidEntries = entries.filter((entry) => {
+        if (bharatCup && registration.entries.some((saved) => saved.bharatCupResult && entryKey(saved) === entryKey(entry))) return false
         const categories = categoriesByEvent.get(entry.eventId) ?? []
         return !categories.some((category) => category.code === entry.categoryCode)
     })
@@ -2062,7 +2078,7 @@ function RegistrationEditForm({
 
     const save = async (allowScoredEntryRemoval = false) => {
         setError("")
-        if (!form.gender) {
+        if (!form.gender && !bharatCup) {
             setError("Select gender before saving.")
             return
         }
@@ -2070,7 +2086,7 @@ function RegistrationEditForm({
             setError("Select at least one event category.")
             return
         }
-        if (!form.preferredSlot) { setError("Select an available relay."); return }
+        if (!form.preferredSlot && (!bharatCup || form.preferredDate)) { setError("Select an available relay."); return }
         if (invalidEntries.length) {
             setError("Remove or replace categories that are no longer eligible for this shooter.")
             return
@@ -2178,7 +2194,7 @@ function RegistrationEditForm({
                         const preferredSlot = preferredDate === bookedDate ? registration.preferredSlot : slots.includes(form.preferredSlot) ? form.preferredSlot : ""
                         setForm({ ...form, preferredDate, preferredSlot })
                     }} className="field">
-                        {!bookedDay && <option value={bookedDate}>{bookedDate}</option>}
+                        {!bookedDay && <option value={bookedDate}>{bookedDate || "Unrecorded"}</option>}
                         {availableDays.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
                     </select>
                 </label>
@@ -2191,7 +2207,8 @@ function RegistrationEditForm({
                 </label></>}
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Payment Mode</span>
-                    <select value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value as PaymentMode, utrNumber: "" })} className="field">
+                    <select value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value as PaymentMode | "", utrNumber: "" })} className="field">
+                        {bharatCup && <option value="">Unrecorded</option>}
                         <option value="cash">Cash</option>
                         <option value="upi">UPI</option>
                         <option value="neft">NEFT</option>
@@ -2201,7 +2218,8 @@ function RegistrationEditForm({
                 </label>
                 <label>
                     <span className="mb-2 block text-sm font-semibold text-white/70">Payment Status</span>
-                    <select value={form.paymentStatus} onChange={(event) => setForm({ ...form, paymentStatus: event.target.value as PaymentStatus })} className="field">
+                    <select value={form.paymentStatus} onChange={(event) => setForm({ ...form, paymentStatus: event.target.value as RegistrationPaymentStatus })} className="field">
+                        {bharatCup && <option value={UNRECORDED_PAYMENT}>Unrecorded</option>}
                         <option value="Pending">Pending</option>
                         <option value="Paid">Paid</option>
                         <option value="Sponsored">Sponsored</option>
@@ -2221,6 +2239,9 @@ function RegistrationEditForm({
             </div>
 
             <div className="mt-5 space-y-4">
+                {bharatCup && registration.entries.some((entry) => entry.bharatCupResult) && (
+                    <p className="text-sm text-white/65">Imported matches: {registration.entries.filter((entry) => entry.bharatCupResult).map((entry) => entry.categoryCode).join(", ")}</p>
+                )}
                 {config.events.map((event) => {
                     const categories = categoriesByEvent.get(event.id) ?? []
                     const disabled = !canUseEvent(event.id)
@@ -2391,7 +2412,7 @@ function ScoreRow({
     const savedScore = isEntryScored(entry)
     const maxInnerTenCount = seriesCount * 10
     const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
-    const [innerTenCount, setInnerTenCount] = React.useState(savedScore ? String(entry.innerTenCount) : "")
+    const [innerTenCount, setInnerTenCount] = React.useState(savedScore || entry.bharatCupResult ? String(entry.innerTenCount) : "")
     const [saving, setSaving] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
@@ -2411,11 +2432,10 @@ function ScoreRow({
 
     React.useEffect(() => {
         const currentSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-        const currentSavedScore = currentSeriesScores.length === seriesCount
         setSeriesScores(Array.from({ length: seriesCount }, (_, index) => String(currentSeriesScores[index] ?? "")))
-        setInnerTenCount(currentSavedScore ? String(entry.innerTenCount) : "")
+        setInnerTenCount(savedScore || entry.bharatCupResult ? String(entry.innerTenCount) : "")
         setError("")
-    }, [entry.id, entry.seriesScores, entry.innerTenCount, seriesCount])
+    }, [entry.id, entry.seriesScores, entry.innerTenCount, entry.bharatCupResult, savedScore, seriesCount])
 
     const updateSeriesScore = (index: number, value: string) => {
         const next = [...seriesScores]
@@ -2525,6 +2545,11 @@ function ScoreRow({
                 </div>
             </div>
 
+            {entry.bharatCupResult?.flaggedSeriesTwo != null && typeof initialSeriesScores[1] !== "number" && (
+                <p className="mb-4 rounded-md border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+                    Series 2 is under review. The workbook lists {entry.bharatCupResult.flaggedSeriesTwo} and a total of {entry.totalScore}.
+                </p>
+            )}
             <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-3">
                 <label>
                     <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Total 10x in match</span>
@@ -2681,7 +2706,7 @@ function PrintableCard({ registration, variant }: { registration: AdminRegistrat
             <Image src="/salvo-logo.png" alt="" width={430} height={172} className="salvo-print-watermark" aria-hidden="true" />
             <div className="salvo-section-title-row">
                 {variant === "office" ? <h4>FOR OFFICE USE ONLY</h4> : <span />}
-                <p><span>Date:</span> {dateOnly(registration.preferredDate)}</p>
+                <p><span>Date:</span> {dateOnly(registration.preferredDate) || "Unrecorded"}</p>
             </div>
             <div className="salvo-print-fields">
                 <CardLine label="1. Name" value={registration.name} />

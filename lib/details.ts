@@ -30,7 +30,7 @@ export type DetailRegistration = {
     id: string
     name: string
     academy: string
-    preferredDate: string | Date
+    preferredDate: string | Date | null
     preferredSlot: string
     createdAt: string | Date
     entries: DetailEntry[]
@@ -95,9 +95,9 @@ export function normalizeRuleSet(value: string): RuleSet {
     return value === "ISSF" ? "ISSF" : "NR"
 }
 
-export function dateOnly(value: string | Date) {
+export function dateOnly(value: string | Date | null) {
     if (value instanceof Date) return value.toISOString().slice(0, 10)
-    return String(value).slice(0, 10)
+    return value?.slice(0, 10) ?? ""
 }
 
 export function formatDisplayDate(date: string) {

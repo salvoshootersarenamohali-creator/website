@@ -5,6 +5,7 @@ import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy } from "lucide-react"
 import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
+import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
 import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, getPaymentModeLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
@@ -65,10 +66,15 @@ export default async function CompetitionPage({ params }: PageProps) {
     if (!competitionRecord || !competitionRecord.isPublished) notFound()
 
     const competition = serializeCompetition(competitionRecord)
-    return <CompetitionDetail competition={competition} />
+    const hasRecordedResults = slug === BHARAT_CUP_SLUG && competition.resultsPublished && Boolean(await prisma.bharatCupRecordedResult.findFirst({
+        where: { entry: { registration: { competitionId: competition.id } } },
+        select: { entryId: true },
+    }))
+    return <CompetitionDetail competition={competition} hasRecordedResults={hasRecordedResults} />
 }
 
-function CompetitionDetail({ competition }: { competition: ReturnType<typeof getTemplatePublicCompetition> }) {
+function CompetitionDetail({ competition, hasRecordedResults = false }: { competition: ReturnType<typeof getTemplatePublicCompetition>; hasRecordedResults?: boolean }) {
+    const bharatCup = competition.slug === BHARAT_CUP_SLUG
     const dateRange = formatCompetitionDateRange(competition.startDate, competition.endDate)
     const registrationAvailable = isCompetitionRegistrationAvailable(competition)
     const statusLabel = getCompetitionStatusLabel(competition)
@@ -115,7 +121,7 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                         <div className="mt-7 grid max-w-3xl gap-3 sm:grid-cols-3">
                             <HeroMetric icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition.venue || "Salvo Shooters Arena"} />
                             <HeroMetric icon={<Clock className="h-4 w-4" />} label="Matches" value={`Start ${competition.config.matchStartTime}`} />
-                            <HeroMetric icon={<CreditCard className="h-4 w-4" />} label="Payment" value={paymentLabel} />
+                            {!bharatCup && <HeroMetric icon={<CreditCard className="h-4 w-4" />} label="Payment" value={paymentLabel} />}
                         </div>
                         <div className="mt-8 flex flex-wrap gap-3">
                             {registrationAvailable && (
@@ -127,7 +133,12 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                             )}
                             {(competition.resultsPublished || registrationAvailable || hasCompetitionEnded(competition.endDate)) && (
                                 <Link href={`/competitions/${competition.slug}/results`} className="inline-flex h-12 items-center justify-center rounded-md border border-white/15 px-6 font-bold text-white transition hover:border-[#D4AF37] hover:text-[#D4AF37]">
-                                    View Results
+                                    {hasRecordedResults ? "Live Results" : "View Results"}
+                                </Link>
+                            )}
+                            {hasRecordedResults && (
+                                <Link href={`/competitions/${competition.slug}/recorded-results`} className="inline-flex h-12 items-center justify-center rounded-md border border-[#D4AF37]/60 bg-[#D4AF37]/10 px-6 font-bold text-[#E5C558] transition hover:border-[#D4AF37]">
+                                    Recorded Results
                                 </Link>
                             )}
                             {adminHref && (
@@ -155,7 +166,7 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                                 </p>
                                 <h2 className="mt-2 text-2xl font-black">Click the Register Now button to fill the competition form.</h2>
                                 <p className="mt-2 text-sm leading-relaxed text-white/60">
-                                    This opens the shooter details, event category selection, relay slot, and payment form for {competition.shortTitle}.
+                                    {bharatCup ? "Enter your shooter details and select your match categories." : `This opens the shooter details, event category selection, relay slot, and payment form for ${competition.shortTitle}.`}
                                 </p>
                             </div>
                             <Link
@@ -233,7 +244,7 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                         </div>
                     </section>
 
-                    <section className="rounded-lg border border-[#D4AF37]/25 bg-[#D4AF37]/[0.07] p-5">
+                    {!bharatCup && <section className="rounded-lg border border-[#D4AF37]/25 bg-[#D4AF37]/[0.07] p-5">
                         <h2 className="flex items-center gap-2 text-xl font-black text-[#E5C558]">
                             <FileText className="h-5 w-5" />
                             Documents
@@ -245,7 +256,7 @@ function CompetitionDetail({ competition }: { competition: ReturnType<typeof get
                             {competition.config.requiresGuardianDetails && <p className="rounded-md border border-white/10 bg-black/20 px-3 py-2">Mother and father names</p>}
                             {competition.config.requiresAddress && <p className="rounded-md border border-white/10 bg-black/20 px-3 py-2">Shooter address</p>}
                         </div>
-                    </section>
+                    </section>}
 
                     <section className="rounded-lg border border-rose-300/20 bg-rose-400/[0.06] p-5">
                         <h2 className="flex items-center gap-2 text-xl font-black text-rose-100">

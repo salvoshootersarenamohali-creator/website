@@ -135,6 +135,26 @@ export function resolveRegistrationEntries(
     if (!config.relayBooking.enabled && !selectedDay?.slots.includes(data.preferredSlot) && !keepsExistingSlot) {
         validationError("Please select a valid relay date and time slot.")
     }
+    const entries = resolveEventCategories(data, config)
+    if (config.relayBooking.enabled) resolveRelaySelection(data.preferredDate, data.preferredSlot, entries, config)
+    return entries
+}
+
+export function resolveBharatCupRegistration(data: IncomingRegistrationData, config: CompetitionConfig) {
+    if (!data.name || !data.academy || !data.coachName || !data.dateOfBirth || !data.phone) {
+        validationError("Complete the shooter, academy, and coach details.")
+    }
+    if (!/^\+?\d{10,15}$/.test(data.phone)) validationError("Enter a valid shooter mobile number.")
+    if (data.gender !== "male" && data.gender !== "female") validationError("Select Men or Women under Category.")
+    const birthDate = new Date(data.dateOfBirth + "T00:00:00.000Z")
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.dateOfBirth) || !Number.isFinite(birthDate.getTime())
+        || birthDate.toISOString().slice(0, 10) !== data.dateOfBirth || birthDate.getTime() > Date.now()) {
+        validationError("Enter a valid date of birth.")
+    }
+    return resolveEventCategories(data, config)
+}
+
+function resolveEventCategories(data: IncomingRegistrationData, config: CompetitionConfig): ResolvedRegistrationEntry[] {
     if (!data.entries.length) {
         validationError("Please select at least one event category.")
     }
@@ -177,7 +197,6 @@ export function resolveRegistrationEntries(
         validationError("Choose either pistol or rifle categories, not both.")
     }
 
-    if (config.relayBooking.enabled) resolveRelaySelection(data.preferredDate, data.preferredSlot, resolvedEntries, config)
     return resolvedEntries
 }
 

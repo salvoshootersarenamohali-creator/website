@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
             include: {
                 relayBooking: true,
                 batch: true,
-                entries: { orderBy: { createdAt: "asc" } },
+                entries: { orderBy: { createdAt: "asc" }, include: { bharatCupResult: { select: { flaggedSeriesTwo: true } } } },
                 documents: { orderBy: { position: "asc" } },
             },
         })

@@ -5,6 +5,7 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Accessibility, CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
 import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
+import { BHARAT_CUP_REGISTRATION_FIELDS, BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
 import {
     CategoryOption,
     PublicCompetition,
@@ -69,6 +70,10 @@ type SavedRegistration = {
     entries: SavedEntry[]
 }
 
+type BharatCupConfirmation = Pick<SavedRegistration, "name" | "phone" | "dateOfBirth" | "academy" | "coachName" | "gender"> & {
+    entries: Pick<SavedEntry, "id" | "categoryCode" | "categoryLabel">[]
+}
+
 const initialForm = {
     name: "",
     academy: "",
@@ -121,7 +126,7 @@ export default function RegisterPage() {
     const [paymentScreenshot, setPaymentScreenshot] = React.useState<File | null>(null)
     const [error, setError] = React.useState("")
     const [isSubmitting, setIsSubmitting] = React.useState(false)
-    const [registration, setRegistration] = React.useState<SavedRegistration | null>(null)
+    const [registration, setRegistration] = React.useState<SavedRegistration | BharatCupConfirmation | null>(null)
     const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(null)
     const [batchMode, setBatchMode] = React.useState(false)
     const [relayRefresh, setRelayRefresh] = React.useState(0)
@@ -134,6 +139,7 @@ export default function RegisterPage() {
         [config.slotOptions, config.relayBooking]
     )
     const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
+    const bharatCup = competition?.slug === BHARAT_CUP_SLUG
     const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
     const paymentSummary = config.allowedPaymentModes.map(getPaymentModeLabel).join(" / ")
         + (config.allowedPaymentModes.length === 1 ? " only" : "")
@@ -258,44 +264,47 @@ export default function RegisterPage() {
             setError("Registration is closed for this competition.")
             return
         }
-        if (!availableSlots.length) {
+        if (!bharatCup && !availableSlots.length) {
             setError("No relay time slots are currently available.")
             return
         }
         if (!form.gender) {
-            setError("Please select gender so the match category can be assigned correctly.")
+            setError(bharatCup ? "Select Men or Women under Category." : "Please select gender so the match category can be assigned correctly.")
             return
         }
         if (!entries.length) {
             setError("Please select at least one event category.")
             return
         }
-        if (config.relayBooking.enabled && !form.preferredSlot) { setError("Please select an available relay."); return }
-        if (!studentPhoto) {
-            setError("Please upload the shooter photo.")
-            return
-        }
-        for (const document of requiredDocuments) {
-            if (!documentFiles[document.id]) {
-                setError(`Please upload ${document.label}.`)
+        const body = new FormData()
+        body.append("entries", JSON.stringify(entries))
+        if (bharatCup) {
+            BHARAT_CUP_REGISTRATION_FIELDS.forEach((field) => body.set(field, form[field]))
+        } else {
+            if (config.relayBooking.enabled && !form.preferredSlot) { setError("Please select an available relay."); return }
+            if (!studentPhoto) {
+                setError("Please upload the shooter photo.")
                 return
             }
+            for (const document of requiredDocuments) {
+                if (!documentFiles[document.id]) {
+                    setError(`Please upload ${document.label}.`)
+                    return
+                }
+            }
+            const referenceError = getPaymentReferenceError(form.paymentMode, form.utrNumber)
+            if (referenceError) {
+                setError(referenceError)
+                return
+            }
+            Object.entries(form).forEach(([key, value]) => body.append(key, value))
+            body.append("studentPhoto", studentPhoto)
+            requiredDocuments.forEach((document) => {
+                const file = documentFiles[document.id]
+                if (file) body.append(`requiredDocument:${document.id}`, file)
+            })
+            if (paymentScreenshot) body.append("paymentScreenshot", paymentScreenshot)
         }
-        const referenceError = getPaymentReferenceError(form.paymentMode, form.utrNumber)
-        if (referenceError) {
-            setError(referenceError)
-            return
-        }
-
-        const body = new FormData()
-        Object.entries(form).forEach(([key, value]) => body.append(key, value))
-        body.append("entries", JSON.stringify(entries))
-        body.append("studentPhoto", studentPhoto)
-        requiredDocuments.forEach((document) => {
-            const file = documentFiles[document.id]
-            if (file) body.append(`requiredDocument:${document.id}`, file)
-        })
-        if (paymentScreenshot) body.append("paymentScreenshot", paymentScreenshot)
 
         setIsSubmitting(true)
         try {
@@ -356,7 +365,7 @@ export default function RegisterPage() {
                             Registration for {competition?.title ?? "Competition"}
                         </h1>
                         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/70">
-                            Select your event categories, choose a relay slot, complete payment, and generate your competitor card.
+                            {bharatCup ? "Enter your shooter details and select your match categories." : "Select your event categories, choose a relay slot, complete payment, and generate your competitor card."}
                         </p>
                         <div className="mt-8 grid gap-3 sm:grid-cols-3">
                             {boundaryDates.length > 0 && (
@@ -367,9 +376,9 @@ export default function RegisterPage() {
                             )}
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={paymentSummary} />
+                            {!bharatCup && <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={paymentSummary} />}
                             <TopNote icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition?.venue ?? "Competition venue"} />
-                            <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={documentSummary} />
+                            {!bharatCup && <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={documentSummary} />}
                         </div>
                     </div>
                     <div className="rounded-lg border border-[#D4AF37]/30 bg-neutral-950/80 p-5 shadow-2xl shadow-[#D4AF37]/10">
@@ -387,12 +396,12 @@ export default function RegisterPage() {
 
             <main className="container mx-auto px-4 py-12">
                 <CashPrizeSchedule config={config} className="mb-8" />
-                {config.coachBatchEnabled && registrationAvailable && !registration && <div className="mb-6 flex gap-3">
+                {!bharatCup && config.coachBatchEnabled && registrationAvailable && !registration && <div className="mb-6 flex gap-3">
                     <button type="button" className={`rounded-md border px-5 py-3 font-bold ${!batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(false)}>Single shooter</button>
                     <button type="button" className={`rounded-md border px-5 py-3 font-bold ${batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(true)}>Coach: register multiple students</button>
                 </div>}
                 {registration ? (
-                    <CompetitorCard registration={registration} competition={competition} onNew={() => {
+                    "documents" in registration ? <CompetitorCard registration={registration} competition={competition} onNew={() => {
                         setRegistration(null)
                         setEntries([])
                         setSelectionStartedWith(null)
@@ -400,6 +409,11 @@ export default function RegisterPage() {
                         setStudentPhoto(null)
                         setDocumentFiles({})
                         setPaymentScreenshot(null)
+                    }} /> : <BharatCupRegistrationConfirmation registration={registration} onNew={() => {
+                        setRegistration(null)
+                        setForm(initialForm)
+                        setEntries([])
+                        setSelectionStartedWith(null)
                     }} />
                 ) : batchMode && competition ? <CoachBatchForm competition={competition} /> : !registrationAvailable ? (
                     <ClosedRegistration competition={competition} />
@@ -407,18 +421,18 @@ export default function RegisterPage() {
                     <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[0.95fr_1.4fr]">
                         <section className="space-y-6">
                             <Panel title={competition ? `${competition.title} Registration` : "Shooter Details"}>
-                                <Field label="Full Name" required>
+                                <Field label={bharatCup ? "Shooter Name" : "Full Name"} required>
                                     <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
                                 </Field>
-                                <Field label={config.requiresCoachName ? "Academy Name" : "Academy name/ Coach name"} required>
+                                <Field label={bharatCup ? "Academy/Institution Name" : config.requiresCoachName ? "Academy Name" : "Academy name/ Coach name"} required>
                                     <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
                                 </Field>
-                                {config.requiresCoachName && (
+                                {(bharatCup || config.requiresCoachName) && (
                                     <Field label="Coach Name" required>
                                         <input required value={form.coachName} onChange={(event) => setForm({ ...form, coachName: toProperCase(event.target.value) })} className="field" />
                                     </Field>
                                 )}
-                                {config.requiresGuardianDetails && (
+                                {!bharatCup && config.requiresGuardianDetails && (
                                     <div className="grid gap-4 sm:grid-cols-2">
                                         <Field label="Mother's Name" required>
                                             <input required value={form.motherName} onChange={(event) => setForm({ ...form, motherName: toProperCase(event.target.value) })} className="field" />
@@ -429,29 +443,29 @@ export default function RegisterPage() {
                                     </div>
                                 )}
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    <Field label="Gender" required>
+                                    <Field label={bharatCup ? "Category" : "Gender"} required>
                                         <select required value={form.gender} onChange={(event) => { setForm({ ...form, gender: event.target.value as Gender }); setEntries([]); setSelectionStartedWith(null) }} className="field">
-                                            <option value="">Select gender</option>
-                                            <option value="male">Male / Boy</option>
-                                            <option value="female">Female / Girl</option>
+                                            <option value="">{bharatCup ? "Select Men or Women" : "Select gender"}</option>
+                                            <option value="male">{bharatCup ? "Men" : "Male / Boy"}</option>
+                                            <option value="female">{bharatCup ? "Women" : "Female / Girl"}</option>
                                         </select>
                                     </Field>
                                     <Field label="Date of Birth" required>
                                         <input required type="date" value={form.dateOfBirth} onChange={(event) => { setForm({ ...form, dateOfBirth: event.target.value }); setEntries([]); setSelectionStartedWith(null) }} className="field" />
                                     </Field>
                                 </div>
-                                <Field label="Phone Number" required>
-                                    <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
+                                <Field label={bharatCup ? "Shooter Mobile Number" : "Phone Number"} required>
+                                    <input required type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
                                 </Field>
-                                {config.requiresAddress && (
+                                {!bharatCup && config.requiresAddress && (
                                     <Field label="Address" required>
                                         <textarea required value={form.address} onChange={(event) => setForm({ ...form, address: toProperCase(event.target.value) })} className="field min-h-24" />
                                     </Field>
                                 )}
-                                <Field label="Student Photo" required>
+                                {!bharatCup && <Field label="Student Photo" required>
                                     <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setStudentPhoto(event.target.files?.[0] ?? null)} className="field file:text-white" />
-                                </Field>
-                                {requiredDocuments.map((document) => (
+                                </Field>}
+                                {!bharatCup && requiredDocuments.map((document) => (
                                     <Field key={document.id} label={document.label} required>
                                         <input
                                             required
@@ -474,6 +488,7 @@ export default function RegisterPage() {
                                 )}
                             </Panel>
 
+                            {!bharatCup && <>
                             <Panel title="Preferred Relay">
                                 {config.relayBooking.enabled && competition ? <RelaySelector competition={competition} entries={entries} gender={form.gender} dateOfBirth={form.dateOfBirth} date={form.preferredDate} slot={form.preferredSlot} refreshKey={relayRefresh} onChange={(preferredDate, preferredSlot) => setForm((current) => ({ ...current, preferredDate, preferredSlot }))} /> : availableSlots.length ? (
                                     <>
@@ -606,12 +621,13 @@ export default function RegisterPage() {
                                     </div>
                                 </Panel>
                             )}
+                            </>}
                         </section>
 
                         <section className="space-y-6">
                             <Panel title="Select Event Categories">
                                 <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
-                                    {config.feesByRuleSet.NR || config.feesByRuleSet.ISSF
+                                    {bharatCup ? "Select the matches you are entering." : config.feesByRuleSet.NR || config.feesByRuleSet.ISSF
                                         ? `Select every event-category you want to compete in. NR categories are ${formatCurrency(config.feesByRuleSet.NR ?? config.entryFee)} and ISSF categories are ${formatCurrency(config.feesByRuleSet.ISSF ?? config.entryFee)}.`
                                         : `Select every event-category you want to compete in. Little Champ categories are ${formatCurrency(config.littleChampEntryFee)}; all other categories are ${formatCurrency(config.entryFee)}.`}
                                 </div>
@@ -626,7 +642,7 @@ export default function RegisterPage() {
                                                         <p className="text-xl font-black">{event.title}</p>
                                                         <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-[#D4AF37]">{event.ruleSet} {event.discipline}</p>
                                                     </div>
-                                                    <div className="flex flex-wrap gap-2">
+                                                    {!bharatCup && <div className="flex flex-wrap gap-2">
                                                         <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100">
                                                             Fee {formatCurrency(config.feesByRuleSet[event.ruleSet] ?? config.entryFee)}
                                                         </span>
@@ -639,23 +655,24 @@ export default function RegisterPage() {
                                                                 {index + 1}: Rs. {prize.toLocaleString("en-IN")}
                                                             </span>
                                                         )) : null}
-                                                    </div>
+                                                    </div>}
                                                 </div>
                                                 <div className="mt-5 flex flex-wrap gap-2">
                                                     {!form.gender || age === null ? (
-                                                        <p className="text-sm text-white/45">Enter gender and date of birth to unlock eligible categories.</p>
+                                                        <p className="text-sm text-white/45">{bharatCup ? "Select Men or Women and enter your date of birth to see eligible matches." : "Enter gender and date of birth to unlock eligible categories."}</p>
                                                     ) : categories.length ? (
                                                         categories.map((category) => (
                                                                 <button
                                                                     key={category.code}
                                                                     type="button"
                                                                     disabled={disabled}
+                                                                    aria-pressed={isEntrySelected(event.id, category.code)}
                                                                     onClick={() => toggleEntry(event.id, category.code)}
                                                                     className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60 hover:text-white"}`}
                                                                 >
                                                                     <span className="block font-bold">{category.code}</span>
                                                                     <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
-                                                                    <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>
+                                                                    {!bharatCup && <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>}
                                                                 </button>
                                                         ))
                                                     ) : (
@@ -669,13 +686,13 @@ export default function RegisterPage() {
                             </Panel>
 
                             <div className="sticky top-24 rounded-lg border border-[#D4AF37]/30 bg-neutral-950 p-6 shadow-2xl shadow-[#D4AF37]/10">
-                                <div className="mb-5 flex items-center justify-between">
+                                {!bharatCup && <div className="mb-5 flex items-center justify-between">
                                     <div>
                                         <p className="text-sm uppercase tracking-[0.2em] text-white/45">Total Payable</p>
                                         <p className="text-4xl font-black text-[#D4AF37]">{formatCurrency(amount)}</p>
                                     </div>
                                     <IndianRupee className="h-10 w-10 text-[#D4AF37]" />
-                                </div>
+                                </div>}
                                 <div className="space-y-2">
                                     {entries.length ? entries.map((entry) => {
                                         const event = getEventById(entry.eventId, config)
@@ -693,7 +710,7 @@ export default function RegisterPage() {
                                 {error && <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
                                 <button
                                     type="submit"
-                                    disabled={isSubmitting || !availableSlots.length}
+                                    disabled={isSubmitting || (!bharatCup && !availableSlots.length)}
                                     className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#D4AF37] px-6 font-bold uppercase tracking-[0.14em] text-black shadow-[0_0_28px_rgba(212,175,55,0.35)] transition hover:bg-[#E5C558] disabled:opacity-60"
                                 >
                                     {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
@@ -705,6 +722,35 @@ export default function RegisterPage() {
                 )}
             </main>
         </div>
+    )
+}
+
+function BharatCupRegistrationConfirmation({ registration, onNew }: { registration: BharatCupConfirmation; onNew: () => void }) {
+    const details = {
+        "Shooter Name": registration.name,
+        "Shooter Mobile Number": registration.phone,
+        "Date of Birth": registration.dateOfBirth.slice(0, 10),
+        "Academy/Institution Name": registration.academy,
+        "Coach Name": registration.coachName,
+        "Category": registration.gender === "male" ? "Men" : "Women",
+    }
+    return (
+        <section className="mx-auto max-w-2xl">
+            <Panel title="Registration received">
+                <dl className="grid gap-3 sm:grid-cols-2">
+                    {Object.entries(details).map(([label, value]) => <div key={label}>
+                        <dt className="text-sm text-white/60">{label}</dt>
+                        <dd className="font-semibold">{value}</dd>
+                    </div>)}
+                </dl>
+                <ul className="list-disc space-y-1 pl-5" aria-label="Registered matches">
+                    {registration.entries.map((entry) => <li key={entry.id}>{entry.categoryCode} · {entry.categoryLabel}</li>)}
+                </ul>
+                <button type="button" onClick={onNew} className="rounded-md bg-[#D4AF37] px-5 py-2 font-bold text-black">
+                    Register another shooter
+                </button>
+            </Panel>
+        </section>
     )
 }
 
