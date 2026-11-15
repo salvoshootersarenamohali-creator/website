@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx"
 import { createHash } from "node:crypto"
+import { bharatCupEntryKey } from "@/lib/bharat-cup"
 
 export const bharatCupMatchDays = [
     { sheet: "12_Nov", date: "2026-11-12", entries: 125 },
@@ -26,10 +27,6 @@ export type BharatCupWorkbookRow = {
 export function normalizeBharatCupMatchCode(value: string) {
     const match = value.trim().match(/^([SR])[\s-]*(\d{1,2})(?:\s*\(\s*(mix)\s*\))?$/i)
     return match ? `${match[1].toUpperCase()}-${match[2].padStart(2, "0")}${match[3] ? " (Mix)" : ""}` : null
-}
-
-export function bharatCupEntryKey(name: string, academy: string, categoryCode: string) {
-    return JSON.stringify([name, academy, categoryCode].map((value) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase()))
 }
 
 export function readBharatCupWorkbook(buffer: ArrayBuffer): BharatCupWorkbookRow[] {

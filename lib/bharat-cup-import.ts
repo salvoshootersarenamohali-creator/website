@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { Prisma } from "@prisma/client"
-import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
-import { BharatCupImportError, bharatCupEntryKey, normalizeBharatCupMatchCode, type BharatCupWorkbookRow } from "@/lib/bharat-cup-workbook"
+import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT, bharatCupEntryKey } from "@/lib/bharat-cup"
+import { BharatCupImportError, normalizeBharatCupMatchCode, type BharatCupWorkbookRow } from "@/lib/bharat-cup-workbook"
 import { getCompetitionCategories, normalizeCompetitionConfig } from "@/lib/competition"
 
 export async function importBharatCupResults(tx: Prisma.TransactionClient, rows: BharatCupWorkbookRow[], confirmedPreview?: string) {

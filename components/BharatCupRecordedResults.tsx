@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import { categorySortValue } from "@/lib/results"
 
 type RecordedResult = {
@@ -20,15 +21,29 @@ const dateFormat = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "sh
 const pageSize = 40
 
 export function BharatCupRecordedResults({ rows }: { rows: RecordedResult[] }) {
+    const router = useRouter()
     const [query, setQuery] = useState("")
     const [date, setDate] = useState("")
     const [match, setMatch] = useState("")
     const [page, setPage] = useState(0)
+    useEffect(() => {
+        const refresh = () => {
+            if (document.visibilityState === "visible") router.refresh()
+        }
+        const timer = window.setInterval(refresh, 30_000)
+        document.addEventListener("visibilitychange", refresh)
+        return () => {
+            window.clearInterval(timer)
+            document.removeEventListener("visibilitychange", refresh)
+        }
+    }, [router])
+
     const dates = [...new Set(rows.map((row) => row.date))]
     const matches = [...new Set(rows.map((row) => row.categoryCode))].sort((a, b) => categorySortValue(a).localeCompare(categorySortValue(b)))
     const visible = rows.filter((row) => (!date || row.date === date) && (!match || row.categoryCode === match)
         && `${row.shooter} ${row.academy}`.toLowerCase().includes(query.trim().toLowerCase()))
-    const shown = visible.slice(page * pageSize, (page + 1) * pageSize)
+    const currentPage = Math.min(page, Math.max(0, Math.ceil(visible.length / pageSize) - 1))
+    const shown = visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
 
     return (
         <>
@@ -53,7 +68,7 @@ export function BharatCupRecordedResults({ rows }: { rows: RecordedResult[] }) {
                 </label>
             </div>
             <p className="mb-3 text-sm text-white/65" aria-live="polite">
-                {shown.length ? `${page * pageSize + 1}–${page * pageSize + shown.length} of ${visible.length} entries` : "No entries match these filters."}
+                {shown.length ? `${currentPage * pageSize + 1}–${currentPage * pageSize + shown.length} of ${visible.length} entries` : "No entries match these filters."}
             </p>
             {shown.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border border-white/15" tabIndex={0} role="region" aria-label="Recorded scores table">
@@ -78,8 +93,8 @@ export function BharatCupRecordedResults({ rows }: { rows: RecordedResult[] }) {
                 </div>
             )}
             {visible.length > pageSize && <div className="mt-4 flex gap-3">
-                <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)} className="rounded-md border border-white/20 px-4 py-2 font-semibold disabled:opacity-40">Previous</button>
-                <button type="button" disabled={(page + 1) * pageSize >= visible.length} onClick={() => setPage(page + 1)} className="rounded-md border border-white/20 px-4 py-2 font-semibold disabled:opacity-40">Next</button>
+                <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="rounded-md border border-white/20 px-4 py-2 font-semibold disabled:opacity-40">Previous</button>
+                <button type="button" disabled={(currentPage + 1) * pageSize >= visible.length} onClick={() => setPage(currentPage + 1)} className="rounded-md border border-white/20 px-4 py-2 font-semibold disabled:opacity-40">Next</button>
             </div>}
         </>
     )

@@ -1,8 +1,11 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
-import { prisma } from "@/lib/prisma"
+import { BharatCupFinalists } from "@/components/BharatCupFinalists"
 import { BharatCupRecordedResults } from "@/components/BharatCupRecordedResults"
+import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
+import { getBharatCupFinals } from "@/lib/bharat-cup-finals"
+import { normalizeCompetitionConfig } from "@/lib/competition"
+import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Recorded Results | First Bharat Cup" }
@@ -10,23 +13,27 @@ export const metadata = { title: "Recorded Results | First Bharat Cup" }
 export default async function RecordedResultsPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
     if (slug !== BHARAT_CUP_SLUG) notFound()
-    const competition = await prisma.competition.findUnique({ where: { slug }, select: { id: true, title: true, isPublished: true, resultsPublished: true } })
+    const competition = await prisma.competition.findUnique({
+        where: { slug },
+        select: { id: true, title: true, isPublished: true, resultsPublished: true, config: true },
+    })
     if (!competition?.isPublished || !competition.resultsPublished) notFound()
-    const results = await prisma.bharatCupRecordedResult.findMany({
-        where: { entry: { registration: { competitionId: competition.id } } },
-        orderBy: [{ matchDate: "asc" }, { sourceRow: "asc" }],
+    const entries = await prisma.registrationEntry.findMany({
+        where: {
+            registration: { competitionId: competition.id },
+            OR: [{ totalScore: { not: null } }, { bharatCupResult: { isNot: null } }],
+        },
         select: {
-            matchDate: true, reportedMatch: true, flaggedSeriesTwo: true,
-            entry: {
-                select: {
-                    id: true, categoryCode: true, seriesScores: true, totalScore: true, innerTenCount: true,
-                    registration: { select: { name: true, academy: true } },
-                },
-            },
+            id: true, eventId: true, categoryCode: true, isPara: true, seriesScores: true, totalScore: true, innerTenCount: true,
+            registration: { select: { name: true, academy: true, gender: true } },
+            bharatCupResult: { select: { matchDate: true, sourceRow: true, reportedMatch: true, flaggedSeriesTwo: true } },
         },
     })
-    if (!results.length) notFound()
-    const rows = results.map(({ matchDate, reportedMatch, flaggedSeriesTwo, entry }) => {
+    const recorded = entries.flatMap((entry) => entry.bharatCupResult ? [{ entry, result: entry.bharatCupResult }] : [])
+    if (!recorded.length) notFound()
+    const finals = getBharatCupFinals(entries, normalizeCompetitionConfig(competition.config).events)
+    recorded.sort((a, b) => a.result.matchDate.getTime() - b.result.matchDate.getTime() || a.result.sourceRow - b.result.sourceRow)
+    const rows = recorded.map(({ result: { matchDate, reportedMatch, flaggedSeriesTwo }, entry }) => {
         const scores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
         return {
             id: entry.id, date: matchDate.toISOString().slice(0, 10), reportedMatch, categoryCode: entry.categoryCode,
@@ -45,6 +52,7 @@ export default async function RecordedResultsPage({ params }: { params: Promise<
                 </nav>
                 <p className="font-bold text-[#E5C558]">{competition.title}</p>
                 <h1 className="mb-6 mt-2 text-4xl font-black md:text-5xl">Recorded Results</h1>
+                <BharatCupFinalists finals={finals} />
                 <BharatCupRecordedResults rows={rows} />
             </div>
         </main>
