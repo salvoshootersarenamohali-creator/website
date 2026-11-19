@@ -3,12 +3,8 @@ import * as XLSX from "xlsx"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
-import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntryScored, rankRows } from "@/lib/results"
-
-function formatExcelScore(score: number | undefined, ruleSet: "NR" | "ISSF") {
-    if (typeof score !== "number") return ""
-    return ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
-}
+import { categorySortValue, rankRows } from "@/lib/results"
+import { categoryScoreColumns } from "@/lib/score-export"
 
 function safeSheetName(value: string, fallback: string, usedNames: Set<string>) {
     const sanitized = value.replace(/[\[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim() || fallback
@@ -66,10 +62,6 @@ export async function GET(request: NextRequest) {
 
         categories.forEach((category) => {
             const rows = rankRows(category.rows).map((row) => {
-                const ruleSet = getRuleSet(row.entry)
-                const scored = isEntryScored(row.entry)
-                const scores = getSeriesScores(row.entry)
-
                 return {
                     Rank: row.rank ?? "",
                     Shooter: row.registration.name,
@@ -78,37 +70,12 @@ export async function GET(request: NextRequest) {
                     Event: row.entry.eventTitle,
                     "Category Code": row.entry.categoryCode,
                     "Category Name": row.entry.categoryLabel,
-                    "Series 1": scored ? formatExcelScore(scores[0], ruleSet) : "",
-                    "Series 2": scored ? formatExcelScore(scores[1], ruleSet) : "",
-                    "Series 3": scored ? formatExcelScore(scores[2], ruleSet) : "",
-                    "Series 4": scored ? formatExcelScore(scores[3], ruleSet) : "",
-                    "Series 5": scored ? formatExcelScore(scores[4], ruleSet) : "",
-                    "Series 6": scored ? formatExcelScore(scores[5], ruleSet) : "",
-                    "Total 10x": scored ? row.entry.innerTenCount : "",
-                    "Total Score": scored ? formatScore(row.entry.totalScore, ruleSet) : "",
-                    Status: scored ? "Scored" : "Pending",
+                    ...categoryScoreColumns(row.entry),
                 }
             })
 
             const sheet = XLSX.utils.json_to_sheet(rows)
-            sheet["!cols"] = [
-                { wch: 8 },
-                { wch: 28 },
-                { wch: 32 },
-                { wch: 28 },
-                { wch: 22 },
-                { wch: 14 },
-                { wch: 42 },
-                { wch: 10 },
-                { wch: 10 },
-                { wch: 10 },
-                { wch: 10 },
-                { wch: 10 },
-                { wch: 10 },
-                { wch: 10 },
-                { wch: 12 },
-                { wch: 10 },
-            ]
+            sheet["!cols"] = Object.keys(rows[0] ?? {}).map((key, index) => ({ wch: index < 7 ? [8, 28, 32, 28, 22, 14, 42][index] : Math.max(12, key.length + 2) }))
             XLSX.utils.book_append_sheet(workbook, sheet, safeSheetName(category.code, "Category", usedSheetNames))
         })
 

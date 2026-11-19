@@ -4,7 +4,8 @@ import * as React from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { AlertCircle, Award, BarChart3, CheckCircle2, Clock3, Download, Loader2, LockKeyhole, Medal, RefreshCw, Search, Trophy, Users } from "lucide-react"
-import { getCompetitionEndBoundary, hasCompetitionEnded, PublicCompetition } from "@/lib/competition"
+import { getCompetitionEndBoundary, getScoringFormat, hasCompetitionEnded, PublicCompetition } from "@/lib/competition"
+import { ScoreSeries } from "@/components/ScoreSeries"
 import type { MedalType, PublicParticipantCategory } from "@/lib/participants"
 import { cn } from "@/lib/utils"
 
@@ -141,12 +142,6 @@ function StudentNameCell({ row, photoSize = "md" }: { row: ResultRow; photoSize?
             <span className="min-w-0 break-words font-bold">{row.shooterName}</span>
         </div>
     )
-}
-
-function seriesLabel(row: ResultRow, index: number) {
-    const score = row.seriesScores[index]
-    if (typeof score !== "number") return "-"
-    return row.ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
 }
 
 export default function ResultsPage() {
@@ -899,6 +894,7 @@ function SummaryStat({ label, value }: { label: string; value: string | number }
 }
 
 function CategoryResults({ category }: { category: ResultCategory }) {
+    const usesInnerTens = category.rows.some((row) => getScoringFormat(row.ruleSet, row).usesInnerTens)
     return (
         <section className="overflow-hidden rounded-lg border border-white/10 bg-neutral-950">
             <div className="border-b border-white/10 p-4 sm:p-5">
@@ -920,7 +916,7 @@ function CategoryResults({ category }: { category: ResultCategory }) {
                             <th className="px-4 py-3">Academy/Range</th>
                             <th className="px-4 py-3">Event</th>
                             <th className="px-4 py-3">Series</th>
-                            <th className="px-4 py-3 text-right">10x</th>
+                            {usesInnerTens && <th className="px-4 py-3 text-right">10x</th>}
                             <th className="px-4 py-3 text-right">Total</th>
                         </tr>
                     </thead>
@@ -936,7 +932,7 @@ function CategoryResults({ category }: { category: ResultCategory }) {
                                 <td className="px-4 py-3">
                                     <SeriesStrip row={row} />
                                 </td>
-                                <td className="px-4 py-3 text-right font-bold">{row.scored ? row.innerTenCount : "-"}</td>
+                                {usesInnerTens && <td className="px-4 py-3 text-right font-bold">{row.scored && getScoringFormat(row.ruleSet, row).usesInnerTens ? row.innerTenCount : "-"}</td>}
                                 <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.scored ? row.displayTotal : "-"}</td>
                             </tr>
                         ))}
@@ -948,6 +944,7 @@ function CategoryResults({ category }: { category: ResultCategory }) {
 }
 
 function MobileResultCard({ row }: { row: ResultRow }) {
+    const usesInnerTens = getScoringFormat(row.ruleSet, row).usesInnerTens
     return (
         <article className="rounded-md border border-white/10 bg-white/[0.035] p-4">
             <div className="flex items-start justify-between gap-3">
@@ -961,9 +958,9 @@ function MobileResultCard({ row }: { row: ResultRow }) {
                 <RankPill rank={row.rank} />
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className={`mt-4 grid ${usesInnerTens ? "grid-cols-3" : "grid-cols-2"} gap-2`}>
                 <MiniMetric label="Total" value={row.scored ? row.displayTotal : "-"} strong />
-                <MiniMetric label="10x" value={row.scored ? row.innerTenCount : "-"} />
+                {usesInnerTens && <MiniMetric label="10x" value={row.scored ? row.innerTenCount : "-"} />}
                 <MiniMetric label="Status" value={row.scored ? "Scored" : "Pending"} />
             </div>
 
@@ -995,14 +992,5 @@ function MiniMetric({ label, value, strong }: { label: string; value: string | n
 
 function SeriesStrip({ row }: { row: ResultRow }) {
     if (!row.scored) return <p className="text-sm text-white/40">Score pending</p>
-
-    return (
-        <div className="flex max-w-full flex-wrap gap-1.5">
-            {row.seriesScores.map((_, index) => (
-                <span key={index} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs font-semibold text-white/70">
-                    S{index + 1}: {seriesLabel(row, index)}
-                </span>
-            ))}
-        </div>
-    )
+    return <ScoreSeries entry={row} />
 }

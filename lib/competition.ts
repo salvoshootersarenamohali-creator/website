@@ -767,7 +767,8 @@ export function getSeriesCount(ruleSet: RuleSet) {
     return ruleSet === "ISSF" ? 6 : 4
 }
 
-type ScoringCategory = {
+export type ScoringCategory = {
+    eventId?: string | null
     categoryCode?: string | null
     categoryLabel?: string | null
     code?: string | null
@@ -786,7 +787,56 @@ export function isLittleChampCategory(category: ScoringCategory) {
 }
 
 export function getScoringSeriesCount(ruleSet: RuleSet, category: ScoringCategory) {
-    return isLittleChampCategory(category) ? 4 : getSeriesCount(ruleSet)
+    return getScoringFormat(ruleSet, category).seriesCount
+}
+
+export type ScoringFormat = {
+    isEventSpecific: boolean
+    seriesCount: number
+    shotsPerSeries: number
+    maxSeriesScore: number
+    maxTotalScore: number
+    decimalPlaces: number
+    usesInnerTens: boolean
+    stages: { label: string; startIndex: number; seriesCount: number; maxScore: number }[]
+}
+
+const stagedPistolEvents = new Set([
+    "nr-25m-sports-pistol", "issf-25m-sports-pistol",
+    "nr-25m-center-fire", "issf-25m-center-fire",
+])
+const freePistolEvents = new Set(["nr-50m-free-pistol", "issf-50m-free-pistol"])
+
+export function getScoringFormat(ruleSet: RuleSet, category: ScoringCategory = {}): ScoringFormat {
+    const eventId = category.eventId ?? ""
+    const staged = stagedPistolEvents.has(eventId)
+    const freePistol = freePistolEvents.has(eventId)
+    const isEventSpecific = staged || freePistol
+    const seriesPerStage = ruleSet === "ISSF" ? 6 : 3
+    const seriesCount = staged ? seriesPerStage * 2 : freePistol ? seriesPerStage
+        : isLittleChampCategory(category) ? 4 : getSeriesCount(ruleSet)
+    const maxSeriesScore = staged ? 50 : isEventSpecific || ruleSet === "NR" ? 100 : 109
+    return {
+        isEventSpecific,
+        seriesCount,
+        shotsPerSeries: staged ? 5 : 10,
+        maxSeriesScore,
+        maxTotalScore: seriesCount * maxSeriesScore,
+        decimalPlaces: isEventSpecific || ruleSet === "NR" ? 0 : 1,
+        usesInnerTens: !isEventSpecific,
+        stages: staged ? [
+            { label: "Precision", startIndex: 0, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 },
+            { label: "Duelling", startIndex: seriesPerStage, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 },
+        ] : [],
+    }
+}
+
+export function isValidSeriesTotal(value: unknown, format: ScoringFormat) {
+    if (typeof value !== "number" && typeof value !== "string") return false
+    const text = String(value).trim()
+    const validFormat = format.decimalPlaces ? /^\d{1,3}(\.\d)?$/.test(text) : /^\d{1,3}$/.test(text)
+    const score = Number(text)
+    return validFormat && Number.isFinite(score) && score >= 0 && score <= format.maxSeriesScore
 }
 
 export const SHOTS_PER_SERIES = 10

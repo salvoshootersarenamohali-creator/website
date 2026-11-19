@@ -20,6 +20,8 @@ import {
     getEntryFee,
     getEventById,
     getScoringSeriesCount,
+    getScoringFormat,
+    isValidSeriesTotal,
     isOnlinePaymentMode,
     normalizeCompetitionConfig,
     LITTLE_CHAMP_ENTRY_FEE,
@@ -37,6 +39,8 @@ import {
 import {
     categorySortValue,
     formatScore,
+    formatResultTotal,
+    getStageTotals,
     getRuleSet,
     isEntryScored,
     isTopResultCategory,
@@ -48,6 +52,7 @@ import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
 import { RelaySelector } from "@/components/RelaySelector"
 import { BookedDetailsView } from "@/components/BookedDetailsView"
 import { BharatCupResultImport } from "@/components/BharatCupResultImport"
+import { ScoreSeries } from "@/components/ScoreSeries"
 import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
 
 type PaymentStatus = "Pending" | "Paid" | "Sponsored"
@@ -210,14 +215,6 @@ function entryKey(entry: Pick<AdminEntry, "eventId" | "categoryCode"> | Selected
     return `${entry.eventId}:${entry.categoryCode}`
 }
 
-function isValidSeriesTotalText(value: string, ruleSet: "NR" | "ISSF") {
-    const text = value.trim()
-    const score = Number(text)
-    const validFormat = ruleSet === "ISSF" ? /^\d{1,3}(\.\d)?$/.test(text) : /^\d{1,3}$/.test(text)
-    const maxScore = ruleSet === "ISSF" ? 109 : 100
-    return Boolean(text) && validFormat && Number.isFinite(score) && score >= 0 && score <= maxScore
-}
-
 function isValidInnerTenText(value: string, max: number) {
     const text = value.trim()
     const count = Number(text)
@@ -235,9 +232,12 @@ function buildWhatsAppScoreUrl(registration: Pick<AdminRegistration, "name" | "p
     const phone = normalizeWhatsAppPhone(registration.phone)
     if (!phone || !isEntryScored(entry)) return ""
 
+    const format = getScoringFormat(getRuleSet(entry), entry)
+    const stages = getStageTotals(entry).map((stage) => `${stage.label}: ${stage.total} / ${stage.maxScore}.`)
     const message = [
         `Hi ${registration.name}, your score for ${entry.categoryCode} - ${entry.categoryLabel} has been uploaded.`,
-        `Total: ${formatScore(entry.totalScore, getRuleSet(entry))}, 10x: ${entry.innerTenCount}.`,
+        ...stages,
+        `Total: ${formatResultTotal(entry)}${format.usesInnerTens ? `, 10x: ${entry.innerTenCount}` : ""}.`,
         `View your live category ranking here: ${resultsUrl}`,
     ].join(" ")
 
@@ -594,7 +594,7 @@ export default function SalvoCupAdminPage() {
                             competitionConfig.relayBooking.enabled ? <BookedDetailsView registrations={registrations} config={competitionConfig} title={competitionTitle} venue={competition?.venue ?? ""} slug={competitionSlug} adminPin={activePin} /> : <DetailsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} />
                         ) : (
                             <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
-                                <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                                <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
                                     <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px_220px]">
                                         <label className="relative">
                                             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
@@ -655,7 +655,7 @@ export default function SalvoCupAdminPage() {
                                     )}
                                 </section>
 
-                                <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
+                                <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
                                     {selected ? (
                                         <RegistrationDetail registration={selected} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} onChanged={() => loadRegistrations()} />
                                     ) : (
@@ -1466,7 +1466,7 @@ function ResultsView({
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black">Category Results</h2>
-                    <p className="mt-1 text-sm text-white/50">Ranks use total, total 10x, then series totals from last series backward.</p>
+                    <p className="mt-1 text-sm text-white/50">Ranks use total, then 10x where counted, then series totals from last series backward.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <button onClick={downloadCategoryResults} disabled={downloadState === "saving"} className="admin-button disabled:opacity-50">
@@ -1512,7 +1512,8 @@ function ResultsView({
                                         <th className="px-4 py-3">Shooter</th>
                                         <th className="px-4 py-3">Academy/Range</th>
                                         <th className="px-4 py-3">Event</th>
-                                        <th className="px-4 py-3 text-right">10x</th>
+                                        <th className="px-4 py-3">Series</th>
+                                        {category.rows.some((row) => getScoringFormat(getRuleSet(row.entry), row.entry).usesInnerTens) && <th className="px-4 py-3 text-right">10x</th>}
                                         <th className="px-4 py-3 text-right">Total</th>
                                     </tr>
                                 </thead>
@@ -1523,8 +1524,9 @@ function ResultsView({
                                             <td className="px-4 py-3">{row.registration.name}</td>
                                             <td className="px-4 py-3 text-white/65">{row.registration.academy}</td>
                                             <td className="px-4 py-3 text-white/65">{row.entry.eventTitle}</td>
-                                            <td className="px-4 py-3 text-right font-bold">{isEntryScored(row.entry) ? row.entry.innerTenCount : "-"}</td>
-                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{row.rank ? formatScore(row.entry.totalScore, getRuleSet(row.entry)) : "-"}</td>
+                                            <td className="px-4 py-3"><ScoreSeries entry={row.entry} /></td>
+                                            {category.rows.some((item) => getScoringFormat(getRuleSet(item.entry), item.entry).usesInnerTens) && <td className="px-4 py-3 text-right font-bold">{getScoringFormat(getRuleSet(row.entry), row.entry).usesInnerTens && isEntryScored(row.entry) ? row.entry.innerTenCount : "-"}</td>}
+                                            <td className="px-4 py-3 text-right text-lg font-black text-[#D4AF37]">{formatResultTotal(row.entry)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1845,17 +1847,19 @@ function RegistrationDetail({
                 ))}
             </div>
 
-            <div className="print-card salvo-competitor-card bg-white text-black">
-                <div className="salvo-print-header">
-                    <div className="salvo-print-logo-frame">
-                        <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={260} height={104} className="salvo-print-logo" />
+            <div className="overflow-x-auto print:overflow-visible">
+                <div className="print-card salvo-competitor-card bg-white text-black">
+                    <div className="salvo-print-header">
+                        <div className="salvo-print-logo-frame">
+                            <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={260} height={104} className="salvo-print-logo" />
+                        </div>
+                        <h2>{competitionTitle} Shooting Championship</h2>
+                        <h3>COMPETITOR CARD</h3>
                     </div>
-                    <h2>{competitionTitle} Shooting Championship</h2>
-                    <h3>COMPETITOR CARD</h3>
+                    <PrintableCard registration={registration} variant="competitor" />
+                    <div className="salvo-section-divider" />
+                    <PrintableCard registration={registration} variant="office" />
                 </div>
-                <PrintableCard registration={registration} variant="competitor" />
-                <div className="salvo-section-divider" />
-                <PrintableCard registration={registration} variant="office" />
             </div>
         </div>
     )
@@ -2407,24 +2411,26 @@ function ScoreRow({
     onChanged: () => void
 }) {
     const ruleSet = getRuleSet(entry)
-    const seriesCount = getScoringSeriesCount(ruleSet, entry)
+    const format = getScoringFormat(ruleSet, entry)
+    const seriesCount = format.seriesCount
     const initialSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
     const savedScore = isEntryScored(entry)
-    const maxInnerTenCount = seriesCount * 10
-    const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => String(initialSeriesScores[index] ?? "")))
+    const incompatibleScore = format.isEventSpecific && !savedScore && (initialSeriesScores.length > 0 || entry.totalScore !== null)
+    const maxInnerTenCount = seriesCount * format.shotsPerSeries
+    const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => incompatibleScore ? "" : String(initialSeriesScores[index] ?? "")))
     const [innerTenCount, setInnerTenCount] = React.useState(savedScore || entry.bharatCupResult ? String(entry.innerTenCount) : "")
     const [saving, setSaving] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [error, setError] = React.useState("")
     const parsedSeriesScores = seriesScores.map((score) => Number(score))
-    const validSeriesScores = parsedSeriesScores.filter((score, index) => isValidSeriesTotalText(seriesScores[index], ruleSet) && Number.isFinite(score))
-    const validInnerTenCount = isValidInnerTenText(innerTenCount, maxInnerTenCount)
+    const validSeriesScores = parsedSeriesScores.filter((score, index) => isValidSeriesTotal(seriesScores[index], format) && Number.isFinite(score))
+    const validInnerTenCount = !format.usesInnerTens || isValidInnerTenText(innerTenCount, maxInnerTenCount)
     const invalidSeriesScoreIndexes = seriesScores
         .map((score, index) => ({ score, index }))
-        .filter(({ score }) => score.trim() && !isValidSeriesTotalText(score, ruleSet))
+        .filter(({ score }) => score.trim() && !isValidSeriesTotal(score, format))
         .map(({ index }) => index)
     const invalidInnerTenCount = innerTenCount.trim() && !validInnerTenCount
-    const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
+    const liveTotal = Number(validSeriesScores.reduce((sum, score) => sum + score, 0).toFixed(format.decimalPlaces))
     const liveInnerTens = validInnerTenCount ? Number(innerTenCount) : entry.innerTenCount
     const complete = validSeriesScores.length === seriesCount && validInnerTenCount
     const resultsUrl = typeof window === "undefined" ? `/competitions/${competitionSlug}/results` : `${window.location.origin}/competitions/${competitionSlug}/results`
@@ -2432,27 +2438,28 @@ function ScoreRow({
 
     React.useEffect(() => {
         const currentSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
-        setSeriesScores(Array.from({ length: seriesCount }, (_, index) => String(currentSeriesScores[index] ?? "")))
+        setSeriesScores(Array.from({ length: seriesCount }, (_, index) => incompatibleScore ? "" : String(currentSeriesScores[index] ?? "")))
         setInnerTenCount(savedScore || entry.bharatCupResult ? String(entry.innerTenCount) : "")
         setError("")
-    }, [entry.id, entry.seriesScores, entry.innerTenCount, entry.bharatCupResult, savedScore, seriesCount])
+    }, [entry.id, entry.seriesScores, entry.innerTenCount, entry.bharatCupResult, savedScore, seriesCount, incompatibleScore])
 
     const updateSeriesScore = (index: number, value: string) => {
         const next = [...seriesScores]
         next[index] = value.trim()
         setSeriesScores(next)
+        setError("")
     }
 
     const save = async () => {
         if (!complete) {
-            const totalText = ruleSet === "ISSF" ? "0.0 to 109.0 with at most one decimal" : "0 to 100 as whole numbers"
+            const totalText = `0 to ${format.maxSeriesScore} ${format.decimalPlaces ? "with at most one decimal" : "as whole numbers"}`
             const invalidScore = invalidSeriesScoreIndexes[0]
             if (invalidScore !== undefined) {
                 setError(`Series ${invalidScore + 1} total must be ${totalText}.`)
             } else if (invalidInnerTenCount) {
                 setError(`Total 10x must be a whole number from 0 to ${maxInnerTenCount}.`)
             } else {
-                setError(`Enter all ${seriesCount} series totals (${totalText}) and total 10x from 0 to ${maxInnerTenCount}.`)
+                setError(`Enter all ${seriesCount} series totals (${totalText})${format.usesInnerTens ? ` and total 10x from 0 to ${maxInnerTenCount}` : ""}.`)
             }
             return
         }
@@ -2463,7 +2470,7 @@ function ScoreRow({
             const response = await fetch(scopedAdminPath(competitionSlug, `/entries/${entry.id}/score`), {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ seriesScores, innerTenCount }),
+                body: JSON.stringify({ seriesScores, ...(format.usesInnerTens ? { innerTenCount } : {}) }),
             })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save score.")
@@ -2509,12 +2516,12 @@ function ScoreRow({
                             </span>
                         )}
                     </div>
-                    <p className="text-sm text-white/45">{entry.ruleSet} | {seriesCount} series | enter series totals and total 10x</p>
+                    <p className="text-sm text-white/45">{entry.ruleSet} | {seriesCount} series × {format.shotsPerSeries} shots | enter series totals{format.usesInnerTens ? " and total 10x" : ""}</p>
                 </div>
                 <div className="flex flex-wrap items-start justify-end gap-2">
-                    <div className="grid grid-cols-3 gap-2 text-right">
-                        <MiniCount label="Total" value={complete ? formatScore(liveTotal, ruleSet) : formatScore(entry.totalScore, ruleSet)} />
-                        <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />
+                    <div className={`grid ${format.usesInnerTens ? "grid-cols-3" : "grid-cols-2"} gap-2 text-right`}>
+                        <MiniCount label="Total" value={format.isEventSpecific ? `${formatScore(liveTotal, ruleSet, entry)} / ${format.maxTotalScore}` : complete ? formatScore(liveTotal, ruleSet, entry) : formatScore(entry.totalScore, ruleSet, entry)} />
+                        {format.usesInnerTens && <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />}
                         <MiniCount label="Scores" value={`${validSeriesScores.length}/${seriesCount}`} />
                     </div>
                     <button
@@ -2550,7 +2557,8 @@ function ScoreRow({
                     Series 2 is under review. The workbook lists {entry.bharatCupResult.flaggedSeriesTwo} and a total of {entry.totalScore}.
                 </p>
             )}
-            <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-3">
+            {incompatibleScore && <p className="mb-4 rounded-md border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">The saved score does not match this event’s format. Re-enter all series to update it.</p>}
+            {format.usesInnerTens && <div className="mb-4 rounded-md border border-white/10 bg-black/25 p-3">
                 <label>
                     <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Total 10x in match</span>
                     <input
@@ -2561,26 +2569,32 @@ function ScoreRow({
                         placeholder="0"
                     />
                 </label>
-            </div>
+            </div>}
 
             <div className="space-y-4">
-                {Array.from({ length: seriesCount }, (_, seriesIndex) => (
-                    <div key={seriesIndex} className="rounded-md border border-white/10 bg-black/25 p-3">
-                        <div className="mb-3">
-                            <p className="font-bold text-[#D4AF37]">Series {seriesIndex + 1}</p>
+                {(format.stages.length ? format.stages : [{ label: "", startIndex: 0, seriesCount, maxScore: format.maxTotalScore }]).map((stage) => {
+                    const subtotal = seriesScores.slice(stage.startIndex, stage.startIndex + stage.seriesCount)
+                        .reduce((sum, score) => sum + (isValidSeriesTotal(score, format) ? Number(score) : 0), 0)
+                    return <fieldset key={stage.label} className="min-w-0 rounded-md border border-white/10 bg-black/25 p-3">
+                        {stage.label && <legend className="px-2 font-bold text-[#D4AF37]">{stage.label} — {subtotal} / {stage.maxScore}</legend>}
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            {Array.from({ length: stage.seriesCount }, (_, index) => {
+                                const seriesIndex = stage.startIndex + index
+                                return <label key={seriesIndex} className="min-w-0">
+                                    <span className="mb-1 block text-xs font-bold text-white/60">{stage.label ? `${stage.label} ` : ""}Series {index + 1}{format.isEventSpecific ? ` / ${format.maxSeriesScore}` : ""}</span>
+                                    <input
+                                        aria-label={`${stage.label ? `${stage.label} ` : ""}Series ${index + 1}`}
+                                        value={seriesScores[seriesIndex]}
+                                        onChange={(event) => updateSeriesScore(seriesIndex, event.target.value)}
+                                        className={`field w-full min-w-0 px-3 py-2 text-center ${invalidSeriesScoreIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
+                                        inputMode={format.decimalPlaces ? "decimal" : "numeric"}
+                                        placeholder={format.decimalPlaces ? "103.4" : format.maxSeriesScore === 50 ? "45" : "95"}
+                                    />
+                                </label>
+                            })}
                         </div>
-                        <label>
-                            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-white/45">Series Total</span>
-                            <input
-                                value={seriesScores[seriesIndex]}
-                                onChange={(event) => updateSeriesScore(seriesIndex, event.target.value)}
-                                className={`field px-3 py-2 text-center ${invalidSeriesScoreIndexes.includes(seriesIndex) ? "border-red-400 text-red-200" : ""}`}
-                                inputMode={ruleSet === "ISSF" ? "decimal" : "numeric"}
-                                placeholder={ruleSet === "ISSF" ? "103.4" : "95"}
-                            />
-                        </label>
-                    </div>
-                ))}
+                    </fieldset>
+                })}
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -2590,7 +2604,7 @@ function ScoreRow({
                 {error ? (
                     <p className="text-sm text-red-300">{error}</p>
                 ) : (
-                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : "Complete all series totals and total 10x to rank this entry."}</p>
+                    <p className="text-sm text-white/45">{complete ? "Ready for ranking." : `Complete all series totals${format.usesInnerTens ? " and total 10x" : ""} to rank this entry.`}</p>
                 )}
             </div>
         </div>

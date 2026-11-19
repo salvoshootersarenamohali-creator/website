@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { Prisma } from "@prisma/client"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
-import { getScoringSeriesCount } from "@/lib/competition"
+import { getScoringFormat, isValidSeriesTotal } from "@/lib/competition"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 
@@ -31,7 +31,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         if (entry.registration.competitionId !== competition.id) return Response.json({ error: "Entry not found for this competition." }, { status: 404 })
 
         const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
-        const expectedSeries = getScoringSeriesCount(ruleSet, entry)
+        const format = getScoringFormat(ruleSet, entry)
+        const expectedSeries = format.seriesCount
 
         if (rawSeriesScores.length !== expectedSeries) {
             return Response.json({ error: `${entry.ruleSet} entries require ${expectedSeries} series totals.` }, { status: 400 })
@@ -41,23 +42,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         for (const score of rawSeriesScores) {
             const text = String(score).trim()
             const value = Number(text)
-            const validFormat = ruleSet === "ISSF" ? /^\d{1,3}(\.\d)?$/.test(text) : /^\d{1,3}$/.test(text)
-            const maxScore = ruleSet === "ISSF" ? 109 : 100
-
-            if (!validFormat) {
-                const ruleText = ruleSet === "ISSF" ? "at most one decimal place" : "whole numbers only"
-                return Response.json({ error: `${entry.ruleSet} series totals must use ${ruleText}.` }, { status: 400 })
-            }
-            if (!Number.isFinite(value) || value < 0 || value > maxScore) {
-                return Response.json({ error: `${entry.ruleSet} series totals must be from 0 to ${maxScore}.` }, { status: 400 })
+            if (!isValidSeriesTotal(score, format)) {
+                const ruleText = format.decimalPlaces ? "with at most one decimal place" : "as whole numbers"
+                return Response.json({ error: `Series totals must be from 0 to ${format.maxSeriesScore} ${ruleText}.` }, { status: 400 })
             }
 
-            seriesScores.push(ruleSet === "ISSF" ? Number(value.toFixed(1)) : value)
+            seriesScores.push(Number(value.toFixed(format.decimalPlaces)))
         }
 
-        const maxInnerTenCount = expectedSeries * 10
+        const maxInnerTenCount = expectedSeries * format.shotsPerSeries
         let parsedInnerTenCount = 0
-        if (rawInnerTenCount !== undefined && rawInnerTenCount !== null) {
+        if (!format.usesInnerTens) {
+            parsedInnerTenCount = 0
+        } else if (rawInnerTenCount !== undefined && rawInnerTenCount !== null) {
             const innerTenText = String(rawInnerTenCount).trim()
             parsedInnerTenCount = Number(innerTenText)
             if (!/^\d{1,3}$/.test(innerTenText) || !Number.isInteger(parsedInnerTenCount) || parsedInnerTenCount < 0 || parsedInnerTenCount > maxInnerTenCount) {
@@ -78,7 +75,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             return Response.json({ error: `Total 10x must be a whole number from 0 to ${maxInnerTenCount}.` }, { status: 400 })
         }
 
-        const totalScore = Number(seriesScores.reduce((sum, score) => sum + score, 0).toFixed(ruleSet === "ISSF" ? 1 : 0))
+        const totalScore = Number(seriesScores.reduce((sum, score) => sum + score, 0).toFixed(format.decimalPlaces))
 
         const updated = await prisma.registrationEntry.update({
             where: { id },

@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server"
 import { getCompetitionBySlugOrActive, getCompetitionSlugFromRequest, serializeCompetition } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
-import { categorySortValue, formatScore, getRuleSet, getSeriesScores, isEntryScored, isTopResultCategory, rankRows } from "@/lib/results"
+import { categorySortValue, formatResultTotal, getRuleSet, getSeriesScores, isEntryScored, isTopResultCategory, rankRows } from "@/lib/results"
+import { getScoringFormat } from "@/lib/competition"
 
 export const dynamic = "force-dynamic"
 
@@ -62,9 +63,9 @@ export async function GET(request: NextRequest) {
                 ruleSet,
                 scored: isEntryScored(row.entry),
                 seriesScores,
-                innerTenCount: row.entry.innerTenCount,
+                innerTenCount: getScoringFormat(ruleSet, row.entry).usesInnerTens ? row.entry.innerTenCount : 0,
                 totalScore: row.entry.totalScore,
-                displayTotal: formatScore(row.entry.totalScore, ruleSet),
+                displayTotal: formatResultTotal(row.entry),
                 isPara: row.entry.isPara,
             }
         }

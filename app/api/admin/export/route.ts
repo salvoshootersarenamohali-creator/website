@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
-import { formatCurrency, getPaymentModeLabel, normalizeCompetitionConfig } from "@/lib/competition"
+import { formatCurrency, getPaymentModeLabel, getScoringFormat, normalizeCompetitionConfig } from "@/lib/competition"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
 import { getDisciplineLabel } from "@/lib/team-entries"
+import { registrationScoreColumns } from "@/lib/score-export"
+import { getRuleSet } from "@/lib/results"
 
 function formatDate(value: Date) {
     return value.toISOString().slice(0, 10)
@@ -21,11 +23,6 @@ function formatPaymentMode(mode: string) {
 function formatPaymentAmount(record: { amount: number; paymentStatus: string; paymentMode?: string }) {
     const paymentLabel = record.paymentMode ? `${formatPaymentMode(record.paymentMode)} - ${record.paymentStatus}` : record.paymentStatus
     return `${formatCurrency(record.amount)} (${paymentLabel})`
-}
-
-function formatScore(score: unknown, ruleSet: "NR" | "ISSF") {
-    if (typeof score !== "number") return ""
-    return ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
 }
 
 export async function GET(request: NextRequest) {
@@ -65,11 +62,11 @@ export async function GET(request: NextRequest) {
             },
         })
 
+        const formats = registrations.flatMap((registration) => registration.entries.map((entry) => getScoringFormat(getRuleSet(entry), entry)))
+        const exportSeriesCount = Math.max(6, ...formats.map((format) => format.seriesCount))
+        const includeStages = formats.some((format) => format.stages.length > 0)
         const registrationRows = registrations.flatMap((registration, index) =>
             registration.entries.map((entry) => {
-                const ruleSet = entry.ruleSet === "ISSF" ? "ISSF" : "NR"
-                const scores = Array.isArray(entry.seriesScores) ? entry.seriesScores as number[] : []
-
                 return {
                     "Sr. No.": index + 1,
                     Name: registration.name,
@@ -81,14 +78,7 @@ export async function GET(request: NextRequest) {
                     Event: entry.eventTitle,
                     Category: entry.categoryCode,
                     "Category Name": entry.categoryLabel,
-                    "Series 1": formatScore(scores[0], ruleSet),
-                    "Series 2": formatScore(scores[1], ruleSet),
-                    "Series 3": formatScore(scores[2], ruleSet),
-                    "Series 4": formatScore(scores[3], ruleSet),
-                    "Series 5": formatScore(scores[4], ruleSet),
-                    "Series 6": formatScore(scores[5], ruleSet),
-                    Total: formatScore(entry.totalScore, ruleSet),
-                    "10x": entry.innerTenCount,
+                    ...registrationScoreColumns(entry, exportSeriesCount, includeStages),
                     "Payment Status": registration.paymentStatus,
                     "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
                     "Payment Confirmed At": formatOptionalDate(registration.paymentConfirmedAt),

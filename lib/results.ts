@@ -1,6 +1,7 @@
-import { getScoringSeriesCount, isLittleChampCategory } from "@/lib/competition"
+import { getScoringFormat, isLittleChampCategory, isValidSeriesTotal, type ScoringCategory } from "@/lib/competition"
 
 export type ResultEntryLike = {
+    eventId?: string | null
     categoryCode: string
     ruleSet: string
     seriesScores: unknown
@@ -45,12 +46,35 @@ export function getSeriesScores(entry: Pick<ResultEntryLike, "seriesScores">) {
 }
 
 export function isEntryScored(entry: ResultEntryLike) {
-    return getSeriesScores(entry).length === getScoringSeriesCount(getRuleSet(entry), entry)
+    const format = getScoringFormat(getRuleSet(entry), entry)
+    if (!format.isEventSpecific) return getSeriesScores(entry).length === format.seriesCount
+    const scores = entry.seriesScores
+    return Array.isArray(scores) && scores.length === format.seriesCount
+        && scores.every((score) => typeof score === "number" && isValidSeriesTotal(score, format))
+        && typeof entry.totalScore === "number" && Number.isFinite(entry.totalScore)
+        && entry.totalScore === scores.reduce((sum, score: number) => sum + score, 0)
 }
 
-export function formatScore(score: number | null | undefined, ruleSet: "NR" | "ISSF" = "ISSF") {
+export function formatScore(score: number | null | undefined, ruleSet: "NR" | "ISSF" = "ISSF", category: ScoringCategory = {}) {
     if (typeof score !== "number") return "-"
-    return ruleSet === "NR" ? score.toFixed(0) : score.toFixed(1)
+    return score.toFixed(getScoringFormat(ruleSet, category).decimalPlaces)
+}
+
+export function formatResultTotal(entry: ResultEntryLike) {
+    if (!isEntryScored(entry)) return "-"
+    const format = getScoringFormat(getRuleSet(entry), entry)
+    return formatScore(entry.totalScore, getRuleSet(entry), entry) + (format.isEventSpecific ? ` / ${format.maxTotalScore}` : "")
+}
+
+export function getStageTotals(entry: Pick<ResultEntryLike, "ruleSet" | "eventId" | "seriesScores">) {
+    const format = getScoringFormat(getRuleSet(entry), entry)
+    const scores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
+    return format.stages.map((stage) => {
+        const stageScores = scores.slice(stage.startIndex, stage.startIndex + stage.seriesCount)
+        const complete = stageScores.length === stage.seriesCount
+            && stageScores.every((score) => typeof score === "number" && isValidSeriesTotal(score, format))
+        return { ...stage, total: complete ? stageScores.reduce((sum: number, score: number) => sum + score, 0) : null }
+    })
 }
 
 export function rankRows<TRegistration extends ResultRegistrationLike, TEntry extends ResultEntryLike>(
@@ -67,6 +91,7 @@ export function rankRows<TRegistration extends ResultRegistrationLike, TEntry ex
         return 0
     }
     const hasSameSeriesScores = (a: TEntry, b: TEntry) => compareSeriesScores(a, b) === 0
+    const innerTens = (entry: TEntry) => getScoringFormat(getRuleSet(entry), entry).usesInnerTens ? entry.innerTenCount : 0
 
     const sorted = [...rows].sort((a, b) => {
         const aScored = isEntryScored(a.entry)
@@ -74,7 +99,7 @@ export function rankRows<TRegistration extends ResultRegistrationLike, TEntry ex
         if (aScored !== bScored) return aScored ? -1 : 1
         if (!aScored || !bScored) return a.registration.name.localeCompare(b.registration.name)
         if (a.entry.totalScore !== b.entry.totalScore) return (b.entry.totalScore ?? 0) - (a.entry.totalScore ?? 0)
-        if (a.entry.innerTenCount !== b.entry.innerTenCount) return b.entry.innerTenCount - a.entry.innerTenCount
+        if (innerTens(a.entry) !== innerTens(b.entry)) return innerTens(b.entry) - innerTens(a.entry)
         const seriesScoreDiff = compareSeriesScores(a.entry, b.entry)
         if (seriesScoreDiff !== 0) return seriesScoreDiff
         return a.registration.name.localeCompare(b.registration.name)
@@ -87,7 +112,7 @@ export function rankRows<TRegistration extends ResultRegistrationLike, TEntry ex
         const sameTie = previous
             && isEntryScored(previous.entry)
             && previous.entry.totalScore === row.entry.totalScore
-            && previous.entry.innerTenCount === row.entry.innerTenCount
+            && innerTens(previous.entry) === innerTens(row.entry)
             && hasSameSeriesScores(previous.entry, row.entry)
         const rank = sameTie ? previousRank : index + 1
         previous = row
