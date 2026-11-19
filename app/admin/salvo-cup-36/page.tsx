@@ -2577,7 +2577,7 @@ function ScoreRow({
                         .reduce((sum, score) => sum + (isValidSeriesTotal(score, format) ? Number(score) : 0), 0)
                     return <fieldset key={stage.label} className="min-w-0 rounded-md border border-white/10 bg-black/25 p-3">
                         {stage.label && <legend className="px-2 font-bold text-[#D4AF37]">{stage.label} — {subtotal} / {stage.maxScore}</legend>}
-                        <div className="grid gap-3 sm:grid-cols-3">
+                        <div className={`grid gap-3 ${stage.seriesCount % 3 === 0 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                             {Array.from({ length: stage.seriesCount }, (_, index) => {
                                 const seriesIndex = stage.startIndex + index
                                 return <label key={seriesIndex} className="min-w-0">

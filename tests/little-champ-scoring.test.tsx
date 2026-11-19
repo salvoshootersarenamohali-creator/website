@@ -54,5 +54,5 @@ it("renders and exports two series, a total out of 200, and the existing 10x cou
     expect(html.match(/S\d:/g)).toHaveLength(2)
     expect(html).toContain("95 / 100")
     expect(categoryScoreColumns(scored)).toEqual({ "Series 1 /100": "95", "Series 2 /100": "96", "Total 10x": 10, "Total Score /200": "191", Status: "Scored" })
-    expect(registrationScoreColumns(scored, 6, false)).toMatchObject({ "Series 1": "95", "Series 2": "96", "Series 3": "", Total: "191", "10x": 10 })
+    expect(registrationScoreColumns(scored, 6, [])).toMatchObject({ "Series 1": "95", "Series 2": "96", "Series 3": "", Total: "191", "10x": 10 })
 })

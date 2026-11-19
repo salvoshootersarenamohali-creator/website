@@ -11,6 +11,8 @@ const formats = [
     ["issf-25m-sports-pistol", "ISSF", 12, 50, 600],
     ["nr-25m-center-fire", "NR", 6, 50, 300],
     ["issf-25m-center-fire", "ISSF", 12, 50, 600],
+    ["nr-25m-standard-pistol", "NR", 6, 50, 300],
+    ["issf-25m-standard-pistol", "ISSF", 12, 50, 600],
     ["nr-50m-free-pistol", "NR", 3, 100, 300],
     ["issf-50m-free-pistol", "ISSF", 6, 100, 600],
 ] as const
@@ -47,17 +49,16 @@ describe.each(formats)("%s scoring", (eventId, ruleSet, count, maximum, total) =
         const saved = entry(eventId, ruleSet, Array(count).fill(maximum - 1))
         const stages = getStageTotals(saved)
         if (maximum === 50) {
-            expect(stages.map(({ total, maxScore }) => [total, maxScore])).toEqual([[count / 2 * 49, total / 2], [count / 2 * 49, total / 2]])
-            const partial = getStageTotals({ ...saved, seriesScores: Array(count / 2).fill(49) })
-            expect(partial[0].total).toBe(count / 2 * 49)
-            expect(partial[1].total).toBeNull()
+            expect(stages.map(({ total, maxScore }) => [total, maxScore])).toEqual(format.stages.map((stage) => [stage.seriesCount * 49, stage.maxScore]))
+            const partial = getStageTotals({ ...saved, seriesScores: Array(stages[0].seriesCount).fill(49) })
+            expect(partial[0].total).toBe(stages[0].seriesCount * 49)
+            expect(partial.slice(1).every((stage) => stage.total === null)).toBe(true)
         } else expect(stages).toEqual([])
         const html = renderToStaticMarkup(createElement(ScoreSeries, { entry: saved }))
         expect(html.match(/S\d:/g)).toHaveLength(count)
         expect(html).not.toContain("10x")
         if (maximum === 50) {
-            expect(html).toContain("Precision:")
-            expect(html).toContain("Duelling:")
+            for (const stage of stages) expect(html).toContain(`${stage.label}:`)
         }
     })
 
@@ -76,14 +77,26 @@ describe.each(formats)("%s scoring", (eventId, ruleSet, count, maximum, total) =
     })
 })
 
-it("retains other Air Pistol, Air Rifle, and Standard Pistol formats", () => {
+it("retains other Air Pistol and Air Rifle formats", () => {
     expect(getScoringFormat("ISSF", { eventId: "issf-air-pistol" })).toMatchObject({ seriesCount: 6, maxSeriesScore: 109, decimalPlaces: 1, usesInnerTens: true })
     expect(getScoringFormat("NR", { eventId: "nr-air-rifle" })).toMatchObject({ seriesCount: 4, maxSeriesScore: 100, usesInnerTens: true })
     expect(getScoringFormat("NR", { categoryCode: "S-19" }).seriesCount).toBe(2)
-    expect(getScoringFormat("NR", { eventId: "nr-25m-standard-pistol" }).seriesCount).toBe(4)
     const a = entry("nr-air-pistol", "NR", [90, 90, 90, 90])
     const ranked = rankRows([{ registration: { name: "Low" }, entry: { ...a, innerTenCount: 0 } }, { registration: { name: "High" }, entry: { ...a, innerTenCount: 20 } }])
     expect(ranked[0].registration.name).toBe("High")
+})
+
+it.each([
+    ["NR", "nr-25m-standard-pistol", 2, 100, [99, 95, 91]],
+    ["ISSF", "issf-25m-standard-pistol", 4, 200, [194, 178, 162]],
+] as const)("groups %s Standard Pistol in 150 sec, 20 sec, and 10 sec order", (ruleSet, eventId, seriesPerStage, stageMaximum, stageTotals) => {
+    const format = getScoringFormat(ruleSet, { eventId })
+    expect(format.seriesCount * format.shotsPerSeries).toBe(ruleSet === "NR" ? 30 : 60)
+    expect(format.stages).toEqual(["150 sec", "20 sec", "10 sec"].map((label, index) => ({ label, startIndex: index * seriesPerStage, seriesCount: seriesPerStage, maxScore: stageMaximum })))
+    const scores = Array.from({ length: format.seriesCount }, (_, index) => 50 - index)
+    expect(getStageTotals(entry(eventId, ruleSet, scores)).map((stage) => stage.total)).toEqual(stageTotals)
+    const oldSeries = Array(ruleSet === "NR" ? 4 : 6).fill(95)
+    expect(isEntryScored(entry(eventId, ruleSet, oldSeries))).toBe(false)
 })
 
 it("uses the new completeness and ranking rules for participant certificates and para entries", () => {

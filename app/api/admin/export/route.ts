@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
         const formats = registrations.flatMap((registration) => registration.entries.map((entry) => getScoringFormat(getRuleSet(entry), entry)))
         const exportSeriesCount = Math.max(6, ...formats.map((format) => format.seriesCount))
-        const includeStages = formats.some((format) => format.stages.length > 0)
+        const stageLabels = [...new Set(formats.flatMap((format) => format.stages.map((stage) => stage.label)))]
         const registrationRows = registrations.flatMap((registration, index) =>
             registration.entries.map((entry) => {
                 return {
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
                     Event: entry.eventTitle,
                     Category: entry.categoryCode,
                     "Category Name": entry.categoryLabel,
-                    ...registrationScoreColumns(entry, exportSeriesCount, includeStages),
+                    ...registrationScoreColumns(entry, exportSeriesCount, stageLabels),
                     "Payment Status": registration.paymentStatus,
                     "Payment Confirmed By": registration.paymentConfirmedBy ?? "",
                     "Payment Confirmed At": formatOptionalDate(registration.paymentConfirmedAt),

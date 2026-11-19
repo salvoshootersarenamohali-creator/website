@@ -33,7 +33,7 @@ beforeEach(() => {
     db.teams.mockResolvedValue([])
 })
 
-describe.each(["nr-25m-sports-pistol", "issf-25m-sports-pistol", "nr-25m-center-fire", "issf-25m-center-fire", "nr-50m-free-pistol", "issf-50m-free-pistol"])("%s public results and category workbook", (eventId) => {
+describe.each(["nr-25m-sports-pistol", "issf-25m-sports-pistol", "nr-25m-center-fire", "issf-25m-center-fire", "nr-25m-standard-pistol", "issf-25m-standard-pistol", "nr-50m-free-pistol", "issf-50m-free-pistol"])("%s public results and category workbook", (eventId) => {
     it("publishes the integer total and ranks regular and para results independently", async () => {
         const regular = shooter(eventId, "B-01")
         db.registrations.mockResolvedValue([regular, shooter(eventId, "B-01", true)])
@@ -76,7 +76,8 @@ it("exports mixed registrations without truncating 12-series scores or changing 
     const staged = shooter("issf-25m-sports-pistol", "B-01")
     const free = shooter("nr-50m-free-pistol", "B-31")
     const air = shooter("issf-air-pistol", "S-01")
-    db.registrations.mockResolvedValue([staged, free, air])
+    const standard = shooter("issf-25m-standard-pistol", "B-09")
+    db.registrations.mockResolvedValue([staged, free, air, standard])
     const response = await registrationExport(new NextRequest("http://localhost/api/admin/competitions/super-cup-2026/export"))
     expect(response.status).toBe(200)
     const workbook = XLSX.read(await response.arrayBuffer(), { type: "array" })
@@ -91,6 +92,16 @@ it("exports mixed registrations without truncating 12-series scores or changing 
     expect(rows[1]["Precision Total"]).toBe("")
     expect(rows[2]["Series 1"]).toBe("109.0")
     expect(rows[2]["10x"]).toBe(20)
+    expect(rows[3]["Series 12"]).toBe("39")
+    expect(rows[3]["150 sec Total"]).toBe(194)
+    expect(rows[3]["20 sec Total"]).toBe(178)
+    expect(rows[3]["10 sec Total"]).toBe(162)
+    expect(rows[3]["150 sec Maximum"]).toBe(200)
+    expect(rows[3]["20 sec Maximum"]).toBe(200)
+    expect(rows[3]["10 sec Maximum"]).toBe(200)
+    expect(rows[3]["Precision Total"]).toBe("")
+    expect(rows[3]["10x"]).toBe("")
+    expect(rows[0]["150 sec Total"]).toBe("")
 })
 
 it("keeps incompatible saved scores pending and out of published totals", async () => {
@@ -120,4 +131,22 @@ it("publishes Little Champ scores out of 200 and exports just two series with 10
     const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(workbook.Sheets["S-19"])
     expect(rows[0]).toMatchObject({ "Series 1 /100": "95", "Series 2 /100": "96", "Total Score /200": "191", "Total 10x": 10 })
     expect(rows[0]).not.toHaveProperty("Series 3 /100")
+})
+
+it.each([
+    ["nr-25m-standard-pistol", "B-27", 100, [99, 95, 91]],
+    ["issf-25m-standard-pistol", "B-09", 200, [194, 178, 162]],
+] as const)("exports %s registration stage totals without Precision or Duelling columns", async (eventId, categoryCode, maximum, totals) => {
+    db.registrations.mockResolvedValue([shooter(eventId, categoryCode)])
+    const response = await registrationExport(new NextRequest("http://localhost/api/admin/export"))
+    expect(response.status).toBe(200)
+    const workbook = XLSX.read(await response.arrayBuffer(), { type: "array" })
+    const row = XLSX.utils.sheet_to_json<Record<string, string | number>>(workbook.Sheets.Registrations)[0]
+    for (const [index, label] of ["150 sec", "20 sec", "10 sec"].entries()) {
+        expect(row[`${label} Total`]).toBe(totals[index])
+        expect(row[`${label} Maximum`]).toBe(maximum)
+    }
+    expect(row).not.toHaveProperty("Precision Total")
+    expect(row).not.toHaveProperty("Duelling Total")
+    expect(row["10x"]).toBe("")
 })

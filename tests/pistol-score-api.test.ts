@@ -21,7 +21,7 @@ beforeEach(() => {
     db.update.mockImplementation(async ({ data }) => ({ id: "test", ...await db.findUnique(), ...data }))
 })
 
-describe.each(["nr-25m-sports-pistol", "issf-25m-sports-pistol", "nr-25m-center-fire", "issf-25m-center-fire", "nr-50m-free-pistol", "issf-50m-free-pistol"])("%s score API", (eventId) => {
+describe.each(["nr-25m-sports-pistol", "issf-25m-sports-pistol", "nr-25m-center-fire", "issf-25m-center-fire", "nr-25m-standard-pistol", "issf-25m-standard-pistol", "nr-50m-free-pistol", "issf-50m-free-pistol"])("%s score API", (eventId) => {
     const ruleSet = eventId.startsWith("issf") ? "ISSF" : "NR"
     const format = getScoringFormat(ruleSet, { eventId })
     beforeEach(() => db.findUnique.mockResolvedValue({ id: "test", eventId, ruleSet, categoryCode: "B-01", registration: { competitionId: "super" } }))

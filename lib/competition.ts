@@ -806,15 +806,18 @@ const stagedPistolEvents = new Set([
     "nr-25m-center-fire", "issf-25m-center-fire",
 ])
 const freePistolEvents = new Set(["nr-50m-free-pistol", "issf-50m-free-pistol"])
+const standardPistolEvents = new Set(["nr-25m-standard-pistol", "issf-25m-standard-pistol"])
 
 export function getScoringFormat(ruleSet: RuleSet, category: ScoringCategory = {}): ScoringFormat {
     const eventId = category.eventId ?? ""
-    const staged = stagedPistolEvents.has(eventId)
+    const standardPistol = standardPistolEvents.has(eventId)
+    const staged = stagedPistolEvents.has(eventId) || standardPistol
     const freePistol = freePistolEvents.has(eventId)
     const littleChamp = !staged && !freePistol && isLittleChampCategory(category)
     const isCustomFormat = staged || freePistol || littleChamp
-    const seriesPerStage = ruleSet === "ISSF" ? 6 : 3
-    const seriesCount = staged ? seriesPerStage * 2 : freePistol ? seriesPerStage
+    const stageLabels = standardPistol ? ["150 sec", "20 sec", "10 sec"] : ["Precision", "Duelling"]
+    const seriesPerStage = standardPistol ? ruleSet === "ISSF" ? 4 : 2 : ruleSet === "ISSF" ? 6 : 3
+    const seriesCount = staged ? seriesPerStage * stageLabels.length : freePistol ? seriesPerStage
         : littleChamp ? 2 : getSeriesCount(ruleSet)
     const maxSeriesScore = staged ? 50 : isCustomFormat || ruleSet === "NR" ? 100 : 109
     return {
@@ -825,10 +828,7 @@ export function getScoringFormat(ruleSet: RuleSet, category: ScoringCategory = {
         maxTotalScore: seriesCount * maxSeriesScore,
         decimalPlaces: isCustomFormat || ruleSet === "NR" ? 0 : 1,
         usesInnerTens: !staged && !freePistol,
-        stages: staged ? [
-            { label: "Precision", startIndex: 0, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 },
-            { label: "Duelling", startIndex: seriesPerStage, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 },
-        ] : [],
+        stages: staged ? stageLabels.map((label, index) => ({ label, startIndex: index * seriesPerStage, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 })) : [],
     }
 }
 
