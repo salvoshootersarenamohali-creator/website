@@ -16,13 +16,13 @@ export function categoryScoreColumns(entry: ResultEntryLike) {
             columns[`${stage.label} Total /${stage.maxScore}`] = scored ? stage.total ?? "" : ""
         }
     } else {
-        const seriesCount = format.isEventSpecific ? format.seriesCount : 6
+        const seriesCount = format.isCustomFormat ? format.seriesCount : 6
         for (let index = 0; index < seriesCount; index++) {
-            columns[`Series ${index + 1}${format.isEventSpecific ? ` /${format.maxSeriesScore}` : ""}`] = scored && scores[index] !== undefined ? formatScore(scores[index], ruleSet, entry) : ""
+            columns[`Series ${index + 1}${format.isCustomFormat ? ` /${format.maxSeriesScore}` : ""}`] = scored && scores[index] !== undefined ? formatScore(scores[index], ruleSet, entry) : ""
         }
     }
     if (format.usesInnerTens) columns["Total 10x"] = scored ? entry.innerTenCount : ""
-    columns[`Total Score${format.isEventSpecific ? ` /${format.maxTotalScore}` : ""}`] = scored ? formatScore(entry.totalScore, ruleSet, entry) : ""
+    columns[`Total Score${format.isCustomFormat ? ` /${format.maxTotalScore}` : ""}`] = scored ? formatScore(entry.totalScore, ruleSet, entry) : ""
     columns.Status = scored ? "Scored" : "Pending"
     return columns
 }
@@ -31,7 +31,7 @@ export function registrationScoreColumns(entry: ResultEntryLike, seriesCount: nu
     const ruleSet = getRuleSet(entry)
     const format = getScoringFormat(ruleSet, entry)
     const scores = getSeriesScores(entry)
-    const compatible = !format.isEventSpecific || isEntryScored(entry)
+    const compatible = !format.isCustomFormat || isEntryScored(entry)
     const columns: Record<string, string | number> = {}
     for (let index = 0; index < seriesCount; index++) {
         columns[`Series ${index + 1}`] = compatible && scores[index] !== undefined ? formatScore(scores[index], ruleSet, entry) : ""

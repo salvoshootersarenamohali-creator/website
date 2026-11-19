@@ -2415,7 +2415,7 @@ function ScoreRow({
     const seriesCount = format.seriesCount
     const initialSeriesScores = Array.isArray(entry.seriesScores) ? entry.seriesScores : []
     const savedScore = isEntryScored(entry)
-    const incompatibleScore = format.isEventSpecific && !savedScore && (initialSeriesScores.length > 0 || entry.totalScore !== null)
+    const incompatibleScore = format.isCustomFormat && !savedScore && (initialSeriesScores.length > 0 || entry.totalScore !== null)
     const maxInnerTenCount = seriesCount * format.shotsPerSeries
     const [seriesScores, setSeriesScores] = React.useState<string[]>(Array.from({ length: seriesCount }, (_, index) => incompatibleScore ? "" : String(initialSeriesScores[index] ?? "")))
     const [innerTenCount, setInnerTenCount] = React.useState(savedScore || entry.bharatCupResult ? String(entry.innerTenCount) : "")
@@ -2520,7 +2520,7 @@ function ScoreRow({
                 </div>
                 <div className="flex flex-wrap items-start justify-end gap-2">
                     <div className={`grid ${format.usesInnerTens ? "grid-cols-3" : "grid-cols-2"} gap-2 text-right`}>
-                        <MiniCount label="Total" value={format.isEventSpecific ? `${formatScore(liveTotal, ruleSet, entry)} / ${format.maxTotalScore}` : complete ? formatScore(liveTotal, ruleSet, entry) : formatScore(entry.totalScore, ruleSet, entry)} />
+                        <MiniCount label="Total" value={format.isCustomFormat ? `${formatScore(liveTotal, ruleSet, entry)} / ${format.maxTotalScore}` : complete ? formatScore(liveTotal, ruleSet, entry) : formatScore(entry.totalScore, ruleSet, entry)} />
                         {format.usesInnerTens && <MiniCount label="10x" value={complete ? liveInnerTens : entry.innerTenCount} />}
                         <MiniCount label="Scores" value={`${validSeriesScores.length}/${seriesCount}`} />
                     </div>
@@ -2581,7 +2581,7 @@ function ScoreRow({
                             {Array.from({ length: stage.seriesCount }, (_, index) => {
                                 const seriesIndex = stage.startIndex + index
                                 return <label key={seriesIndex} className="min-w-0">
-                                    <span className="mb-1 block text-xs font-bold text-white/60">{stage.label ? `${stage.label} ` : ""}Series {index + 1}{format.isEventSpecific ? ` / ${format.maxSeriesScore}` : ""}</span>
+                                    <span className="mb-1 block text-xs font-bold text-white/60">{stage.label ? `${stage.label} ` : ""}Series {index + 1}{format.isCustomFormat ? ` / ${format.maxSeriesScore}` : ""}</span>
                                     <input
                                         aria-label={`${stage.label ? `${stage.label} ` : ""}Series ${index + 1}`}
                                         value={seriesScores[seriesIndex]}

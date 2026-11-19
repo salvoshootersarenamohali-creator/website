@@ -106,3 +106,18 @@ it("keeps incompatible saved scores pending and out of published totals", async 
     const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(workbook.Sheets["B-01"])
     expect(rows[0]).toMatchObject({ Status: "Pending", "Total Score /600": "", "Precision 1 /50": "" })
 })
+
+it("publishes Little Champ scores out of 200 and exports just two series with 10x", async () => {
+    const littleChamp = shooter("nr-air-pistol", "S-19")
+    Object.assign(littleChamp.entries[0], { seriesScores: [95, 96], totalScore: 191, innerTenCount: 10 })
+    db.registrations.mockResolvedValue([littleChamp])
+    const published = await results(new NextRequest("http://localhost/api/results"))
+    const body = await published.json()
+    expect(body.categories[0].rows[0]).toMatchObject({ rank: 1, scored: true, displayTotal: "191 / 200", innerTenCount: 10, seriesScores: [95, 96] })
+    expect(body.topStudents.every((group: { rows: unknown[] }) => group.rows.length === 0)).toBe(true)
+    const exported = await categoryExport(new NextRequest("http://localhost/api/admin/results/export"))
+    const workbook = XLSX.read(await exported.arrayBuffer(), { type: "array" })
+    const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(workbook.Sheets["S-19"])
+    expect(rows[0]).toMatchObject({ "Series 1 /100": "95", "Series 2 /100": "96", "Total Score /200": "191", "Total 10x": 10 })
+    expect(rows[0]).not.toHaveProperty("Series 3 /100")
+})

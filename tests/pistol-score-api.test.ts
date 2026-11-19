@@ -67,3 +67,19 @@ it("retains authorization and competition ownership checks", async () => {
     expect((await save({})).status).toBe(404)
     expect(db.update).not.toHaveBeenCalled()
 })
+
+describe.each(["S-19", "S-20", "S-21", "S-22", "R-19", "R-20", "R-21", "R-22"])("Little Champ %s score API", (categoryCode) => {
+    beforeEach(() => db.findUnique.mockResolvedValue({ id: "test", eventId: categoryCode.startsWith("S") ? "nr-air-pistol" : "nr-air-rifle", ruleSet: "NR", categoryCode, registration: { competitionId: "super" } }))
+
+    it("saves two series out of 100 and caps the inner-ten count at 20", async () => {
+        for (const body of [{ seriesScores: [100, 100] }, { seriesScores: [100, 100], innerTenCount: 21 }, { seriesScores: [95, 96, 97, 98], innerTenCount: 10 }, { seriesScores: [100, 101], innerTenCount: 10 }]) {
+            expect((await save(body)).status).toBe(400)
+        }
+        expect(db.update).not.toHaveBeenCalled()
+        const response = await save({ seriesScores: ["100", "100"], innerTenCount: "20" })
+        expect(response.status).toBe(200)
+        const { entry } = await response.json()
+        expect(entry).toMatchObject({ seriesScores: [100, 100], totalScore: 200, innerTenCount: 20 })
+        expect(isEntryScored(entry)).toBe(true)
+    })
+})

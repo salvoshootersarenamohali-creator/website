@@ -3,6 +3,7 @@ import { getScoringFormat, isLittleChampCategory, isValidSeriesTotal, type Scori
 export type ResultEntryLike = {
     eventId?: string | null
     categoryCode: string
+    categoryLabel?: string | null
     ruleSet: string
     seriesScores: unknown
     innerTenCount: number
@@ -47,10 +48,11 @@ export function getSeriesScores(entry: Pick<ResultEntryLike, "seriesScores">) {
 
 export function isEntryScored(entry: ResultEntryLike) {
     const format = getScoringFormat(getRuleSet(entry), entry)
-    if (!format.isEventSpecific) return getSeriesScores(entry).length === format.seriesCount
+    if (!format.isCustomFormat) return getSeriesScores(entry).length === format.seriesCount
     const scores = entry.seriesScores
     return Array.isArray(scores) && scores.length === format.seriesCount
         && scores.every((score) => typeof score === "number" && isValidSeriesTotal(score, format))
+        && (!format.usesInnerTens || (Number.isInteger(entry.innerTenCount) && entry.innerTenCount >= 0 && entry.innerTenCount <= format.seriesCount * format.shotsPerSeries))
         && typeof entry.totalScore === "number" && Number.isFinite(entry.totalScore)
         && entry.totalScore === scores.reduce((sum, score: number) => sum + score, 0)
 }
@@ -63,7 +65,7 @@ export function formatScore(score: number | null | undefined, ruleSet: "NR" | "I
 export function formatResultTotal(entry: ResultEntryLike) {
     if (!isEntryScored(entry)) return "-"
     const format = getScoringFormat(getRuleSet(entry), entry)
-    return formatScore(entry.totalScore, getRuleSet(entry), entry) + (format.isEventSpecific ? ` / ${format.maxTotalScore}` : "")
+    return formatScore(entry.totalScore, getRuleSet(entry), entry) + (format.isCustomFormat ? ` / ${format.maxTotalScore}` : "")
 }
 
 export function getStageTotals(entry: Pick<ResultEntryLike, "ruleSet" | "eventId" | "seriesScores">) {

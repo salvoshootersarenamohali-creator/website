@@ -16,11 +16,11 @@ import {
 } from "@/lib/competition"
 
 describe("competition scoring format", () => {
-    it("uses four ten-shot series for every Little Champ category", () => {
-        expect(getScoringSeriesCount("NR", { bracket: "little-standing" })).toBe(4)
-        expect(getScoringSeriesCount("NR", { bracket: "little-sitting" })).toBe(4)
-        expect(getScoringSeriesCount("NR", { categoryLabel: "NR Air Pistol Little Champ Boys" })).toBe(4)
-        expect(getScoringSeriesCount("NR", { categoryCode: "R-28" })).toBe(4)
+    it("uses two ten-shot series for every Little Champ category", () => {
+        expect(getScoringSeriesCount("NR", { bracket: "little-standing" })).toBe(2)
+        expect(getScoringSeriesCount("NR", { bracket: "little-sitting" })).toBe(2)
+        expect(getScoringSeriesCount("NR", { categoryLabel: "NR Air Pistol Little Champ Boys" })).toBe(2)
+        expect(getScoringSeriesCount("NR", { categoryCode: "R-28" })).toBe(2)
     })
 
     it("keeps the existing series counts for other categories", () => {

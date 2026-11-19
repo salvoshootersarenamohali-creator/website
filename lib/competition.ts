@@ -791,7 +791,7 @@ export function getScoringSeriesCount(ruleSet: RuleSet, category: ScoringCategor
 }
 
 export type ScoringFormat = {
-    isEventSpecific: boolean
+    isCustomFormat: boolean
     seriesCount: number
     shotsPerSeries: number
     maxSeriesScore: number
@@ -811,19 +811,20 @@ export function getScoringFormat(ruleSet: RuleSet, category: ScoringCategory = {
     const eventId = category.eventId ?? ""
     const staged = stagedPistolEvents.has(eventId)
     const freePistol = freePistolEvents.has(eventId)
-    const isEventSpecific = staged || freePistol
+    const littleChamp = !staged && !freePistol && isLittleChampCategory(category)
+    const isCustomFormat = staged || freePistol || littleChamp
     const seriesPerStage = ruleSet === "ISSF" ? 6 : 3
     const seriesCount = staged ? seriesPerStage * 2 : freePistol ? seriesPerStage
-        : isLittleChampCategory(category) ? 4 : getSeriesCount(ruleSet)
-    const maxSeriesScore = staged ? 50 : isEventSpecific || ruleSet === "NR" ? 100 : 109
+        : littleChamp ? 2 : getSeriesCount(ruleSet)
+    const maxSeriesScore = staged ? 50 : isCustomFormat || ruleSet === "NR" ? 100 : 109
     return {
-        isEventSpecific,
+        isCustomFormat,
         seriesCount,
         shotsPerSeries: staged ? 5 : 10,
         maxSeriesScore,
         maxTotalScore: seriesCount * maxSeriesScore,
-        decimalPlaces: isEventSpecific || ruleSet === "NR" ? 0 : 1,
-        usesInnerTens: !isEventSpecific,
+        decimalPlaces: isCustomFormat || ruleSet === "NR" ? 0 : 1,
+        usesInnerTens: !staged && !freePistol,
         stages: staged ? [
             { label: "Precision", startIndex: 0, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 },
             { label: "Duelling", startIndex: seriesPerStage, seriesCount: seriesPerStage, maxScore: seriesPerStage * 50 },

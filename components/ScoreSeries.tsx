@@ -14,7 +14,7 @@ export function ScoreSeries({ entry }: { entry: ResultEntryLike }) {
             {group.label && <p className="mb-1 text-xs font-bold text-[#D4AF37]">{group.label}: {group.total} / {group.maxScore}</p>}
             <div className="flex max-w-full flex-wrap gap-1.5">
                 {scores.slice(group.startIndex, group.startIndex + group.seriesCount).map((score, index) => <span key={index} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs font-semibold text-white/70">
-                    S{index + 1}: {formatScore(score, ruleSet, entry)}{format.isEventSpecific ? ` / ${format.maxSeriesScore}` : ""}
+                    S{index + 1}: {formatScore(score, ruleSet, entry)}{format.isCustomFormat ? ` / ${format.maxSeriesScore}` : ""}
                 </span>)}
             </div>
         </div>)}

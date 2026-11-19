@@ -76,10 +76,10 @@ describe.each(formats)("%s scoring", (eventId, ruleSet, count, maximum, total) =
     })
 })
 
-it("retains existing Air Pistol, Air Rifle, Little Champ, and Standard Pistol behavior", () => {
+it("retains other Air Pistol, Air Rifle, and Standard Pistol formats", () => {
     expect(getScoringFormat("ISSF", { eventId: "issf-air-pistol" })).toMatchObject({ seriesCount: 6, maxSeriesScore: 109, decimalPlaces: 1, usesInnerTens: true })
     expect(getScoringFormat("NR", { eventId: "nr-air-rifle" })).toMatchObject({ seriesCount: 4, maxSeriesScore: 100, usesInnerTens: true })
-    expect(getScoringFormat("NR", { categoryCode: "S-19" }).seriesCount).toBe(4)
+    expect(getScoringFormat("NR", { categoryCode: "S-19" }).seriesCount).toBe(2)
     expect(getScoringFormat("NR", { eventId: "nr-25m-standard-pistol" }).seriesCount).toBe(4)
     const a = entry("nr-air-pistol", "NR", [90, 90, 90, 90])
     const ranked = rankRows([{ registration: { name: "Low" }, entry: { ...a, innerTenCount: 0 } }, { registration: { name: "High" }, entry: { ...a, innerTenCount: 20 } }])
