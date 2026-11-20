@@ -3,6 +3,20 @@ import { toProperCase } from "@/lib/registration-validation"
 
 export const TEAM_ENTRY_FEE = DEFAULT_TEAM_ENTRY_FEE
 
+export type TeamEntryType = "standard" | "mixed"
+
+export function supportsMixedTeamEntries(competitionSlug: string) {
+    return competitionSlug === "super-cup-2026"
+}
+
+export function getTeamEntryTypeLabel(teamType: string) {
+    return teamType === "mixed" ? "Mixed Team" : "Standard Team"
+}
+
+export function getTeamEntryMemberCount(teamType: TeamEntryType) {
+    return teamType === "mixed" ? 2 : 3
+}
+
 export type IncomingTeamEntryMember = {
     registrationId: string
     registrationEntryId: string
@@ -10,6 +24,7 @@ export type IncomingTeamEntryMember = {
 
 export type IncomingTeamEntryData = {
     name: string
+    teamType?: string
     discipline: string
     paymentMode: string
     paymentStatus: string
@@ -21,6 +36,7 @@ export type TeamValidationRegistration = {
     competitionId: string
     name: string
     academy: string
+    gender: string
     entries: {
         id: string
         discipline: string
@@ -51,6 +67,7 @@ export function getDisciplineLabel(discipline: Discipline) {
 export function normalizeTeamEntryData(data: Partial<IncomingTeamEntryData>): IncomingTeamEntryData {
     return {
         name: toProperCase(String(data.name ?? "").trim()),
+        teamType: String(data.teamType ?? "standard").trim(),
         discipline: String(data.discipline ?? "").trim(),
         paymentMode: String(data.paymentMode ?? "cash").trim(),
         paymentStatus: String(data.paymentStatus ?? "Pending").trim(),
@@ -71,7 +88,16 @@ export function resolveTeamEntry(
     competitionId: string,
     registrations: TeamValidationRegistration[],
     teamEntryFee = DEFAULT_TEAM_ENTRY_FEE,
+    options: { mixedTeamsEnabled?: boolean } = {},
 ) {
+    const teamType = data.teamType ?? "standard"
+    if (teamType !== "standard" && teamType !== "mixed") {
+        validationError("Select a standard team or mixed team entry.")
+    }
+    if (teamType === "mixed" && !options.mixedTeamsEnabled) {
+        validationError("Mixed team entries are not enabled for this competition.")
+    }
+    const memberCount = getTeamEntryMemberCount(teamType)
     if (data.discipline !== "pistol" && data.discipline !== "rifle") {
         validationError("Select pistol or rifle for the team entry.")
     }
@@ -85,8 +111,8 @@ export function resolveTeamEntry(
     if (data.paymentMode === "upi" && data.paymentStatus === "Sponsored") {
         validationError("Sponsored team entries must use cash payment mode.")
     }
-    if (data.members.length !== 3) {
-        validationError("A team entry requires exactly 3 students.")
+    if (data.members.length !== memberCount) {
+        validationError(`A ${teamType === "mixed" ? "mixed team" : "team"} entry requires exactly ${memberCount} students.`)
     }
 
     const seenRegistrations = new Set<string>()
@@ -97,7 +123,7 @@ export function resolveTeamEntry(
         const registration = registrationMap.get(registrationId)
         if (!registration) validationError("One or more selected students were not found.")
         if (registration.competitionId !== competitionId) validationError("One or more selected students are not registered for this competition.")
-        if (seenRegistrations.has(registration.id)) validationError("Choose 3 different students for a team entry.")
+        if (seenRegistrations.has(registration.id)) validationError(`Choose ${memberCount} different students for a team entry.`)
         seenRegistrations.add(registration.id)
 
         const entry = registration.entries.find((candidate) => candidate.id === registrationEntryId)
@@ -107,17 +133,27 @@ export function resolveTeamEntry(
         return { registration, entry }
     })
 
-    const academyKey = normalizeAcademyKey(resolvedMembers[0].registration.academy)
-    if (!academyKey) validationError("Selected students must have a shooting club.")
-    if (resolvedMembers.some((member) => normalizeAcademyKey(member.registration.academy) !== academyKey)) {
-        validationError("All 3 students must be from the same shooting club.")
+    if (teamType === "standard") {
+        const academyKey = normalizeAcademyKey(resolvedMembers[0].registration.academy)
+        if (!academyKey) validationError("Selected students must have a shooting club.")
+        if (resolvedMembers.some((member) => normalizeAcademyKey(member.registration.academy) !== academyKey)) {
+            validationError(`All ${memberCount} students must be from the same shooting club.`)
+        }
+    }
+    if (teamType === "mixed" && (
+        resolvedMembers.filter((member) => member.registration.gender === "male").length !== 1
+        || resolvedMembers.filter((member) => member.registration.gender === "female").length !== 1
+    )) {
+        validationError("A mixed team requires one male and one female student.")
     }
 
-    const academy = resolvedMembers[0].registration.academy
-    const name = data.name || `${academy} ${getDisciplineLabel(data.discipline)} Team`
+    const academies = new Map(resolvedMembers.map((member) => [normalizeAcademyKey(member.registration.academy), member.registration.academy]))
+    const academy = teamType === "mixed" ? [...academies.values()].join(" / ") : resolvedMembers[0].registration.academy
+    const name = data.name || `${academy} ${getDisciplineLabel(discipline)} ${teamType === "mixed" ? "Mixed Team" : "Team"}`
 
     return {
         name,
+        teamType,
         academy,
         discipline,
         amount: teamEntryFee,

@@ -4,7 +4,7 @@ import { adminUnauthorized, isCompetitionAdminRequest } from "@/lib/admin"
 import { formatCurrency, getPaymentModeLabel, getScoringFormat, normalizeCompetitionConfig } from "@/lib/competition"
 import { competitionFilePrefix, getCompetitionBySlugOrActive, getCompetitionSlugFromRequest } from "@/lib/competition-server"
 import { prisma } from "@/lib/prisma"
-import { getDisciplineLabel } from "@/lib/team-entries"
+import { getDisciplineLabel, getTeamEntryTypeLabel } from "@/lib/team-entries"
 import { registrationScoreColumns } from "@/lib/score-export"
 import { getRuleSet } from "@/lib/results"
 
@@ -121,16 +121,23 @@ export async function GET(request: NextRequest) {
             return {
                 "Team No.": index + 1,
                 "Team Name": teamEntry.name,
+                "Team Type": getTeamEntryTypeLabel(teamEntry.teamType),
                 "Club Name": teamEntry.academy,
                 Discipline: teamEntry.discipline === "pistol" || teamEntry.discipline === "rifle" ? getDisciplineLabel(teamEntry.discipline) : teamEntry.discipline,
                 "Payment Mode": formatPaymentMode(teamEntry.paymentMode),
                 "Payment Status": teamEntry.paymentStatus,
                 Amount: formatPaymentAmount(teamEntry),
                 "Member 1": members[0]?.registration.name ?? "",
+                "Member 1 Gender": members[0]?.registration.gender ?? "",
+                "Member 1 Club": members[0]?.registration.academy ?? "",
                 "Member 1 Category": members[0] ? `${members[0].registrationEntry.categoryCode} - ${members[0].registrationEntry.categoryLabel}` : "",
                 "Member 2": members[1]?.registration.name ?? "",
+                "Member 2 Gender": members[1]?.registration.gender ?? "",
+                "Member 2 Club": members[1]?.registration.academy ?? "",
                 "Member 2 Category": members[1] ? `${members[1].registrationEntry.categoryCode} - ${members[1].registrationEntry.categoryLabel}` : "",
                 "Member 3": members[2]?.registration.name ?? "",
+                "Member 3 Gender": members[2]?.registration.gender ?? "",
+                "Member 3 Club": members[2]?.registration.academy ?? "",
                 "Member 3 Category": members[2] ? `${members[2].registrationEntry.categoryCode} - ${members[2].registrationEntry.categoryLabel}` : "",
                 "Created At": formatDate(teamEntry.createdAt),
             }

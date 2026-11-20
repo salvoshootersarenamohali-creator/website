@@ -8,6 +8,7 @@ import {
     TeamEntryValidationError,
     normalizeTeamEntryData,
     resolveTeamEntry,
+    supportsMixedTeamEntries,
 } from "@/lib/team-entries"
 
 type RouteContext = {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const body = await request.json()
         const data = normalizeTeamEntryData({
             name: body.name,
+            teamType: body.teamType,
             discipline: body.discipline,
             paymentMode: body.paymentMode,
             paymentStatus: body.paymentStatus,
@@ -74,7 +76,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
             },
             include: { entries: { orderBy: { createdAt: "asc" } } },
         })
-        const resolved = resolveTeamEntry(data, competition.id, registrations, config.teamEntryFee)
+        const resolved = resolveTeamEntry(data, competition.id, registrations, config.teamEntryFee, {
+            mixedTeamsEnabled: supportsMixedTeamEntries(competition.slug),
+        })
 
         const teamEntry = await prisma.teamEntry.create({
             data: {
@@ -82,6 +86,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 name: resolved.name,
                 academy: resolved.academy,
                 discipline: resolved.discipline,
+                teamType: resolved.teamType,
                 amount: resolved.amount,
                 paymentMode: resolved.paymentMode,
                 paymentStatus: resolved.paymentStatus,

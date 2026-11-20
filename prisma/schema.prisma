@@ -669,6 +669,7 @@ model TeamEntry {
   name           String
   academy        String
   discipline     String
+  teamType       String            @default("standard")
   amount         Int               @default(900)
   paymentMode    String            @default("cash")
   paymentStatus  String            @default("Pending")

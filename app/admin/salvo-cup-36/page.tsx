@@ -48,7 +48,7 @@ import {
 } from "@/lib/results"
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { getRegistrationParaState } from "@/lib/para-registration"
-import { getDisciplineLabel, normalizeAcademyKey } from "@/lib/team-entries"
+import { getDisciplineLabel, getTeamEntryMemberCount, getTeamEntryTypeLabel, normalizeAcademyKey, supportsMixedTeamEntries, type TeamEntryType } from "@/lib/team-entries"
 import { RelaySelector } from "@/components/RelaySelector"
 import { BookedDetailsView } from "@/components/BookedDetailsView"
 import { BharatCupResultImport } from "@/components/BharatCupResultImport"
@@ -115,6 +115,7 @@ type AdminRegistration = {
 type AdminTeamEntry = {
     id: string
     name: string
+    teamType: TeamEntryType
     academy: string
     discipline: Discipline
     amount: number
@@ -687,6 +688,7 @@ function TeamEntriesView({
     onChanged: () => void
 }) {
     const [teamName, setTeamName] = React.useState("")
+    const [teamType, setTeamType] = React.useState<TeamEntryType>("standard")
     const [discipline, setDiscipline] = React.useState<Discipline>("pistol")
     const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("cash")
     const [paymentStatus, setPaymentStatus] = React.useState<PaymentStatus>("Pending")
@@ -695,10 +697,15 @@ function TeamEntriesView({
     const [deletingId, setDeletingId] = React.useState("")
     const [error, setError] = React.useState("")
     const [message, setMessage] = React.useState("")
+    const mixedTeamsEnabled = supportsMixedTeamEntries(competitionSlug)
+    const isMixedTeam = teamType === "mixed"
+    const memberCount = getTeamEntryMemberCount(teamType)
 
     React.useEffect(() => {
-        setMemberEntryIds(["", "", ""])
-    }, [discipline])
+        setMemberEntryIds(Array(memberCount).fill(""))
+        setError("")
+        setMessage("")
+    }, [discipline, memberCount])
 
     React.useEffect(() => {
         if (paymentMode === "upi" && paymentStatus === "Sponsored") {
@@ -723,10 +730,12 @@ function TeamEntriesView({
     const selectedOptions = memberEntryIds.map((entryId) => eligibleOptions.find((option) => option.entry.id === entryId) ?? null)
     const selectedRegistrations = selectedOptions.flatMap((option) => option ? [option.registration.id] : [])
     const selectedAcademyKeys = selectedOptions.flatMap((option) => option ? [normalizeAcademyKey(option.registration.academy)] : [])
-    const hasThreeMembers = selectedOptions.every(Boolean)
+    const hasAllMembers = selectedOptions.length === memberCount && selectedOptions.every(Boolean)
     const hasUniqueStudents = new Set(selectedRegistrations).size === selectedRegistrations.length
     const hasSameClub = new Set(selectedAcademyKeys).size <= 1
-    const canSubmit = hasThreeMembers && hasUniqueStudents && hasSameClub && !saving
+    const hasMixedGenders = selectedOptions.filter((option) => option?.registration.gender === "male").length === 1
+        && selectedOptions.filter((option) => option?.registration.gender === "female").length === 1
+    const canSubmit = hasAllMembers && hasUniqueStudents && (isMixedTeam ? hasMixedGenders : hasSameClub) && !saving
 
     const updateMember = (index: number, value: string) => {
         setMemberEntryIds((current) => current.map((entryId, memberIndex) => memberIndex === index ? value : entryId))
@@ -738,16 +747,20 @@ function TeamEntriesView({
         event.preventDefault()
         setError("")
         setMessage("")
-        if (!hasThreeMembers) {
-            setError("Select exactly 3 students for the team.")
+        if (!hasAllMembers) {
+            setError(`Select exactly ${memberCount} students for the team.`)
             return
         }
         if (!hasUniqueStudents) {
-            setError("Choose 3 different students for a team entry.")
+            setError(`Choose ${memberCount} different students for a team entry.`)
             return
         }
-        if (!hasSameClub) {
+        if (!isMixedTeam && !hasSameClub) {
             setError("All 3 students must be from the same shooting club.")
+            return
+        }
+        if (isMixedTeam && !hasMixedGenders) {
+            setError("A mixed team requires one male and one female student.")
             return
         }
 
@@ -760,15 +773,15 @@ function TeamEntriesView({
             const response = await fetch(scopedAdminPath(competitionSlug, "/team-entries"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ name: teamName, discipline, paymentMode, paymentStatus, members }),
+                body: JSON.stringify({ name: teamName, teamType, discipline, paymentMode, paymentStatus, members }),
             })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to create team entry.")
             setTeamName("")
-            setMemberEntryIds(["", "", ""])
+            setMemberEntryIds(Array(memberCount).fill(""))
             setPaymentMode("cash")
             setPaymentStatus("Pending")
-            setMessage("Team entry created.")
+            setMessage(isMixedTeam ? "Mixed team entry created." : "Team entry created.")
             onChanged()
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Unable to create team entry.")
@@ -806,7 +819,11 @@ function TeamEntriesView({
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <h2 className="text-2xl font-black">Create Team Entry</h2>
-                        <p className="mt-1 text-sm text-white/50">Select 3 students from the same club and same discipline.</p>
+                        <p className="mt-1 text-sm text-white/50">
+                            {isMixedTeam
+                                ? "Select one male and one female student in the same discipline. They can be from different clubs."
+                                : "Select 3 students from the same club and same discipline."}
+                        </p>
                     </div>
                     <p className="rounded-md border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-2 text-sm font-bold text-[#E5C558]">
                         {formatCurrency(teamEntryFee)}
@@ -814,6 +831,15 @@ function TeamEntriesView({
                 </div>
 
                 <form onSubmit={createTeamEntry} className="space-y-4">
+                    {mixedTeamsEnabled && (
+                        <label className="block">
+                            <span className="mb-2 block text-sm font-semibold text-white/70">Team Type</span>
+                            <select value={teamType} onChange={(event) => setTeamType(event.target.value as TeamEntryType)} className="field">
+                                <option value="standard">Standard Team — 3 shooters</option>
+                                <option value="mixed">Mixed Team — 1 male + 1 female</option>
+                            </select>
+                        </label>
+                    )}
                     <label className="block">
                         <span className="mb-2 block text-sm font-semibold text-white/70">Team Name</span>
                         <input value={teamName} onChange={(event) => setTeamName(toProperCase(event.target.value))} className="field" placeholder="Optional" />
@@ -845,12 +871,12 @@ function TeamEntriesView({
                     </div>
 
                     <div className="space-y-3">
-                        {[0, 1, 2].map((index) => (
+                        {Array.from({ length: memberCount }, (_, index) => (
                             <label key={index} className="block">
-                                <span className="mb-2 block text-sm font-semibold text-white/70">Student {index + 1}</span>
+                                <span className="mb-2 block text-sm font-semibold text-white/70">{isMixedTeam ? index === 0 ? "Male Shooter" : "Female Shooter" : `Student ${index + 1}`}</span>
                                 <select value={memberEntryIds[index]} onChange={(event) => updateMember(index, event.target.value)} className="field">
                                     <option value="">Select registered student</option>
-                                    {eligibleOptions.map(({ registration, entry }) => (
+                                    {eligibleOptions.filter(({ registration }) => !isMixedTeam || registration.gender === (index === 0 ? "male" : "female")).map(({ registration, entry }) => (
                                         <option key={`${index}-${entry.id}`} value={entry.id}>
                                             {registration.academy} - {registration.name} - {entry.categoryCode} ({entry.eventTitle})
                                         </option>
@@ -870,7 +896,12 @@ function TeamEntriesView({
                             The same student cannot be selected twice in one team.
                         </p>
                     )}
-                    {!hasSameClub && selectedAcademyKeys.length > 1 && (
+                    {isMixedTeam && (["male", "female"] as const).map((gender) => !eligibleOptions.some(({ registration }) => registration.gender === gender) && (
+                        <p key={gender} className="rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">
+                            No registered {gender} students with individual {getDisciplineLabel(discipline)} entries yet.
+                        </p>
+                    ))}
+                    {!isMixedTeam && !hasSameClub && selectedAcademyKeys.length > 1 && (
                         <p className="rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
                             Selected students must be from the same shooting club.
                         </p>
@@ -880,7 +911,7 @@ function TeamEntriesView({
 
                     <button disabled={!canSubmit} className="admin-button gold disabled:opacity-50">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                        {saving ? "Creating..." : "Create Team Entry"}
+                        {saving ? "Creating..." : isMixedTeam ? "Create Mixed Team Entry" : "Create Team Entry"}
                     </button>
                 </form>
             </section>
@@ -899,7 +930,7 @@ function TeamEntriesView({
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                     <p className="text-lg font-black">{teamEntry.name}</p>
-                                    <p className="mt-1 text-sm text-white/55">{teamEntry.academy} | {getDisciplineLabel(teamEntry.discipline)}</p>
+                                    <p className="mt-1 text-sm text-white/55">{teamEntry.academy} | {getDisciplineLabel(teamEntry.discipline)} | {getTeamEntryTypeLabel(teamEntry.teamType)}</p>
                                     <p className="mt-1 text-sm text-[#D4AF37]">{formatCurrency(teamEntry.amount)} ({paymentModeLabel(teamEntry.paymentMode)} - {teamEntry.paymentStatus})</p>
                                 </div>
                                 <button
@@ -916,6 +947,7 @@ function TeamEntriesView({
                                 {teamEntry.members.map((member, index) => (
                                     <div key={member.id} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
                                         <p className="font-bold">{index + 1}. {member.registration.name}</p>
+                                        {teamEntry.teamType === "mixed" && <p className="text-sm text-white/55">{member.registration.gender === "male" ? "Male" : "Female"} | {member.registration.academy}</p>}
                                         <p className="text-sm text-white/55">{member.registrationEntry.categoryCode} - {member.registrationEntry.categoryLabel}</p>
                                     </div>
                                 ))}

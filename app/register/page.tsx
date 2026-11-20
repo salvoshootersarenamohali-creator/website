@@ -31,6 +31,7 @@ import {
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { RelaySelector } from "@/components/RelaySelector"
 import { CoachBatchForm } from "@/components/CoachBatchForm"
+import { supportsMixedTeamEntries } from "@/lib/team-entries"
 
 type SavedEntry = {
     id: string
@@ -600,8 +601,8 @@ export default function RegisterPage() {
                                             Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(config.teamEntryFee)}</span> per team.
                                         </p>
                                         <ul className="mt-3 list-disc space-y-1 pl-5">
-                                            <li>Each team must have exactly 3 shooters.</li>
-                                            <li>All 3 shooters must be from the same shooting club.</li>
+                                            <li>Standard teams must have exactly 3 shooters from the same shooting club.</li>
+                                            {supportsMixedTeamEntries(competition?.slug ?? "") && <li>Mixed teams must have one male and one female shooter. They can be from different clubs.</li>}
                                             <li>Team members can be from different categories, but must be in the same discipline: pistol or rifle.</li>
                                             <li>A shooter must first register for an individual event before being added to a team entry.</li>
                                         </ul>
