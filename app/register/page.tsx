@@ -4,7 +4,6 @@ import * as React from "react"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Accessibility, CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
-import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
 import { BHARAT_CUP_REGISTRATION_FIELDS, BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
 import {
     CategoryOption,
@@ -396,7 +395,6 @@ export default function RegisterPage() {
             </section>
 
             <main className="container mx-auto px-4 py-12">
-                <CashPrizeSchedule config={config} className="mb-8" />
                 {!bharatCup && config.coachBatchEnabled && registrationAvailable && !registration && <div className="mb-6 flex gap-3">
                     <button type="button" className={`rounded-md border px-5 py-3 font-bold ${!batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(false)}>Single shooter</button>
                     <button type="button" className={`rounded-md border px-5 py-3 font-bold ${batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(true)}>Coach: register multiple students</button>
@@ -487,6 +485,60 @@ export default function RegisterPage() {
                                         Minimum eligible age is {config.minAge}. Shooters below this age cannot participate in this competition.
                                     </p>
                                 )}
+                            </Panel>
+
+                        </section>
+
+                        <section className="space-y-6">
+                            <Panel title="Select Event Categories">
+                                <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
+                                    {bharatCup ? "Select the matches you are entering." : config.feesByRuleSet.NR || config.feesByRuleSet.ISSF
+                                        ? `Select every event-category you want to compete in. NR categories are ${formatCurrency(config.feesByRuleSet.NR ?? config.entryFee)} and ISSF categories are ${formatCurrency(config.feesByRuleSet.ISSF ?? config.entryFee)}.`
+                                        : `Select every event-category you want to compete in. Little Champ categories are ${formatCurrency(config.littleChampEntryFee)}; all other categories are ${formatCurrency(config.entryFee)}.`}
+                                </div>
+                                <div className="grid gap-5">
+                                    {events.map((event) => {
+                                        const categories = categoriesByEvent.get(event.id) ?? []
+                                        const disabled = !canUseEvent(event.id)
+                                        return (
+                                            <div key={event.id} className={`rounded-lg border p-5 ${disabled ? "border-white/5 bg-white/[0.02] opacity-45" : "border-white/10 bg-white/[0.04]"}`}>
+                                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                                    <div>
+                                                        <p className="text-xl font-black">{event.title}</p>
+                                                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-[#D4AF37]">{event.ruleSet} {event.discipline}</p>
+                                                    </div>
+                                                    {!bharatCup && <div className="flex flex-wrap gap-2">
+                                                        <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100">
+                                                            Fee {formatCurrency(config.feesByRuleSet[event.ruleSet] ?? config.entryFee)}
+                                                        </span>
+                                                    </div>}
+                                                </div>
+                                                <div className="mt-5 flex flex-wrap gap-2">
+                                                    {!form.gender || age === null ? (
+                                                        <p className="text-sm text-white/45">{bharatCup ? "Select Men or Women and enter your date of birth to see eligible matches." : "Enter gender and date of birth to unlock eligible categories."}</p>
+                                                    ) : categories.length ? (
+                                                        categories.map((category) => (
+                                                                <button
+                                                                    key={category.code}
+                                                                    type="button"
+                                                                    disabled={disabled}
+                                                                    aria-pressed={isEntrySelected(event.id, category.code)}
+                                                                    onClick={() => toggleEntry(event.id, category.code)}
+                                                                    className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60 hover:text-white"}`}
+                                                                >
+                                                                    <span className="block font-bold">{category.code}</span>
+                                                                    <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
+                                                                    {!bharatCup && <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>}
+                                                                </button>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-sm text-white/45">No eligible categories for this event.</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
                             </Panel>
 
                             {!bharatCup && <>
@@ -624,68 +676,6 @@ export default function RegisterPage() {
                                 </Panel>
                             )}
                             </>}
-                        </section>
-
-                        <section className="space-y-6">
-                            <Panel title="Select Event Categories">
-                                <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
-                                    {bharatCup ? "Select the matches you are entering." : config.feesByRuleSet.NR || config.feesByRuleSet.ISSF
-                                        ? `Select every event-category you want to compete in. NR categories are ${formatCurrency(config.feesByRuleSet.NR ?? config.entryFee)} and ISSF categories are ${formatCurrency(config.feesByRuleSet.ISSF ?? config.entryFee)}.`
-                                        : `Select every event-category you want to compete in. Little Champ categories are ${formatCurrency(config.littleChampEntryFee)}; all other categories are ${formatCurrency(config.entryFee)}.`}
-                                </div>
-                                <div className="grid gap-5">
-                                    {events.map((event) => {
-                                        const categories = categoriesByEvent.get(event.id) ?? []
-                                        const disabled = !canUseEvent(event.id)
-                                        return (
-                                            <div key={event.id} className={`rounded-lg border p-5 ${disabled ? "border-white/5 bg-white/[0.02] opacity-45" : "border-white/10 bg-white/[0.04]"}`}>
-                                                <div className="flex flex-wrap items-start justify-between gap-4">
-                                                    <div>
-                                                        <p className="text-xl font-black">{event.title}</p>
-                                                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-[#D4AF37]">{event.ruleSet} {event.discipline}</p>
-                                                    </div>
-                                                    {!bharatCup && <div className="flex flex-wrap gap-2">
-                                                        <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100">
-                                                            Fee {formatCurrency(config.feesByRuleSet[event.ruleSet] ?? config.entryFee)}
-                                                        </span>
-                                                        {config.cashPrizeMode === "none" ? (
-                                                            <span className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
-                                                                Medals for top 3
-                                                            </span>
-                                                        ) : config.cashPrizeMode === "event-wide" ? event.prizes.map((prize, index) => (
-                                                            <span key={prize} className="rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 text-xs font-bold text-[#E5C558]">
-                                                                {index + 1}: Rs. {prize.toLocaleString("en-IN")}
-                                                            </span>
-                                                        )) : null}
-                                                    </div>}
-                                                </div>
-                                                <div className="mt-5 flex flex-wrap gap-2">
-                                                    {!form.gender || age === null ? (
-                                                        <p className="text-sm text-white/45">{bharatCup ? "Select Men or Women and enter your date of birth to see eligible matches." : "Enter gender and date of birth to unlock eligible categories."}</p>
-                                                    ) : categories.length ? (
-                                                        categories.map((category) => (
-                                                                <button
-                                                                    key={category.code}
-                                                                    type="button"
-                                                                    disabled={disabled}
-                                                                    aria-pressed={isEntrySelected(event.id, category.code)}
-                                                                    onClick={() => toggleEntry(event.id, category.code)}
-                                                                    className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60 hover:text-white"}`}
-                                                                >
-                                                                    <span className="block font-bold">{category.code}</span>
-                                                                    <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
-                                                                    {!bharatCup && <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>}
-                                                                </button>
-                                                        ))
-                                                    ) : (
-                                                        <p className="text-sm text-white/45">No eligible categories for this event.</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </Panel>
 
                             <div className="sticky top-24 rounded-lg border border-[#D4AF37]/30 bg-neutral-950 p-6 shadow-2xl shadow-[#D4AF37]/10">
                                 {!bharatCup && <div className="mb-5 flex items-center justify-between">
