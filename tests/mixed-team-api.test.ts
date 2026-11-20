@@ -49,11 +49,11 @@ beforeEach(() => {
 })
 
 describe("Super Cup mixed team API", () => {
-    it("saves the type, both clubs, configured fee and individual entry links", async () => {
-        const response = await POST(request({ ...teamData, amount: 1 }), context)
+    it.each(["cash", "upi"])("saves the type, both clubs, 1500 mixed fee and individual entry links for %s payments", async (paymentMode) => {
+        const response = await POST(request({ ...teamData, paymentMode, amount: 1 }), context)
         expect(response.status).toBe(200)
         expect((await response.json()).teamEntry).toMatchObject({
-            teamType: "mixed", academy: "Club 0 / Club 1", amount: 1200,
+            teamType: "mixed", academy: "Club 0 / Club 1", amount: 1500,
         })
         expect(db.create.mock.calls[0][0].data).toMatchObject({
             competitionId: "super", teamType: "mixed", members: { create: teamData.members },
@@ -121,7 +121,7 @@ describe("Super Cup mixed team API", () => {
     it("exports the mixed type, both members and their clubs without a third member", async () => {
         db.registrations.mockResolvedValue([])
         db.teams.mockResolvedValue([{
-            ...teamData, academy: "Club 0 / Club 1", amount: 1200, createdAt: new Date("2026-11-19"),
+            ...teamData, academy: "Club 0 / Club 1", amount: 1500, createdAt: new Date("2026-11-19"),
             members: students.map((registration) => ({ registration, registrationEntry: registration.entries[0] })),
         }])
         const response = await exportEntries(request())
@@ -132,5 +132,6 @@ describe("Super Cup mixed team API", () => {
             "Team Type": "Mixed Team", "Member 1": "Shooter 0", "Member 1 Gender": "male", "Member 1 Club": "Club 0",
             "Member 2": "Shooter 1", "Member 2 Gender": "female", "Member 2 Club": "Club 1", "Member 3": "",
         })
+        expect((rows[0] as Record<string, unknown>).Amount).toBe("Rs. 1,500 (Cash - Paid)")
     })
 })

@@ -31,7 +31,7 @@ import {
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { RelaySelector } from "@/components/RelaySelector"
 import { CoachBatchForm } from "@/components/CoachBatchForm"
-import { supportsMixedTeamEntries } from "@/lib/team-entries"
+import { MIXED_TEAM_ENTRY_FEE, supportsMixedTeamEntries } from "@/lib/team-entries"
 
 type SavedEntry = {
     id: string
@@ -598,7 +598,8 @@ export default function RegisterPage() {
                                             <p className="font-black uppercase tracking-[0.16em]">Submit through your coach</p>
                                         </div>
                                         <p>
-                                            Team entries are handled by the coach/admin after individual registrations are submitted. The team entry fee is <span className="font-bold text-white">{formatCurrency(config.teamEntryFee)}</span> per team.
+                                            Team entries are handled by the coach/admin after individual registrations are submitted. The {supportsMixedTeamEntries(competition?.slug ?? "") ? "standard team" : "team"} entry fee is <span className="font-bold text-white">{formatCurrency(config.teamEntryFee)}</span> per team.
+                                            {supportsMixedTeamEntries(competition?.slug ?? "") && <> The mixed team entry fee is <span className="font-bold text-white">{formatCurrency(MIXED_TEAM_ENTRY_FEE)}</span> per team.</>}
                                         </p>
                                         <ul className="mt-3 list-disc space-y-1 pl-5">
                                             <li>Standard teams must have exactly 3 shooters from the same shooting club.</li>

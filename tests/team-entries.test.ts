@@ -54,7 +54,7 @@ describe("mixed team entries", () => {
         }))
         const result = resolveTeamEntry({ ...mixedData, discipline }, competitionId, students, 1200, mixedOptions)
 
-        expect(result).toMatchObject({ teamType: "mixed", discipline, academy: "Salvo Club / Other Club", amount: 1200 })
+        expect(result).toMatchObject({ teamType: "mixed", discipline, academy: "Salvo Club / Other Club", amount: 1500 })
         expect(result.name).toContain("Mixed Team")
         expect(result.members.map((member) => member.registration.gender)).toEqual(["male", "female"])
     })
@@ -63,6 +63,10 @@ describe("mixed team entries", () => {
         const result = resolveTeamEntry({ ...mixedData, members: [...mixedData.members].reverse() }, competitionId, registrations, 900, mixedOptions)
         expect(result.academy).toBe("Salvo Club")
         expect(result.members).toHaveLength(2)
+    })
+
+    it.each([0, 900, 2000])("charges 1500 for mixed teams when the standard team fee is %i", (standardFee) => {
+        expect(resolveTeamEntry(mixedData, competitionId, registrations, standardFee, mixedOptions).amount).toBe(1500)
     })
 
     it.each(["male", "female", ""])("rejects a pair whose genders are both %s", (gender) => {

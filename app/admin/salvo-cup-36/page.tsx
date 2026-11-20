@@ -48,7 +48,7 @@ import {
 } from "@/lib/results"
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { getRegistrationParaState } from "@/lib/para-registration"
-import { getDisciplineLabel, getTeamEntryMemberCount, getTeamEntryTypeLabel, normalizeAcademyKey, supportsMixedTeamEntries, type TeamEntryType } from "@/lib/team-entries"
+import { getDisciplineLabel, getTeamEntryFee, getTeamEntryMemberCount, getTeamEntryTypeLabel, normalizeAcademyKey, supportsMixedTeamEntries, type TeamEntryType } from "@/lib/team-entries"
 import { RelaySelector } from "@/components/RelaySelector"
 import { BookedDetailsView } from "@/components/BookedDetailsView"
 import { BharatCupResultImport } from "@/components/BharatCupResultImport"
@@ -826,7 +826,7 @@ function TeamEntriesView({
                         </p>
                     </div>
                     <p className="rounded-md border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-2 text-sm font-bold text-[#E5C558]">
-                        {formatCurrency(teamEntryFee)}
+                        {formatCurrency(getTeamEntryFee(teamType, teamEntryFee))}
                     </p>
                 </div>
 

@@ -2,6 +2,7 @@ import { DEFAULT_TEAM_ENTRY_FEE, Discipline, PaymentMode } from "@/lib/competiti
 import { toProperCase } from "@/lib/registration-validation"
 
 export const TEAM_ENTRY_FEE = DEFAULT_TEAM_ENTRY_FEE
+export const MIXED_TEAM_ENTRY_FEE = 1500
 
 export type TeamEntryType = "standard" | "mixed"
 
@@ -15,6 +16,10 @@ export function getTeamEntryTypeLabel(teamType: string) {
 
 export function getTeamEntryMemberCount(teamType: TeamEntryType) {
     return teamType === "mixed" ? 2 : 3
+}
+
+export function getTeamEntryFee(teamType: TeamEntryType, teamEntryFee = DEFAULT_TEAM_ENTRY_FEE) {
+    return teamType === "mixed" ? MIXED_TEAM_ENTRY_FEE : teamEntryFee
 }
 
 export type IncomingTeamEntryMember = {
@@ -156,7 +161,7 @@ export function resolveTeamEntry(
         teamType,
         academy,
         discipline,
-        amount: teamEntryFee,
+        amount: getTeamEntryFee(teamType, teamEntryFee),
         paymentMode: data.paymentMode,
         paymentStatus: data.paymentStatus,
         members: resolvedMembers,
