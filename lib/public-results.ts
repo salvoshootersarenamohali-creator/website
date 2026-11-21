@@ -4,9 +4,10 @@ import { unstable_cache } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { categorySortValue, formatResultTotal, getRuleSet, getSeriesScores, isEntryScored, isTopResultCategory, rankRows } from "@/lib/results"
 import { getScoringFormat } from "@/lib/competition"
+import { buildTeamStandings } from "@/lib/team-standings"
 
 async function buildRankings(competitionId: string) {
-    const registrations = await prisma.registration.findMany({
+    const registrationsQuery = prisma.registration.findMany({
         where: { competitionId: competitionId },
         orderBy: { createdAt: "asc" },
         select: {
@@ -30,6 +31,15 @@ async function buildRankings(competitionId: string) {
             },
         },
     })
+
+    const teamsQuery = prisma.teamEntry.findMany({
+        where: { competitionId },
+        select: {
+            id: true, name: true, academy: true, teamType: true, discipline: true,
+            members: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { registrationEntryId: true } },
+        },
+    })
+    const [registrations, teams] = await Promise.all([registrationsQuery, teamsQuery])
 
     const formatRow = (row: {
         rank: number | null
@@ -111,6 +121,7 @@ async function buildRankings(competitionId: string) {
 
     const categories = buildCategories(false)
     const paraCategories = buildCategories(true)
+    const teamStandings = buildTeamStandings(teams, [...categories, ...paraCategories].flatMap(category => category.rows))
 
     const buildTopStudentGroup = (title: string, rangeLabel: string, prefix: "S" | "R", min: number, max: number) => {
         const rows = registrations.flatMap((registration) =>
@@ -142,11 +153,11 @@ async function buildRankings(competitionId: string) {
         buildTopStudentGroup("NR Rifle Top Students", "Combined R-11 to R-24", "R", 11, 24),
     ]
 
-    return { categories, paraCategories, topStudents, summary: { categories: categories.length, paraCategories: paraCategories.length } }
+    return { categories, paraCategories, topStudents, teamStandings, summary: { categories: categories.length, paraCategories: paraCategories.length } }
 }
 
 function getPublicRankings(competitionId: string, revision: string) {
-    return unstable_cache(() => buildRankings(competitionId), ["public-rankings-v1", competitionId, revision], { revalidate: 300 })()
+    return unstable_cache(() => buildRankings(competitionId), ["public-rankings-v2", competitionId, revision], { revalidate: 300 })()
 }
 
 // Keep only the latest encoded response per active event. Concurrent viewers share

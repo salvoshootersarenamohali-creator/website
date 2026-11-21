@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma"
 import { getDisciplineLabel, getTeamEntryTypeLabel } from "@/lib/team-entries"
 import { registrationScoreColumns } from "@/lib/score-export"
 import { getRuleSet } from "@/lib/results"
+import { cardMatchCode } from "@/lib/competitor-card"
 
 function formatDate(value: Date) {
     return value.toISOString().slice(0, 10)
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest) {
 
         const cardRows = registrations.map((registration, index) => {
             const documentsByKey = new Map(registration.documents.map((document) => [document.documentKey, document.path]))
+            const categories = registration.entries.map(entry => `${cardMatchCode(entry.categoryCode, registration.isService)} - ${entry.categoryLabel}`)
             return {
                 "Card No.": index + 1,
                 Name: registration.name,
@@ -108,10 +110,10 @@ export async function GET(request: NextRequest) {
                 UTR: registration.utrNumber ?? "",
                 "Student Photo": registration.studentPhotoPath ?? "",
                 ...Object.fromEntries(exportDocuments.map((document) => [`Document: ${document.label}`, documentsByKey.get(document.id) ?? ""])),
-                "Category/Event a": registration.entries[0] ? `${registration.entries[0].categoryCode} - ${registration.entries[0].categoryLabel}` : "",
-                "Category/Event b": registration.entries[1] ? `${registration.entries[1].categoryCode} - ${registration.entries[1].categoryLabel}` : "",
-                "Category/Event c": registration.entries[2] ? `${registration.entries[2].categoryCode} - ${registration.entries[2].categoryLabel}` : "",
-                "Other Entries": registration.entries.slice(3).map((entry) => `${entry.categoryCode} - ${entry.categoryLabel}`).join("; "),
+                "Category/Event a": categories[0] ?? "",
+                "Category/Event b": categories[1] ?? "",
+                "Category/Event c": categories[2] ?? "",
+                "Other Entries": categories.slice(3).join("; "),
                 "Amount Paid": formatPaymentAmount(registration),
             }
         })

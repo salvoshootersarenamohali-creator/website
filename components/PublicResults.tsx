@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import Image from "@/components/CompetitionImage"
 import { useResultsFeed } from "@/lib/use-results-feed"
 import { AlertCircle, Award, BarChart3, CheckCircle2, Clock3, Download, Loader2, LockKeyhole, Medal, RefreshCw, Search, Trophy, Users } from "lucide-react"
@@ -8,8 +9,10 @@ import { getCompetitionEndBoundary, getScoringFormat, hasCompetitionEnded, Publi
 import { ScoreSeries } from "@/components/ScoreSeries"
 import type { MedalType, PublicParticipantCategory } from "@/lib/participants"
 import { cn } from "@/lib/utils"
+import { getDisciplineLabel, getTeamEntryMemberCount, supportsMixedTeamEntries, type TeamEntryType } from "@/lib/team-entries"
+import type { TeamStandingGroup } from "@/lib/team-standings"
 
-type ResultsTab = "regular" | "para" | "certificates"
+type ResultsTab = "regular" | "para" | "teams" | "mixed-teams" | "certificates"
 
 type ResultRow = {
     id: string
@@ -52,6 +55,7 @@ type ResultsPayload = {
     categories: ResultCategory[]
     paraCategories: ResultCategory[]
     topStudents: TopStudentGroup[]
+    teamStandings: TeamStandingGroup[]
 }
 
 type CertificateDirectoryPayload = {
@@ -140,10 +144,29 @@ function StudentNameCell({ row, photoSize = "md" }: { row: ResultRow; photoSize?
 }
 
 export default function ResultsPage({ initialCompetition }: { initialCompetition: PublicCompetition }) {
-    const [activeTab, setActiveTab] = React.useState<ResultsTab>("regular")
+    const requestedTab = useSearchParams().get("view")
+    const certificatesAvailable = hasCompetitionEnded(initialCompetition.endDate)
     const competitionSlug = initialCompetition.slug
-    const { payload, error, isLoading, isRefreshing, refresh } = useResultsFeed<ResultsPayload>(`/api/competitions/${competitionSlug}/results`, 30_000, activeTab !== "certificates")
+    const showCertificates = requestedTab === "certificates" && certificatesAvailable
+    const { payload, error, isLoading, isRefreshing, refresh } = useResultsFeed<ResultsPayload>(`/api/competitions/${competitionSlug}/results`, 30_000, !showCertificates)
     const competition = payload?.competition ?? initialCompetition
+    const teamGroups = payload?.teamStandings ?? []
+    const showTeams = competition.config.teamEntriesEnabled || teamGroups.some(group => group.teamType === "standard")
+    const showMixedTeams = (competition.config.teamEntriesEnabled && supportsMixedTeamEntries(competitionSlug)) || teamGroups.some(group => group.teamType === "mixed")
+    let activeTab: ResultsTab = "regular"
+    if (requestedTab === "para") activeTab = "para"
+    if (requestedTab === "teams" && showTeams) activeTab = "teams"
+    if (requestedTab === "mixed-teams" && showMixedTeams) activeTab = "mixed-teams"
+    if (showCertificates) activeTab = "certificates"
+    const teamType = activeTab === "teams" ? "standard" : activeTab === "mixed-teams" ? "mixed" : null
+    const visibleTeamGroups = teamGroups.filter(group => group.teamType === teamType)
+    const setActiveTab = (tab: ResultsTab) => {
+        if (tab === activeTab) return
+        const url = new URL(window.location.href)
+        if (tab === "regular") url.searchParams.delete("view")
+        else url.searchParams.set("view", tab)
+        window.history.pushState(null, "", url)
+    }
     const [query, setQuery] = React.useState("")
     const [selectedCategory, setSelectedCategory] = React.useState("all")
     const [certificatePayload, setCertificatePayload] = React.useState<CertificateDirectoryPayload | null>(null)
@@ -152,7 +175,6 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
     const [certificatesLoading, setCertificatesLoading] = React.useState(false)
     const [certificatesError, setCertificatesError] = React.useState("")
 
-    const certificatesAvailable = competition ? hasCompetitionEnded(competition.endDate) : false
     const certificateUnlockLabel = React.useMemo(() => {
         const boundary = competition ? getCompetitionEndBoundary(competition.endDate) : null
         if (!boundary) return "Available after the competition ends"
@@ -221,11 +243,14 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
                                 {competition?.shortTitle ?? "Competition"}
                             </div>
                             <h1 className="max-w-4xl text-4xl font-black tracking-tight text-white sm:text-5xl lg:text-6xl">
-                                {activeTab === "certificates" ? "Participants & Certificates" : "Live Results"}
+                                {activeTab === "certificates" ? "Participants & Certificates"
+                                    : activeTab === "teams" ? "Team Standings"
+                                    : activeTab === "mixed-teams" ? "Mixed Team Standings" : "Live Results"}
                             </h1>
                             <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
                                 {activeTab === "certificates"
                                     ? "Find your name in the final participant directory and download your official competition certificate."
+                                    : teamType ? `Each team total combines the scores from its ${getTeamEntryMemberCount(teamType)} registered shooters. Equal totals share a rank.`
                                     : "View your uploaded score and follow your category ranking as the scoreboard updates during the event."}
                             </p>
                         </div>
@@ -263,7 +288,8 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
                                     </>
                                 ) : (
                                     <>
-                                        <SummaryStat label="Categories" value={activeCategoryCount} />
+                                        {teamType ? <SummaryStat label="Teams" value={payload ? visibleTeamGroups.reduce((count, group) => count + group.rows.length, 0) : "–"} />
+                                            : <SummaryStat label="Categories" value={activeCategoryCount} />}
                                         <SummaryStat label="Status" value="Live" />
                                     </>
                                 )}
@@ -281,7 +307,7 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
 
             <section className="px-4 py-6">
                 <div className="container mx-auto">
-                    <div className="mb-2 flex max-w-full overflow-x-auto rounded-lg border border-white/10 bg-neutral-950 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:inline-flex">
+                    <div className="mb-2 flex max-w-full flex-wrap gap-1 rounded-lg border border-white/10 bg-neutral-950 p-1 sm:inline-flex">
                         <ResultsTabButton
                             active={activeTab === "regular"}
                             label="Results"
@@ -292,6 +318,8 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
                             label="Para Results"
                             onClick={() => setActiveTab("para")}
                         />
+                        {showTeams && <ResultsTabButton active={activeTab === "teams"} label="Team Standings" onClick={() => setActiveTab("teams")} />}
+                        {showMixedTeams && <ResultsTabButton active={activeTab === "mixed-teams"} label="Mixed Team Standings" onClick={() => setActiveTab("mixed-teams")} />}
                         <ResultsTabButton
                             active={activeTab === "certificates"}
                             label="Certificates"
@@ -321,6 +349,7 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
                         />
                     ) : (
                         <>
+                            {!teamType && <>
                             <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_280px]">
                                 <label className="relative">
                                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
@@ -367,6 +396,7 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
                                 ))}
                             </div>
 
+                            </>}
                             {isLoading ? (
                                 <div className="flex min-h-72 items-center justify-center rounded-lg border border-white/10 bg-neutral-950">
                                     <div className="text-center">
@@ -380,6 +410,8 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
                                     <p className="font-bold">Results are unavailable right now.</p>
                                     <p className="mt-1 text-sm text-red-100/75">{error}</p>
                                 </div>
+                            ) : teamType ? (
+                                <TeamStandings groups={visibleTeamGroups} teamType={teamType} />
                             ) : (
                                 <div className="space-y-6">
                                     {activeTab === "regular" && <TopStudentsSection groups={topStudents} />}
@@ -406,6 +438,48 @@ export default function ResultsPage({ initialCompetition }: { initialCompetition
     )
 }
 
+function TeamStandings({ groups, teamType }: { groups: TeamStandingGroup[]; teamType: TeamEntryType }) {
+    if (!groups.length) return (
+        <p className="rounded-lg border border-white/10 bg-neutral-950 p-8 text-center text-white/65">
+            No {teamType === "mixed" ? "mixed" : "standard"} teams have entered this competition yet.
+        </p>
+    )
+    return (
+        <div className="space-y-6">
+            {groups.map(group => (
+                <section key={group.discipline} className="rounded-lg border border-white/10 bg-neutral-950">
+                    <h2 className="border-b border-white/10 p-4 text-xl font-black text-[#D4AF37]">
+                        {getDisciplineLabel(group.discipline)} · {teamType === "mixed" ? "Mixed Teams" : "Standard Teams"}
+                    </h2>
+                    <table className="w-full text-left text-sm">
+                        <thead className="text-xs uppercase tracking-wider text-white/55">
+                            <tr><th scope="col" className="w-16 p-3">Rank</th><th scope="col" className="p-3">Team</th><th scope="col" className="p-3 text-right">Total</th></tr>
+                        </thead>
+                        <tbody>
+                            {group.rows.map(row => (
+                                <tr key={row.id} className="border-t border-white/10 align-top">
+                                    <td className="p-3"><RankPill rank={row.rank} /></td>
+                                    <td className="p-3 [overflow-wrap:anywhere]">
+                                        <p className="font-bold">{row.name}</p>
+                                        <p className="text-white/60">{row.academy}</p>
+                                        <ul className="mt-2 space-y-1 text-xs text-white/70">
+                                            {row.members.map(member => <li key={member.id}>{member.name} · {member.score ?? "Pending"}</li>)}
+                                        </ul>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                        {row.totalScore === null ? <span className="text-white/60">Pending</span>
+                                            : <span className="text-lg font-black tabular-nums text-[#D4AF37]">{row.totalScore}</span>}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </section>
+            ))}
+        </div>
+    )
+}
+
 function ResultsTabButton({
     active,
     label,
@@ -425,6 +499,7 @@ function ResultsTabButton({
         <button
             type="button"
             onClick={onClick}
+            aria-pressed={active}
             disabled={disabled}
             title={title}
             className={cn(

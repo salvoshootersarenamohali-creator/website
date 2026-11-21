@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
         }
         const tv = request.nextUrl.searchParams.get("view") === "tv"
         const generatedAt = competition.updatedAt.toISOString()
-        const etag = `W/"results-v2-${competition.id}-${generatedAt}-${tv ? "tv" : "full"}"`
+        const etag = `W/"results-v3-${competition.id}-${generatedAt}-${tv ? "tv" : "full"}"`
         const headers = { ETag: etag, "Cache-Control": "private, no-cache" }
         if (request.headers.get("if-none-match")?.split(",").some(tag => tag.trim() === etag)) {
             return new Response(null, { status: 304, headers })

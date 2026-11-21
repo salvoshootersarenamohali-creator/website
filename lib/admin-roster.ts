@@ -22,7 +22,7 @@ export async function loadRosterPage(competitionId: string, config: CompetitionC
     const slots = config.slotOptions.flatMap(day => day.slots.map(slot => day.date + "|" + slot))
     const [count] = await prisma.$queryRaw<{ total: number }[]>`SELECT COUNT(*)::int AS total FROM "Registration" r WHERE ${conditions}`
     const current = Math.min(page, Math.max(1, Math.ceil(count.total / rosterPageSize)))
-    const rows = await prisma.$queryRaw<RosterRow[]>`SELECT r.id, r.name, r.academy, r."coachName", r."paymentStatus", r.amount,
+    const rows = await prisma.$queryRaw<RosterRow[]>`SELECT r.id, r.name, r.academy, r."coachName", r."paymentStatus", r.amount, r."isService",
         r."preferredDate", r."preferredSlot", (r."studentPhotoPath" IS NOT NULL) AS "hasPhoto",
         (SELECT count(*)::int FROM "RegistrationEntry" e WHERE e."registrationId" = r.id) AS "entryCount"
         FROM "Registration" r WHERE ${conditions}
@@ -35,6 +35,7 @@ export async function loadRosterPage(competitionId: string, config: CompetitionC
 export type RosterRow = {
     id: string; name: string; academy: string; coachName: string | null; paymentStatus: string; amount: number
     preferredDate: string | null; preferredSlot: string; hasPhoto: boolean; entryCount: number
+    isService: boolean
 }
 
 export async function loadRegistrationSummary(competitionId: string) {

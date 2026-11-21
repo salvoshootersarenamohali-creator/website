@@ -503,6 +503,8 @@ model RangeFinanceNotificationRead {
 }
 
 model Registration {
+  isService       Boolean             @default(false)
+  cardKey         String              @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id             String              @id @default(cuid())
   competitionId  String
   batchId        String?

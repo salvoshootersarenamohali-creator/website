@@ -29,6 +29,8 @@ import { getPaymentReferenceError, toProperCase } from "@/lib/registration-valid
 import { RelaySelector } from "@/components/RelaySelector"
 import dynamic from "next/dynamic"
 import { MIXED_TEAM_ENTRY_FEE, supportsMixedTeamEntries } from "@/lib/team-entries"
+import { cardMatchCode } from "@/lib/competitor-card"
+import { useCompetitorCard } from "@/lib/use-competitor-card"
 
 const CoachBatchForm = dynamic(() => import("@/components/CoachBatchForm").then(module => module.CoachBatchForm))
 
@@ -41,6 +43,8 @@ type SavedEntry = {
 }
 
 type SavedRegistration = {
+    isService: boolean
+    cardKey: string
     relayBooking?: { date: string; relayId: string; pool: string; lane: number } | null
     id: string
     name: string
@@ -741,7 +745,9 @@ function ClosedRegistration({ competition }: { competition: PublicCompetition | 
     )
 }
 
-function CompetitorCard({ registration, competition, onNew }: { registration: SavedRegistration; competition: PublicCompetition | null; onNew: () => void }) {
+function CompetitorCard({ registration: receipt, competition, onNew }: { registration: SavedRegistration; competition: PublicCompetition; onNew: () => void }) {
+    const { serviceById, printCard, printing, printError } = useCompetitorCard(competition.slug, [receipt.cardKey])
+    const registration = { ...receipt, isService: serviceById[receipt.id] ?? receipt.isService }
     const isProvisionalForm = Boolean(competition?.config.requiresGuardianDetails)
 
     return (
@@ -752,7 +758,7 @@ function CompetitorCard({ registration, competition, onNew }: { registration: Sa
                     <h2 className="text-3xl font-black">{isProvisionalForm ? "Provisional Form Generated" : "Competitor Card Generated"}</h2>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => window.print()} className="inline-flex h-11 items-center gap-2 rounded-md border border-white/15 px-4 font-bold text-white hover:border-[#D4AF37]">
+                    <button disabled={printing} onClick={printCard} className="inline-flex h-11 items-center gap-2 rounded-md border border-white/15 px-4 font-bold text-white hover:border-[#D4AF37] disabled:opacity-50">
                         <Printer className="h-4 w-4" />
                         Print
                     </button>
@@ -762,6 +768,7 @@ function CompetitorCard({ registration, competition, onNew }: { registration: Sa
                     </button>
                 </div>
             </div>
+            {printError && <p role="alert" className="mb-4 text-red-300">{printError}</p>}
             {isProvisionalForm ? (
                 <FaridkotProvisionalForm registration={registration} competition={competition} />
             ) : (
@@ -789,8 +796,8 @@ function CompetitorCard({ registration, competition, onNew }: { registration: Sa
 
 function FaridkotProvisionalForm({ registration, competition }: { registration: SavedRegistration; competition: PublicCompetition | null }) {
     const firstEntry = registration.entries[0]
-    const matchNumbers = registration.entries.map((entry) => entry.categoryCode).join(", ")
-    const matchFees = registration.entries.map((entry) => `${entry.categoryCode}: ${formatCurrency(entry.fee)}`).join(", ")
+    const matchNumbers = registration.entries.map((entry) => cardMatchCode(entry.categoryCode, registration.isService)).join(", ")
+    const matchFees = registration.entries.map((entry) => `${cardMatchCode(entry.categoryCode, registration.isService)}: ${formatCurrency(entry.fee)}`).join(", ")
     const discipline = registration.entries.some((entry) => /pistol/i.test(entry.eventTitle)) ? "Pistol" : "Rifle"
 
     return (
@@ -811,7 +818,7 @@ function FaridkotProvisionalForm({ registration, competition }: { registration: 
                         <FormLine label="Date of Birth" value={registration.dateOfBirth.slice(0, 10)} />
                     </div>
                     <div className="flex flex-col items-center gap-3">
-                        <p className="self-start text-lg">Category: {firstEntry?.categoryCode ?? ""}</p>
+                        <p className="self-start text-lg">Category: {firstEntry ? cardMatchCode(firstEntry.categoryCode, registration.isService) : ""}</p>
                         <div className="flex h-40 w-32 items-center justify-center border-2 border-black text-center text-xs">
                             {registration.studentPhotoPath ? "Photo Uploaded" : "Photo"}
                         </div>
@@ -876,7 +883,7 @@ function CardBody({ registration, competition, title }: { registration: SavedReg
                     <div className="mt-2 space-y-2 pl-10 print:mt-1 print:space-y-0">
                         {registration.entries.map((entry, index) => (
                             <p key={entry.id} className="border-b border-dotted border-black pb-1">
-                                {String.fromCharCode(97 + index)}) {entry.categoryCode} - {entry.categoryLabel}
+                                {String.fromCharCode(97 + index)}) {cardMatchCode(entry.categoryCode, registration.isService)} - {entry.categoryLabel}
                             </p>
                         ))}
                     </div>

@@ -36,6 +36,42 @@ beforeEach(() => {
     db.teams.mockResolvedValue([])
 })
 
+it("ranks registered team entries by type and discipline, keeping exact ties and pending rosters", async () => {
+    const scored = (id: string, total: number, discipline = "pistol") => {
+        const student = shooter(`issf-air-${discipline}`, discipline === "rifle" ? "R-01" : "S-01")
+        const entry = { ...student.entries[0], id, totalScore: total, seriesScores: [total, 0, 0, 0, 0, 0] }
+        return { ...student, name: id, entries: [entry] }
+    }
+    const students = [scored("A", 80.1), scored("B", 90.2), scored("C", 0), scored("D", 80.2),
+        scored("E", 90.1), scored("F", 20), scored("G", 0, "rifle"), scored("H", 0, "rifle")]
+    // A has another event with a higher score. Only the registered entry counts.
+    students[0].entries.push({ ...students[0].entries[0], id: "unused-entry", totalScore: 600, seriesScores: Array(6).fill(100) })
+    students[5].entries[0].seriesScores = []
+    db.registrations.mockResolvedValue(students)
+    const team = (id: string, teamType: string, discipline: string, entries: string[]) => ({
+        id, name: id, academy: "Club", teamType, discipline, members: entries.map(registrationEntryId => ({ registrationEntryId })),
+    })
+    db.teams.mockResolvedValue([
+        team("Standard", "standard", "pistol", ["A", "B", "C"]),
+        team("Pair A", "mixed", "pistol", ["A", "B"]), team("Pair B", "mixed", "pistol", ["D", "E"]),
+        team("Pair C", "mixed", "pistol", ["A", "C"]), team("Pending", "mixed", "pistol", ["A", "F"]),
+        team("Rifle", "mixed", "rifle", ["G", "H"]),
+    ])
+    const response = await results(new NextRequest("http://localhost/api/competitions/super-cup-2026/results"))
+    expect(response.status).toBe(200)
+    const { teamStandings } = await response.json()
+    expect(db.teams).toHaveBeenCalledWith(expect.objectContaining({ where: { competitionId: "super" } }))
+    expect(teamStandings).toMatchObject([
+        { teamType: "standard", discipline: "pistol", rows: [{ rank: 1, totalScore: 170.3 }] },
+        { teamType: "mixed", discipline: "pistol", rows: [
+            { id: "Pair A", rank: 1, totalScore: 170.3 }, { id: "Pair B", rank: 1, totalScore: 170.3 },
+            { id: "Pair C", rank: 3, totalScore: 80.1 },
+            { id: "Pending", rank: null, totalScore: null, members: [{ name: "A", score: "80.1" }, { name: "F", score: null }] },
+        ] },
+        { teamType: "mixed", discipline: "rifle", rows: [{ rank: 1, totalScore: 0 }] },
+    ])
+})
+
 describe.each(["nr-25m-sports-pistol", "issf-25m-sports-pistol", "nr-25m-center-fire", "issf-25m-center-fire", "nr-25m-standard-pistol", "issf-25m-standard-pistol", "nr-50m-free-pistol", "issf-50m-free-pistol"])("%s public results and category workbook", (eventId) => {
     it("publishes the integer total and ranks regular and para results independently", async () => {
         const regular = shooter(eventId, "B-01")

@@ -5,6 +5,8 @@ import Image from "next/image"
 import { getAgeFromDobYear, getEligibleCategories, getEntryFee, formatCurrency, isOnlinePaymentMode, getPaymentModeLabel, type PublicCompetition, type SelectedEntry, type Gender } from "@/lib/competition"
 import { getBookingEligibility } from "@/lib/relay-booking"
 import { getPaymentReferenceError } from "@/lib/registration-validation"
+import { cardMatchCode } from "@/lib/competitor-card"
+import { useCompetitorCard } from "@/lib/use-competitor-card"
 import { RelaySelector, useRelayAvailability, type PendingBooking } from "@/components/RelaySelector"
 
 type Student = {
@@ -14,7 +16,7 @@ type Student = {
 function newStudent(competition: PublicCompetition): Student {
     return { key: crypto.randomUUID(), name: "", gender: "", dateOfBirth: "", motherName: "", fatherName: "", address: "", preferredDate: competition.config.relayBooking.days.find((day) => day.relays.length)?.date ?? competition.config.slotOptions.find((day) => day.slots.length)?.date ?? "", preferredSlot: "", entries: [], photo: null, documents: {} }
 }
-type Receipt = { id: string; name: string; preferredDate: string; preferredSlot: string; amount: number; entries: { categoryCode: string; categoryLabel: string }[]; relayBooking: { pool: string; lane: number } | null }
+type Receipt = { id: string; cardKey: string; isService: boolean; name: string; preferredDate: string; preferredSlot: string; amount: number; entries: { categoryCode: string; categoryLabel: string }[]; relayBooking: { pool: string; lane: number } | null }
 
 export function CoachBatchForm({ competition }: { competition: PublicCompetition }) {
     const config = competition.config
@@ -26,6 +28,7 @@ export function CoachBatchForm({ competition }: { competition: PublicCompetition
     const [refreshKey, setRefreshKey] = React.useState(0)
     const [submissionKey, setSubmissionKey] = React.useState("")
     const [saved, setSaved] = React.useState<Receipt[] | null>(null)
+    const { serviceById, printCard, printing, printError } = useCompetitorCard(competition.slug, saved?.map(card => card.cardKey) ?? [])
     const availability = useRelayAvailability(config.relayBooking.enabled && students.length && !saved ? competition.slug : null, refreshKey)
     const update = (key: string, patch: Partial<Student>) => setStudents((current) => current.map((student) => student.key === key ? { ...student, ...patch } : student))
     const studentCategories = (student: Student) => config.events.flatMap((event) => {
@@ -69,12 +72,13 @@ export function CoachBatchForm({ competition }: { competition: PublicCompetition
         finally { setBusy(false); setRefreshKey((key) => key + 1) }
     }
     if (saved) return <section className="space-y-5">
-        <div className="no-print flex items-center justify-between"><h2 className="text-2xl font-black">{saved.length} students registered</h2><button type="button" className="admin-button" onClick={() => window.print()}>Print student cards</button></div>
+        <div className="no-print flex items-center justify-between"><h2 className="text-2xl font-black">{saved.length} students registered</h2><button type="button" className="admin-button" disabled={printing} onClick={printCard}>Print student cards</button></div>
+        {printError && <p role="alert" className="text-red-300">{printError}</p>}
         <div className="print-card space-y-6 bg-white p-6 text-black">{saved.map((receipt) => <article key={receipt.id} className="break-inside-avoid border border-black/20 p-5">
             <h3 className="text-xl font-black">{competition.shortTitle} · {receipt.name}</h3>
             <p>{shared.academy} · Coach: {shared.coachName}</p><p>{receipt.preferredDate.slice(0, 10)} · {receipt.preferredSlot}</p>
             {receipt.relayBooking && <p className="font-bold">{receipt.relayBooking.pool} lane {receipt.relayBooking.lane}</p>}
-            <p>{receipt.entries.map((entry) => `${entry.categoryCode}: ${entry.categoryLabel}`).join("; ")}</p><p>Entry amount: {formatCurrency(receipt.amount)} · Batch payment total: {formatCurrency(saved.reduce((sum, r) => sum + r.amount, 0))}</p>
+            <p>{receipt.entries.map((entry) => `${cardMatchCode(entry.categoryCode, serviceById[receipt.id] ?? receipt.isService)}: ${entry.categoryLabel}`).join("; ")}</p><p>Entry amount: {formatCurrency(receipt.amount)} · Batch payment total: {formatCurrency(saved.reduce((sum, r) => sum + r.amount, 0))}</p>
         </article>)}</div>
         <button type="button" className="no-print admin-button" onClick={() => { setSaved(null); setStudents([]); setSubmissionKey("") }}>Register another batch</button>
     </section>

@@ -24,6 +24,7 @@ export type AdminEntry = {
 }
 
 export type AdminRegistration = {
+    isService: boolean
     relayBooking?: { date: string; relayId: string; pool: string; lane: number } | null
     batchId?: string | null
     id: string

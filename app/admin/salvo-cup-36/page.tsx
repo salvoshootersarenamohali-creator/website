@@ -44,6 +44,7 @@ import { MiniCount } from "@/components/admin/MiniCount"
 import { readResponseJson, scopedAdminPath, paymentModeLabel, type AdminEntry, type AdminRegistration, type AdminTeamEntry, type PaymentStatus, type RegistrationPaymentStatus } from "@/lib/admin-desk"
 import { ScoreSeries } from "@/components/ScoreSeries"
 import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
+import { cardMatchCode } from "@/lib/competitor-card"
 
 const TeamEntriesView = dynamic(() => import("@/components/admin/TeamEntriesView"))
 const DetailsView = dynamic(() => import("@/components/admin/DetailsView"))
@@ -208,6 +209,7 @@ function buildDemoRegistrations(): AdminRegistration[] {
 
         return {
             id: `demo-registration-${index}`,
+            isService: false,
             name,
             academy: academies[index % academies.length],
             coachName: null,
@@ -489,6 +491,32 @@ function RegistrationRoster({ competition, activePin, reload }: { competition: P
     const [isLoading, setLoading] = React.useState(true)
     const [error, setError] = React.useState("")
     const url = scopedAdminPath(competitionSlug, "/registrations")
+    const [savingService, setSavingService] = React.useState<Set<string>>(() => new Set())
+    async function saveService(row: RosterRow) {
+        setSavingService(current => new Set(current).add(row.id))
+        setError("")
+        try {
+            const response = await fetch(url + "/" + encodeURIComponent(row.id) + "/service", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "x-admin-pin": activePin },
+                body: JSON.stringify({ isService: !row.isService }),
+            })
+            const data = await readResponseJson(response)
+            const { isService } = data
+            if (!response.ok || typeof isService !== "boolean") throw new Error(typeof data.error === "string" ? data.error : "Unable to save service status.")
+            setRoster(current => ({ ...current, rows: current.rows.map(old => old.id === row.id ? { ...old, isService } : old) }))
+            setSelected(current => current?.id === row.id ? { ...current, isService } : current)
+            setRevision(current => current + 1)
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Unable to save service status.")
+        } finally {
+            setSavingService(current => {
+                const next = new Set(current)
+                next.delete(row.id)
+                return next
+            })
+        }
+    }
     React.useEffect(() => {
         const controller = new AbortController()
         const params = new URLSearchParams({ view: "roster", page: String(page), q: query, filter, date: registrationDateFilter })
@@ -563,11 +591,11 @@ function RegistrationRoster({ competition, activePin, reload }: { competition: P
             ) : (
                 <div className="max-h-[680px] space-y-3 overflow-auto pr-1">
                     {roster.rows.map((registration) => (
-                        <button
+                        <div
                             key={registration.id}
-                            onClick={() => setSelectedId(registration.id)}
-                            className={`w-full rounded-md border p-4 text-left transition ${selectedId === registration.id ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}
+                            className={`flex flex-wrap items-start gap-2 rounded-md border p-4 ${selectedId === registration.id ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}
                         >
+                          <button type="button" onClick={() => setSelectedId(registration.id)} className="min-w-44 flex-1 text-left">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <p className="font-bold">{registration.name}</p>
@@ -587,7 +615,14 @@ function RegistrationRoster({ competition, activePin, reload }: { competition: P
                                     </span>
                                 )}
                             </div>
-                        </button>
+                          </button>
+                          <button type="button" role="switch" aria-checked={registration.isService}
+                              aria-label={`Service status for ${registration.name}`} disabled={savingService.has(registration.id)}
+                              onClick={() => saveService(registration)}
+                              className={`inline-flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm font-bold disabled:opacity-50 ${registration.isService ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/20 text-white/65"}`}>
+                              Service {registration.isService ? "on" : "off"}
+                          </button>
+                        </div>
                     ))}
                 </div>
             )}
@@ -600,7 +635,7 @@ function RegistrationRoster({ competition, activePin, reload }: { competition: P
 
         <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
             {selected && selected.id === selectedId ? (
-                <RegistrationDetail key={selected.id} registration={selected} onScore={applyScore} onPayment={applyPayment} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} onChanged={() => setRevision(n => n + 1)} />
+                <RegistrationDetail key={selected.id} registration={selected} savingService={savingService.has(selected.id)} onScore={applyScore} onPayment={applyPayment} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} onChanged={() => setRevision(n => n + 1)} />
             ) : (
                 <p className="text-white/50">{selectedId ? "Loading registration…" : "No registrations found."}</p>
             )}
@@ -1005,6 +1040,7 @@ function CombinedLeaderboardPanel({ leaderboard }: { leaderboard: CombinedLeader
 
 function RegistrationDetail({
     registration,
+    savingService,
     adminPin,
     competitionSlug,
     competitionTitle,
@@ -1012,6 +1048,7 @@ function RegistrationDetail({
     onChanged, onScore, onPayment,
 }: {
     registration: AdminRegistration
+    savingService: boolean
     adminPin: string
     competitionSlug: string
     competitionTitle: string
@@ -1131,7 +1168,7 @@ function RegistrationDetail({
                         {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         Delete Person
                     </button>
-                    <button onClick={() => window.print()} className="admin-button gold">
+                    <button disabled={savingService} onClick={() => window.print()} className="admin-button gold disabled:opacity-50">
                         <Printer className="h-4 w-4" />
                         Print Card
                     </button>
@@ -2069,11 +2106,8 @@ function Bar({ value, max }: { value: number; max: number }) {
 }
 
 function PrintableCard({ registration, variant }: { registration: AdminRegistration; variant: "competitor" | "office" }) {
-    const eventRows = [
-        registration.entries[0] ? `${registration.entries[0].categoryCode} - ${registration.entries[0].categoryLabel}` : "",
-        registration.entries[1] ? `${registration.entries[1].categoryCode} - ${registration.entries[1].categoryLabel}` : "",
-        registration.entries[2] ? `${registration.entries[2].categoryCode} - ${registration.entries[2].categoryLabel}` : "",
-    ]
+    const eventRows = registration.entries.map(entry => `${cardMatchCode(entry.categoryCode, registration.isService)} - ${entry.categoryLabel}`)
+    while (eventRows.length < 3) eventRows.push("")
 
     return (
         <section className="salvo-print-section">
