@@ -290,7 +290,8 @@ export default function SalvoCupAdminPage() {
         setBusy(true)
         setError("")
         try {
-            const response = await fetch(scopedAdminPath(competitionSlug, "/registrations" + (view === "stats" ? "?view=summary" : "")), { signal, headers: { "x-admin-pin": adminPin } })
+            const summaryOnly = view === "stats" || view === "registrations"
+            const response = await fetch(scopedAdminPath(competitionSlug, "/registrations" + (summaryOnly ? "?view=summary" : "")), { signal, headers: { "x-admin-pin": adminPin } })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load registrations.")
             if (signal?.aborted) return
@@ -333,13 +334,14 @@ export default function SalvoCupAdminPage() {
         const stored = window.sessionStorage.getItem(ADMIN_SESSION_PIN_KEY)
         if (stored) { setPin(stored); setActivePin(stored) }
     }, [])
+    const rosterNeedsCompetition = view === "registrations" && competition?.slug !== competitionSlug
     React.useEffect(() => {
         if (!activePin) return
         const controller = new AbortController()
-        if (view !== "registrations") void loadRegistrations(activePin, controller.signal)
+        if (view !== "registrations" || rosterNeedsCompetition) void loadRegistrations(activePin, controller.signal)
         if (view === "team-entries") void loadTeamEntries(activePin)
         return () => controller.abort()
-    }, [activePin, view, reload, loadRegistrations, loadTeamEntries])
+    }, [activePin, view, reload, loadRegistrations, loadTeamEntries, rosterNeedsCompetition])
 
     const login = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
