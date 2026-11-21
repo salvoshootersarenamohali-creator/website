@@ -20,7 +20,7 @@ describe("search engine discovery", () => {
         const entries = await sitemap()
         const paths = entries.map((entry) => new URL(entry.url).pathname)
 
-        expect(db.competitions).toHaveBeenCalledWith(expect.objectContaining({ where: { isPublished: true } }))
+        expect(db.competitions).toHaveBeenCalledWith(expect.objectContaining({ where: { isPublished: true, slug: { not: "1st-bharat-cup" } } }))
         expect(paths).toEqual(expect.arrayContaining([
             "/", "/about", "/courses", "/competitions", "/contact",
             "/courses/intro-to-10m-air-pistol", "/technique/10m-air-rifle",

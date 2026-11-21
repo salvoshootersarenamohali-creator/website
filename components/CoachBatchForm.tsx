@@ -5,7 +5,7 @@ import Image from "next/image"
 import { getAgeFromDobYear, getEligibleCategories, getEntryFee, formatCurrency, isOnlinePaymentMode, getPaymentModeLabel, type PublicCompetition, type SelectedEntry, type Gender } from "@/lib/competition"
 import { getBookingEligibility } from "@/lib/relay-booking"
 import { getPaymentReferenceError } from "@/lib/registration-validation"
-import { RelaySelector, type PendingBooking } from "@/components/RelaySelector"
+import { RelaySelector, useRelayAvailability, type PendingBooking } from "@/components/RelaySelector"
 
 type Student = {
     key: string; name: string; gender: "" | Gender; dateOfBirth: string; motherName: string; fatherName: string; address: string
@@ -26,6 +26,7 @@ export function CoachBatchForm({ competition }: { competition: PublicCompetition
     const [refreshKey, setRefreshKey] = React.useState(0)
     const [submissionKey, setSubmissionKey] = React.useState("")
     const [saved, setSaved] = React.useState<Receipt[] | null>(null)
+    const availability = useRelayAvailability(config.relayBooking.enabled && students.length && !saved ? competition.slug : null, refreshKey)
     const update = (key: string, patch: Partial<Student>) => setStudents((current) => current.map((student) => student.key === key ? { ...student, ...patch } : student))
     const studentCategories = (student: Student) => config.events.flatMap((event) => {
         const age = getAgeFromDobYear(student.dateOfBirth, config.competitionYear)
@@ -101,7 +102,7 @@ export function CoachBatchForm({ competition }: { competition: PublicCompetition
                         const discipline = config.events.find((e) => e.id === student.entries[0]?.eventId)?.discipline
                         return <button key={`${event.id}-${category.code}`} type="button" disabled={!!discipline && event.discipline !== discipline} onClick={() => update(student.key, { entries: selected ? student.entries.filter((e) => !(e.eventId === event.id && e.categoryCode === category.code)) : [...student.entries, { eventId: event.id, categoryCode: category.code }], preferredSlot: "" })} className={`rounded-md border p-3 text-left text-xs disabled:opacity-35 ${selected ? "border-[#D4AF37] bg-[#D4AF37]/15" : "border-white/15"}`}><strong className="block">{category.code} · {category.label}</strong><span>{formatCurrency(getEntryFee(category, config))}</span></button>
                     }) : <p className="text-white/50">Enter date of birth and gender to select eligible categories.</p>}</div>
-                    {config.relayBooking.enabled ? <RelaySelector competition={competition} entries={student.entries} gender={student.gender} dateOfBirth={student.dateOfBirth} date={student.preferredDate} slot={student.preferredSlot} onChange={(preferredDate, preferredSlot) => update(student.key, { preferredDate, preferredSlot })} refreshKey={refreshKey} pending={pendingFor(student.key)} /> : <div className="flex gap-3"><select required className="field" value={student.preferredDate} onChange={(e) => update(student.key, { preferredDate: e.target.value, preferredSlot: "" })}>{config.slotOptions.filter((d) => d.slots.length).map((d) => <option key={d.date} value={d.date}>{d.label}</option>)}</select><select required className="field" value={student.preferredSlot} onChange={(e) => update(student.key, { preferredSlot: e.target.value })}><option value="">Select time</option>{config.slotOptions.find((d) => d.date === student.preferredDate)?.slots.map((slot) => <option key={slot}>{slot}</option>)}</select></div>}
+                    {config.relayBooking.enabled ? <RelaySelector competition={competition} entries={student.entries} gender={student.gender} dateOfBirth={student.dateOfBirth} date={student.preferredDate} slot={student.preferredSlot} onChange={(preferredDate, preferredSlot) => update(student.key, { preferredDate, preferredSlot })} shared={availability} pending={pendingFor(student.key)} /> : <div className="flex gap-3"><select required className="field" value={student.preferredDate} onChange={(e) => update(student.key, { preferredDate: e.target.value, preferredSlot: "" })}>{config.slotOptions.filter((d) => d.slots.length).map((d) => <option key={d.date} value={d.date}>{d.label}</option>)}</select><select required className="field" value={student.preferredSlot} onChange={(e) => update(student.key, { preferredSlot: e.target.value })}><option value="">Select time</option>{config.slotOptions.find((d) => d.date === student.preferredDate)?.slots.map((slot) => <option key={slot}>{slot}</option>)}</select></div>}
                     <p className="mt-4 font-bold text-[#D4AF37]">Student entry amount: {formatCurrency(amountFor(student))}</p>
                 </section>
             })}

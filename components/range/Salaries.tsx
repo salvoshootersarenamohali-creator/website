@@ -11,8 +11,36 @@ type Salary = { id: string; coachId: string; salaryMonth: string; notes: string 
 export function Salaries({ locationId }: { locationId: string }) {
     const [salaries, setSalaries] = useState<Salary[]>([]), [coaches, setCoaches] = useState<Coach[]>([]), [meta, setMeta] = useState<FinanceMeta>({ accounts: [], products: [], categories: [] }), [month, setMonth] = useState(rangeDay().slice(0, 7)), [allMonths, setAllMonths] = useState(false), [editing, setEditing] = useState<Salary>(), [error, setError] = useState("")
     const [loading, setLoading] = useState(true)
-    const load = useCallback(async () => { setLoading(true); try { const [data, staff, settings] = await Promise.all([rangeApi<{ salaries: Salary[] }>(`salaries?locationId=${locationId}${allMonths ? "" : `&month=${month}`}`), rangeApi<{ staff: Coach[] }>("staff"), rangeApi<FinanceMeta>(`finance/meta?locationId=${locationId}`)]); setSalaries(data.salaries); setCoaches(staff.staff.filter(s => s.role === "coach")); setMeta(settings); setError("") } catch (e) { setError(e instanceof Error ? e.message : "Unable to load salaries.") } finally { setLoading(false) } }, [locationId, month, allMonths])
-    useEffect(() => { void Promise.resolve().then(load) }, [load])
+    const loadId = useRef(0), metadataLocation = useRef("")
+    const load = useCallback(async (refreshMetadata = true) => {
+        const current = ++loadId.current
+        const metadata = refreshMetadata || metadataLocation.current !== locationId
+        setLoading(true)
+        try {
+            const [data, staff, settings] = await Promise.all([
+                rangeApi<{ salaries: Salary[] }>(`salaries?locationId=${locationId}${allMonths ? "" : `&month=${month}`}`),
+                metadata ? rangeApi<{ staff: Coach[] }>("staff") : Promise.resolve(null),
+                metadata ? rangeApi<FinanceMeta>(`finance/meta?locationId=${locationId}`) : Promise.resolve(null),
+            ])
+            if (current !== loadId.current) return
+            setSalaries(data.salaries)
+            if (staff && settings) {
+                setCoaches(staff.staff.filter(s => s.role === "coach"))
+                setMeta(settings)
+                metadataLocation.current = locationId
+            }
+            setError("")
+        } catch (e) {
+            if (current === loadId.current) setError(e instanceof Error ? e.message : "Unable to load salaries.")
+        } finally {
+            if (current === loadId.current) setLoading(false)
+        }
+    }, [locationId, month, allMonths])
+    useEffect(() => {
+        let active = true
+        void Promise.resolve().then(() => { if (active) void load(false) })
+        return () => { active = false; loadId.current++ }
+    }, [load])
     const totals = new Map<string, { name: string; month: string; amount: number }>()
     salaries.filter(s => s.transaction.status === "posted").forEach(s => { const key = `${s.coachId}:${s.salaryMonth}`, current = totals.get(key) || { name: s.coach.name, month: s.salaryMonth, amount: 0 }; current.amount += s.transaction.amountPaise; totals.set(key, current) })
     if (loading && !salaries.length) return <LoadingState label="Loading salary payments…" />

@@ -27,7 +27,13 @@ export async function verifyPassword(password: string, stored: string) {
 export async function currentActor(request: NextRequest): Promise<RangeActor> {
     const token = request.cookies.get(SESSION_COOKIE)?.value
     if (!token) throw new RangeError("Please sign in.", 401)
-    const session = await prisma.rangeSession.findUnique({ where: { tokenHash: digest(token) }, include: { user: true } })
+    const session = await prisma.rangeSession.findUnique({
+        where: { tokenHash: digest(token) },
+        select: {
+            expiresAt: true,
+            user: { select: { id: true, name: true, phone: true, username: true, shooterProfileId: true, role: true, isMaster: true, active: true, mustChangePassword: true } },
+        },
+    })
     if (!session || session.expiresAt <= new Date() || !session.user.active) throw new RangeError("Your session has expired. Please sign in.", 401)
     return { id: session.user.id, name: session.user.name, phone: session.user.phone, username: session.user.username, shooterProfileId: session.user.shooterProfileId, role: session.user.role, isMaster: session.user.isMaster, mustChangePassword: session.user.mustChangePassword }
 }

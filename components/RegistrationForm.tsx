@@ -1,0 +1,903 @@
+"use client"
+
+import * as React from "react"
+import Image from "@/components/CompetitionImage"
+import { Accessibility, CalendarDays, CheckCircle2, CreditCard, Download, FileText, IndianRupee, Loader2, MapPin, Medal, Printer, ShieldCheck, Trophy, Users } from "lucide-react"
+import { BHARAT_CUP_REGISTRATION_FIELDS, BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
+import {
+    CategoryOption,
+    PublicCompetition,
+    Gender,
+    PaymentMode,
+    SelectedEntry,
+    buildCategoryLabel,
+    defaultCompetitionConfig,
+    formatCompetitionDateLabel,
+    formatCurrency,
+    getAgeFromDobYear,
+    getEligibleCategories,
+    getEntryFee,
+    getEventById,
+    getCompetitionStatusLabel,
+    getCompetitionBoundaryDates,
+    getPaymentModeLabel,
+    isCompetitionRegistrationAvailable,
+    isOnlinePaymentMode,
+    slotOptions,
+} from "@/lib/competition"
+import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
+import { RelaySelector } from "@/components/RelaySelector"
+import dynamic from "next/dynamic"
+import { MIXED_TEAM_ENTRY_FEE, supportsMixedTeamEntries } from "@/lib/team-entries"
+
+const CoachBatchForm = dynamic(() => import("@/components/CoachBatchForm").then(module => module.CoachBatchForm))
+
+type SavedEntry = {
+    id: string
+    eventTitle: string
+    categoryCode: string
+    categoryLabel: string
+    fee: number
+}
+
+type SavedRegistration = {
+    relayBooking?: { date: string; relayId: string; pool: string; lane: number } | null
+    id: string
+    name: string
+    academy: string
+    coachName: string | null
+    motherName: string | null
+    fatherName: string | null
+    address: string | null
+    phone: string
+    gender: string
+    dateOfBirth: string
+    preferredDate: string
+    preferredSlot: string
+    paymentMode: string
+    paymentStatus: string
+    amount: number
+    studentPhotoPath: string | null
+    birthCertificatePath: string | null
+    aadhaarCardPath: string | null
+    documents: {
+        id: string
+        documentKey: string
+        label: string
+        path: string
+        mimeType: string
+    }[]
+    entries: SavedEntry[]
+}
+
+type BharatCupConfirmation = Pick<SavedRegistration, "name" | "phone" | "dateOfBirth" | "academy" | "coachName" | "gender"> & {
+    entries: Pick<SavedEntry, "id" | "categoryCode" | "categoryLabel">[]
+}
+
+const initialForm = {
+    name: "",
+    academy: "",
+    coachName: "",
+    motherName: "",
+    fatherName: "",
+    gender: "" as "" | Gender,
+    dateOfBirth: "",
+    phone: "",
+    address: "",
+    preferredDate: "2026-06-05",
+    preferredSlot: "8:00 AM - 11:00 AM",
+    paymentMode: "upi" as PaymentMode,
+    utrNumber: "",
+}
+
+function formatDateLabel(value: string, competition: PublicCompetition | null) {
+    const option = (competition?.config.slotOptions ?? slotOptions).find((slot) => slot.date === value)
+    return option?.label ?? value
+}
+
+function formatCompetitionDateRangeLabel(dates: string[]) {
+    if (dates.length === 0) return ""
+    if (dates.length === 1) return formatCompetitionDateLabel(dates[0])
+
+    const [startDate, endDate] = dates
+    const startLabel = formatCompetitionDateLabel(startDate)
+    const endLabel = formatCompetitionDateLabel(endDate)
+    const startYear = startDate.slice(0, 4)
+    const endYear = endDate.slice(0, 4)
+
+    return `${startYear === endYear ? startLabel.replace(/\s+\d{4}$/, "") : startLabel} - ${endLabel}`
+}
+
+export default function RegistrationForm({ competition }: { competition: PublicCompetition }) {
+    const firstDay = competition.config.slotOptions.find(day => day.slots.length)
+    const defaultForm = {
+        ...initialForm,
+        preferredDate: competition.config.relayBooking.enabled
+            ? competition.config.relayBooking.days.find(day => day.relays.length)?.date ?? ""
+            : firstDay?.date ?? "",
+        preferredSlot: competition.config.relayBooking.enabled ? "" : firstDay?.slots[0] ?? "",
+        paymentMode: competition.config.allowedPaymentModes[0] ?? "cash",
+    }
+    const [form, setForm] = React.useState(defaultForm)
+    const [entries, setEntries] = React.useState<SelectedEntry[]>([])
+    const [studentPhoto, setStudentPhoto] = React.useState<File | null>(null)
+    const [documentFiles, setDocumentFiles] = React.useState<Record<string, File | null>>({})
+    const [paymentScreenshot, setPaymentScreenshot] = React.useState<File | null>(null)
+    const [error, setError] = React.useState("")
+    const [isSubmitting, setIsSubmitting] = React.useState(false)
+    const [registration, setRegistration] = React.useState<SavedRegistration | BharatCupConfirmation | null>(null)
+    const [selectionStartedWith, setSelectionStartedWith] = React.useState<"NR" | "ISSF" | null>(null)
+    const [batchMode, setBatchMode] = React.useState(false)
+    const [relayRefresh, setRelayRefresh] = React.useState(0)
+    const config = competition?.config ?? defaultCompetitionConfig
+    const events = config.events
+    const availableSlots = React.useMemo(
+        () => config.relayBooking.enabled
+            ? config.relayBooking.days.filter((day) => day.relays.length > 0).map((day) => ({ date: day.date, label: formatCompetitionDateLabel(day.date), slots: [] as string[] }))
+            : config.slotOptions.filter((day) => day.slots.length > 0),
+        [config.slotOptions, config.relayBooking]
+    )
+    const registrationAvailable = competition ? isCompetitionRegistrationAvailable(competition) : false
+    const bharatCup = competition?.slug === BHARAT_CUP_SLUG
+    const isCashOnly = config.allowedPaymentModes.length === 1 && config.allowedPaymentModes[0] === "cash"
+    const paymentSummary = config.allowedPaymentModes.map(getPaymentModeLabel).join(" / ")
+        + (config.allowedPaymentModes.length === 1 ? " only" : "")
+    const requiredDocuments = config.requiredDocuments
+    const boundaryDates = competition ? getCompetitionBoundaryDates(competition.startDate, competition.endDate) : []
+    const documentSummary = ["Shooter photo", ...requiredDocuments.map((document) => document.label)].join(", ")
+
+    const age = form.dateOfBirth ? getAgeFromDobYear(form.dateOfBirth, config.competitionYear) : null
+    const selectedEvents = entries.map((entry) => getEventById(entry.eventId, config)).filter(Boolean)
+    const selectedDiscipline = selectedEvents[0]?.discipline
+
+    const selectedSlots = React.useMemo(
+        () => availableSlots.find((slot) => slot.date === form.preferredDate)?.slots ?? [],
+        [availableSlots, form.preferredDate]
+    )
+
+    React.useEffect(() => {
+        if (config.relayBooking.enabled) return
+        if (!selectedSlots.includes(form.preferredSlot)) {
+            setForm((current) => {
+                const preferredSlot = selectedSlots[0] ?? ""
+                return current.preferredSlot === preferredSlot ? current : { ...current, preferredSlot }
+            })
+        }
+    }, [config.relayBooking.enabled, form.preferredDate, form.preferredSlot, selectedSlots])
+
+    React.useEffect(() => {
+        if (!config.allowedPaymentModes.includes(form.paymentMode)) {
+            const nextMode = config.allowedPaymentModes[0] ?? "cash"
+            setForm((current) => ({ ...current, paymentMode: nextMode, utrNumber: "" }))
+        }
+    }, [config.allowedPaymentModes, form.paymentMode])
+
+    const categoriesByEvent = React.useMemo(() => {
+        const map = new Map<string, CategoryOption[]>()
+        for (const event of events) {
+            map.set(event.id, age !== null && form.gender ? getEligibleCategories(event, age, form.gender, config) : [])
+        }
+        return map
+    }, [age, config, events, form.gender])
+    const amount = entries.reduce((sum, entry) => {
+        const eventCategories = categoriesByEvent.get(entry.eventId) ?? []
+        const category = eventCategories.find((item) => item.code === entry.categoryCode)
+        return sum + (category ? getEntryFee(category, config) : config.entryFee)
+    }, 0)
+
+    const isEntrySelected = (eventId: string, categoryCode: string) =>
+        entries.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
+
+    const canUseEvent = (eventId: string) => {
+        const event = getEventById(eventId, config)
+        if (!event) return false
+        if (selectedDiscipline && event.discipline !== selectedDiscipline) return false
+        if (!config.relayBooking.enabled && selectionStartedWith === "ISSF" && event.ruleSet === "NR") return false
+        return true
+    }
+
+    const toggleEntry = (eventId: string, categoryCode: string) => {
+        setError("")
+        const event = getEventById(eventId, config)
+        if (!event) return
+
+        if (!canUseEvent(eventId)) {
+            setError("Choose one discipline only. NR shooters can add ISSF, but ISSF-only selections cannot add NR.")
+            return
+        }
+
+        setEntries((current) => {
+            const exists = current.some((entry) => entry.eventId === eventId && entry.categoryCode === categoryCode)
+            if (exists) {
+                const next = current.filter((entry) => !(entry.eventId === eventId && entry.categoryCode === categoryCode))
+                if (!next.length) setSelectionStartedWith(null)
+                return next
+            }
+            if (!current.length) setSelectionStartedWith(event.ruleSet)
+            return [...current, { eventId, categoryCode }]
+        })
+    }
+
+    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        setError("")
+
+        if (!competition || !registrationAvailable) {
+            setError("Registration is closed for this competition.")
+            return
+        }
+        if (!bharatCup && !availableSlots.length) {
+            setError("No relay time slots are currently available.")
+            return
+        }
+        if (!form.gender) {
+            setError(bharatCup ? "Select Men or Women under Category." : "Please select gender so the match category can be assigned correctly.")
+            return
+        }
+        if (!entries.length) {
+            setError("Please select at least one event category.")
+            return
+        }
+        const body = new FormData()
+        body.append("entries", JSON.stringify(entries))
+        if (bharatCup) {
+            BHARAT_CUP_REGISTRATION_FIELDS.forEach((field) => body.set(field, form[field]))
+        } else {
+            if (config.relayBooking.enabled && !form.preferredSlot) { setError("Please select an available relay."); return }
+            if (!studentPhoto) {
+                setError("Please upload the shooter photo.")
+                return
+            }
+            for (const document of requiredDocuments) {
+                if (!documentFiles[document.id]) {
+                    setError(`Please upload ${document.label}.`)
+                    return
+                }
+            }
+            const referenceError = getPaymentReferenceError(form.paymentMode, form.utrNumber)
+            if (referenceError) {
+                setError(referenceError)
+                return
+            }
+            Object.entries(form).forEach(([key, value]) => body.append(key, value))
+            body.append("studentPhoto", studentPhoto)
+            requiredDocuments.forEach((document) => {
+                const file = documentFiles[document.id]
+                if (file) body.append(`requiredDocument:${document.id}`, file)
+            })
+            if (paymentScreenshot) body.append("paymentScreenshot", paymentScreenshot)
+        }
+
+        setIsSubmitting(true)
+        try {
+            const response = await fetch(competition ? `/api/competitions/${competition.slug}/registrations` : "/api/registrations", { method: "POST", body })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.error ?? "Registration failed.")
+            setRegistration(data.registration)
+            window.scrollTo({ top: 0, behavior: "smooth" })
+        } catch (submitError) {
+            setError(submitError instanceof Error ? submitError.message : "Registration failed.")
+        } finally {
+            setRelayRefresh((value) => value + 1)
+            setIsSubmitting(false)
+        }
+    }
+
+    return (
+        <div className="min-h-screen bg-black text-white">
+            <section className="relative overflow-hidden border-b border-white/10 px-4 py-16 md:py-20">
+                <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(212,175,55,0.18),rgba(16,117,98,0.18),rgba(139,41,58,0.15),transparent)]" />
+                <div className="container relative z-10 mx-auto grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+                    <div>
+                        <div className="mb-4 flex flex-wrap gap-2">
+                            <p className="inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold text-[#E5C558]">
+                                <Trophy className="h-4 w-4" />
+                                {competition?.shortTitle ?? "Competition"}
+                            </p>
+                            {competition && (
+                                <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-white">
+                                    <ShieldCheck className="h-4 w-4" />
+                                    {getCompetitionStatusLabel(competition)}
+                                </p>
+                            )}
+                        </div>
+                        <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-tight md:text-6xl">
+                            Registration for {competition?.title ?? "Competition"}
+                        </h1>
+                        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/70">
+                            {bharatCup ? "Enter your shooter details and select your match categories." : "Select your event categories, choose a relay slot, complete payment, and generate your competitor card."}
+                        </p>
+                        <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                            {boundaryDates.length > 0 && (
+                                <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4 sm:col-span-2">
+                                    <CalendarDays className="mb-3 h-5 w-5 text-[#D4AF37]" />
+                                    <p className="text-xl font-bold">{formatCompetitionDateRangeLabel(boundaryDates)}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            {!bharatCup && <TopNote icon={<CreditCard className="h-4 w-4" />} label="Payment" value={paymentSummary} />}
+                            <TopNote icon={<MapPin className="h-4 w-4" />} label="Venue" value={competition?.venue ?? "Competition venue"} />
+                            {!bharatCup && <TopNote icon={<FileText className="h-4 w-4" />} label="Documents" value={documentSummary} />}
+                        </div>
+                    </div>
+                    <div className="rounded-lg border border-[#D4AF37]/30 bg-neutral-950/80 p-5 shadow-2xl shadow-[#D4AF37]/10">
+                        <Image
+                            src={competition?.heroImagePath || "/competition-range.JPG"}
+                            alt={competition ? `${competition.title} entry circular` : "Competition at Salvo range"}
+                            sizes="(min-width: 1024px) 44vw, 100vw"
+                            width={760}
+                            height={520}
+                            className={`h-auto w-full rounded-md object-contain ${config.relayBooking.enabled ? "" : "lg:h-80 lg:object-cover"}`}
+                            priority
+                        />
+                    </div>
+                </div>
+            </section>
+
+            <main className="container mx-auto px-4 py-12">
+                {!bharatCup && config.coachBatchEnabled && registrationAvailable && !registration && <div className="mb-6 flex gap-3">
+                    <button type="button" className={`rounded-md border px-5 py-3 font-bold ${!batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(false)}>Single shooter</button>
+                    <button type="button" className={`rounded-md border px-5 py-3 font-bold ${batchMode ? "border-[#D4AF37] text-[#D4AF37]" : "border-white/15"}`} onClick={() => setBatchMode(true)}>Coach: register multiple students</button>
+                </div>}
+                {registration ? (
+                    "documents" in registration ? <CompetitorCard registration={registration} competition={competition} onNew={() => {
+                        setRegistration(null)
+                        setEntries([])
+                        setSelectionStartedWith(null)
+                        setForm(defaultForm)
+                        setStudentPhoto(null)
+                        setDocumentFiles({})
+                        setPaymentScreenshot(null)
+                    }} /> : <BharatCupRegistrationConfirmation registration={registration} onNew={() => {
+                        setRegistration(null)
+                        setForm(defaultForm)
+                        setEntries([])
+                        setSelectionStartedWith(null)
+                    }} />
+                ) : batchMode && competition ? <CoachBatchForm competition={competition} /> : !registrationAvailable ? (
+                    <ClosedRegistration competition={competition} />
+                ) : (
+                    <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[0.95fr_1.4fr]">
+                        <section className="space-y-6">
+                            <Panel title={competition ? `${competition.title} Registration` : "Shooter Details"}>
+                                <Field label={bharatCup ? "Shooter Name" : "Full Name"} required>
+                                    <input required value={form.name} onChange={(event) => setForm({ ...form, name: toProperCase(event.target.value) })} className="field" />
+                                </Field>
+                                <Field label={bharatCup ? "Academy/Institution Name" : config.requiresCoachName ? "Academy Name" : "Academy name/ Coach name"} required>
+                                    <input required value={form.academy} onChange={(event) => setForm({ ...form, academy: toProperCase(event.target.value) })} className="field" />
+                                </Field>
+                                {(bharatCup || config.requiresCoachName) && (
+                                    <Field label="Coach Name" required>
+                                        <input required value={form.coachName} onChange={(event) => setForm({ ...form, coachName: toProperCase(event.target.value) })} className="field" />
+                                    </Field>
+                                )}
+                                {!bharatCup && config.requiresGuardianDetails && (
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <Field label="Mother's Name" required>
+                                            <input required value={form.motherName} onChange={(event) => setForm({ ...form, motherName: toProperCase(event.target.value) })} className="field" />
+                                        </Field>
+                                        <Field label="Father's Name" required>
+                                            <input required value={form.fatherName} onChange={(event) => setForm({ ...form, fatherName: toProperCase(event.target.value) })} className="field" />
+                                        </Field>
+                                    </div>
+                                )}
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <Field label={bharatCup ? "Category" : "Gender"} required>
+                                        <select required value={form.gender} onChange={(event) => { setForm({ ...form, gender: event.target.value as Gender }); setEntries([]); setSelectionStartedWith(null) }} className="field">
+                                            <option value="">{bharatCup ? "Select Men or Women" : "Select gender"}</option>
+                                            <option value="male">{bharatCup ? "Men" : "Male / Boy"}</option>
+                                            <option value="female">{bharatCup ? "Women" : "Female / Girl"}</option>
+                                        </select>
+                                    </Field>
+                                    <Field label="Date of Birth" required>
+                                        <input required type="date" value={form.dateOfBirth} onChange={(event) => { setForm({ ...form, dateOfBirth: event.target.value }); setEntries([]); setSelectionStartedWith(null) }} className="field" />
+                                    </Field>
+                                </div>
+                                <Field label={bharatCup ? "Shooter Mobile Number" : "Phone Number"} required>
+                                    <input required type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="field" />
+                                </Field>
+                                {!bharatCup && config.requiresAddress && (
+                                    <Field label="Address" required>
+                                        <textarea required value={form.address} onChange={(event) => setForm({ ...form, address: toProperCase(event.target.value) })} className="field min-h-24" />
+                                    </Field>
+                                )}
+                                {!bharatCup && <Field label="Student Photo" required>
+                                    <input required type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setStudentPhoto(event.target.files?.[0] ?? null)} className="field file:text-white" />
+                                </Field>}
+                                {!bharatCup && requiredDocuments.map((document) => (
+                                    <Field key={document.id} label={document.label} required>
+                                        <input
+                                            required
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp,application/pdf"
+                                            onChange={(event) => setDocumentFiles((current) => ({ ...current, [document.id]: event.target.files?.[0] ?? null }))}
+                                            className="field file:text-white"
+                                        />
+                                    </Field>
+                                ))}
+                                {age !== null && (
+                                    <p className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
+                                        Category age for this competition: <span className="font-bold text-[#D4AF37]">{age}</span>
+                                    </p>
+                                )}
+                                {config.minAge !== null && (
+                                    <p className="rounded-md border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                                        Minimum eligible age is {config.minAge}. Shooters below this age cannot participate in this competition.
+                                    </p>
+                                )}
+                            </Panel>
+
+                        </section>
+
+                        <section className="space-y-6">
+                            <Panel title="Select Event Categories">
+                                <div className="mb-5 rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm text-white/75">
+                                    {bharatCup ? "Select the matches you are entering." : config.feesByRuleSet.NR || config.feesByRuleSet.ISSF
+                                        ? `Select every event-category you want to compete in. NR categories are ${formatCurrency(config.feesByRuleSet.NR ?? config.entryFee)} and ISSF categories are ${formatCurrency(config.feesByRuleSet.ISSF ?? config.entryFee)}.`
+                                        : `Select every event-category you want to compete in. Little Champ categories are ${formatCurrency(config.littleChampEntryFee)}; all other categories are ${formatCurrency(config.entryFee)}.`}
+                                </div>
+                                <div className="grid gap-5">
+                                    {events.map((event) => {
+                                        const categories = categoriesByEvent.get(event.id) ?? []
+                                        const disabled = !canUseEvent(event.id)
+                                        return (
+                                            <div key={event.id} className={`rounded-lg border p-5 ${disabled ? "border-white/5 bg-white/[0.02] opacity-45" : "border-white/10 bg-white/[0.04]"}`}>
+                                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                                    <div>
+                                                        <p className="text-xl font-black">{event.title}</p>
+                                                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-[#D4AF37]">{event.ruleSet} {event.discipline}</p>
+                                                    </div>
+                                                    {!bharatCup && <div className="flex flex-wrap gap-2">
+                                                        <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-100">
+                                                            Fee {formatCurrency(config.feesByRuleSet[event.ruleSet] ?? config.entryFee)}
+                                                        </span>
+                                                    </div>}
+                                                </div>
+                                                <div className="mt-5 flex flex-wrap gap-2">
+                                                    {!form.gender || age === null ? (
+                                                        <p className="text-sm text-white/45">{bharatCup ? "Select Men or Women and enter your date of birth to see eligible matches." : "Enter gender and date of birth to unlock eligible categories."}</p>
+                                                    ) : categories.length ? (
+                                                        categories.map((category) => (
+                                                                <button
+                                                                    key={category.code}
+                                                                    type="button"
+                                                                    disabled={disabled}
+                                                                    aria-pressed={isEntrySelected(event.id, category.code)}
+                                                                    onClick={() => toggleEntry(event.id, category.code)}
+                                                                    className={`rounded-md border px-3 py-2 text-left text-sm transition ${isEntrySelected(event.id, category.code) ? "border-[#D4AF37] bg-[#D4AF37] text-black" : "border-white/10 bg-black/30 text-white/75 hover:border-[#D4AF37]/60 hover:text-white"}`}
+                                                                >
+                                                                    <span className="block font-bold">{category.code}</span>
+                                                                    <span className="text-xs">{category.label.replace(event.title, "").trim()}</span>
+                                                                    {!bharatCup && <span className="mt-1 block text-xs font-bold">{formatCurrency(getEntryFee(category, config))}</span>}
+                                                                </button>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-sm text-white/45">No eligible categories for this event.</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </Panel>
+
+                            {!bharatCup && <>
+                            <Panel title="Preferred Relay">
+                                {config.relayBooking.enabled && competition ? <RelaySelector competition={competition} entries={entries} gender={form.gender} dateOfBirth={form.dateOfBirth} date={form.preferredDate} slot={form.preferredSlot} refreshKey={relayRefresh} onChange={(preferredDate, preferredSlot) => setForm((current) => ({ ...current, preferredDate, preferredSlot }))} /> : availableSlots.length ? (
+                                    <>
+                                        <Field label="Competition Date" required>
+                                            <select required value={form.preferredDate} onChange={(event) => setForm({ ...form, preferredDate: event.target.value })} className="field">
+                                                {availableSlots.map((day) => <option key={day.date} value={day.date}>{day.label}</option>)}
+                                            </select>
+                                        </Field>
+                                        <Field label="Time Slot" required>
+                                            <select required value={form.preferredSlot} onChange={(event) => setForm({ ...form, preferredSlot: event.target.value })} className="field">
+                                                {selectedSlots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                                            </select>
+                                        </Field>
+                                    </>
+                                ) : (
+                                    <p className="rounded-md border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
+                                        No relay time slots are currently available. Please contact the organizer before registering.
+                                    </p>
+                                )}
+                            </Panel>
+
+                            <Panel title="Payment">
+                                <div className="mb-4 rounded-md border border-sky-300/25 bg-sky-400/10 p-4 text-sm text-sky-50">
+                                    <div className="flex items-center gap-2 font-black uppercase tracking-[0.14em] text-sky-100">
+                                        <Accessibility className="h-5 w-5" />
+                                        Para entry policy
+                                    </div>
+                                    <p className="mt-2 leading-relaxed text-sky-50/80">
+                                        {config.paraEntryMode === "sponsored"
+                                            ? "Verified para shooters are fully sponsored and pay no entry fee."
+                                            : `Verified para shooters are charged ${formatCurrency(config.paraEntryFee)} per selected entry.`}
+                                        {" "}Para status and the final amount are confirmed by an admin after registration. {config.allowedPaymentModes.includes("cash")
+                                            ? "Para shooters should select cash/pay-later and avoid paying online until verification is complete."
+                                            : "Para shooters should contact the organizer before making the required online payment."}
+                                    </p>
+                                </div>
+                                <div className={`grid gap-3 ${config.allowedPaymentModes.length > 1 ? "sm:grid-cols-2" : ""}`}>
+                                    {config.allowedPaymentModes.map((mode) => (
+                                        <button
+                                            type="button"
+                                            key={mode}
+                                            onClick={() => setForm({ ...form, paymentMode: mode, utrNumber: mode === form.paymentMode ? form.utrNumber : "" })}
+                                            className={`rounded-md border px-4 py-3 text-left transition ${form.paymentMode === mode ? "border-[#D4AF37] bg-[#D4AF37]/15 text-[#E5C558]" : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/30"}`}
+                                        >
+                                            <CreditCard className="mb-2 h-5 w-5" />
+                                            <span className="font-bold uppercase">{getPaymentModeLabel(mode)}</span>
+                                            <span className="mt-1 block text-xs text-white/55">{mode === "cash" ? "Marked pending" : mode === "upi" ? "Requires 12-digit UTR" : mode === "rtgs" ? "Minimum transfer ₹2,00,000" : "Requires transfer reference"}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                {isCashOnly && (
+                                    <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+                                        Only cash payments are accepted for this public registration. Admins can reconcile payment later from the competition dashboard.
+                                    </div>
+                                )}
+                                {form.paymentMode === "rtgs" && (
+                                    <p className="mt-4 text-sm text-amber-200">RTGS transfers require a minimum of ₹2,00,000. For smaller payments, use UPI, NEFT, or IMPS.</p>
+                                )}
+
+                                {config.paymentDetails && (
+                                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                                        {config.paymentDetails.upiId && (
+                                            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#D4AF37]">UPI ID</p>
+                                                <p className="mt-2 break-all font-mono text-base font-bold text-white select-all">{config.paymentDetails.upiId}</p>
+                                            </div>
+                                        )}
+                                        {config.paymentDetails.accountNumber && (
+                                            <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#D4AF37]">NEFT / IMPS / RTGS Account Details</p>
+                                                <dl className="mt-3 space-y-2 text-sm">
+                                                    <div><dt className="text-white/50">Account Name</dt><dd className="font-semibold text-white select-all">{config.paymentDetails.accountName}</dd></div>
+                                                    <div><dt className="text-white/50">Account No.</dt><dd className="break-all font-mono font-semibold text-white select-all">{config.paymentDetails.accountNumber}</dd></div>
+                                                    <div><dt className="text-white/50">IFSC</dt><dd className="font-mono font-semibold text-white select-all">{config.paymentDetails.ifsc}</dd></div>
+                                                    <div><dt className="text-white/50">Bank</dt><dd className="font-semibold text-white">{config.paymentDetails.bankName}</dd></div>
+                                                </dl>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {isOnlinePaymentMode(form.paymentMode) && (
+                                    <div className={`mt-5 grid gap-5 ${form.paymentMode === "upi" ? "sm:grid-cols-[180px_1fr]" : ""}`}>
+                                        {form.paymentMode === "upi" && (
+                                            <div className="rounded-md border border-white/10 bg-white p-3">
+                                                <Image src={competition?.paymentQrPath || "/upi-scanner.png"} unoptimized alt="UPI payment QR scanner" width={180} height={220} className="h-auto w-full" />
+                                            </div>
+                                        )}
+                                        <div className="space-y-4">
+                                            <Field label={form.paymentMode === "upi" ? "12-digit UTR / UPI Reference" : `${getPaymentModeLabel(form.paymentMode)} Transaction Reference / UTR`} required>
+                                                <input required inputMode={form.paymentMode === "upi" ? "numeric" : "text"} maxLength={form.paymentMode === "upi" ? 12 : 64} value={form.utrNumber} onChange={(event) => setForm({ ...form, utrNumber: form.paymentMode === "upi" ? event.target.value.replace(/\D/g, "") : event.target.value })} className="field" />
+                                            </Field>
+                                            <Field label="Payment Screenshot (optional)">
+                                                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setPaymentScreenshot(event.target.files?.[0] ?? null)} className="field file:text-white" />
+                                            </Field>
+                                        </div>
+                                    </div>
+                                )}
+                            </Panel>
+
+                            {config.teamEntriesEnabled ? (
+                                <Panel title="Team Entries">
+                                    <div className="rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm leading-relaxed text-white/75">
+                                        <div className="mb-3 flex items-center gap-2 text-[#E5C558]">
+                                            <Users className="h-5 w-5" />
+                                            <p className="font-black uppercase tracking-[0.16em]">Submit through your coach</p>
+                                        </div>
+                                        <p>
+                                            Team entries are handled by the coach/admin after individual registrations are submitted. The {supportsMixedTeamEntries(competition?.slug ?? "") ? "standard team" : "team"} entry fee is <span className="font-bold text-white">{formatCurrency(config.teamEntryFee)}</span> per team.
+                                            {supportsMixedTeamEntries(competition?.slug ?? "") && <> The mixed team entry fee is <span className="font-bold text-white">{formatCurrency(MIXED_TEAM_ENTRY_FEE)}</span> per team.</>}
+                                        </p>
+                                        <ul className="mt-3 list-disc space-y-1 pl-5">
+                                            <li>Standard teams must have exactly 3 shooters from the same shooting club.</li>
+                                            {supportsMixedTeamEntries(competition?.slug ?? "") && <li>Mixed teams must have one male and one female shooter. They can be from different clubs.</li>}
+                                            <li>Team members can be from different categories, but must be in the same discipline: pistol or rifle.</li>
+                                            <li>A shooter must first register for an individual event before being added to a team entry.</li>
+                                        </ul>
+                                    </div>
+                                </Panel>
+                            ) : (
+                                <Panel title="Competition Notes">
+                                    <div className="rounded-md border border-[#D4AF37]/25 bg-[#D4AF37]/10 p-4 text-sm leading-relaxed text-white/75">
+                                        <div className="mb-3 flex items-center gap-2 text-[#E5C558]">
+                                            <FileText className="h-5 w-5" />
+                                            <p className="font-black uppercase tracking-[0.16em]">Important Information</p>
+                                        </div>
+                                        <ul className="list-disc space-y-2 pl-5">
+                                            {config.registrationNotes.map((note) => <li key={note}>{note}</li>)}
+                                            {config.rules.slice(0, 4).map((rule) => <li key={rule}>{rule}</li>)}
+                                        </ul>
+                                    </div>
+                                </Panel>
+                            )}
+                            </>}
+
+                            <div className="sticky top-24 rounded-lg border border-[#D4AF37]/30 bg-neutral-950 p-6 shadow-2xl shadow-[#D4AF37]/10">
+                                {!bharatCup && <div className="mb-5 flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-[0.2em] text-white/45">Total Payable</p>
+                                        <p className="text-4xl font-black text-[#D4AF37]">{formatCurrency(amount)}</p>
+                                    </div>
+                                    <IndianRupee className="h-10 w-10 text-[#D4AF37]" />
+                                </div>}
+                                <div className="space-y-2">
+                                    {entries.length ? entries.map((entry) => {
+                                        const event = getEventById(entry.eventId, config)
+                                        const category = event && form.gender && age !== null
+                                            ? getEligibleCategories(event, age, form.gender, config).find((item) => item.code === entry.categoryCode)
+                                            : null
+                                        return (
+                                            <div key={`${entry.eventId}-${entry.categoryCode}`} className="rounded-md bg-white/[0.04] px-3 py-2 text-sm">
+                                                <span className="font-bold text-white">{category?.code}</span>
+                                                <span className="ml-2 text-white/60">{category?.label ?? (event ? buildCategoryLabel(event, category?.bracket ?? "senior", form.gender || "male") : "")}</span>
+                                            </div>
+                                        )
+                                    }) : <p className="text-sm text-white/45">No categories selected yet.</p>}
+                                </div>
+                                {error && <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting || (!bharatCup && !availableSlots.length)}
+                                    className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#D4AF37] px-6 font-bold uppercase tracking-[0.14em] text-black shadow-[0_0_28px_rgba(212,175,55,0.35)] transition hover:bg-[#E5C558] disabled:opacity-60"
+                                >
+                                    {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
+                                    Submit Registration
+                                </button>
+                            </div>
+                        </section>
+                    </form>
+                )}
+            </main>
+        </div>
+    )
+}
+
+function BharatCupRegistrationConfirmation({ registration, onNew }: { registration: BharatCupConfirmation; onNew: () => void }) {
+    const details = {
+        "Shooter Name": registration.name,
+        "Shooter Mobile Number": registration.phone,
+        "Date of Birth": registration.dateOfBirth.slice(0, 10),
+        "Academy/Institution Name": registration.academy,
+        "Coach Name": registration.coachName,
+        "Category": registration.gender === "male" ? "Men" : "Women",
+    }
+    return (
+        <section className="mx-auto max-w-2xl">
+            <Panel title="Registration received">
+                <dl className="grid gap-3 sm:grid-cols-2">
+                    {Object.entries(details).map(([label, value]) => <div key={label}>
+                        <dt className="text-sm text-white/60">{label}</dt>
+                        <dd className="font-semibold">{value}</dd>
+                    </div>)}
+                </dl>
+                <ul className="list-disc space-y-1 pl-5" aria-label="Registered matches">
+                    {registration.entries.map((entry) => <li key={entry.id}>{entry.categoryCode} · {entry.categoryLabel}</li>)}
+                </ul>
+                <button type="button" onClick={onNew} className="rounded-md bg-[#D4AF37] px-5 py-2 font-bold text-black">
+                    Register another shooter
+                </button>
+            </Panel>
+        </section>
+    )
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <div className="rounded-lg border border-white/10 bg-neutral-950/85 p-5 shadow-xl shadow-black/20">
+            <h2 className="mb-5 text-xl font-black">{title}</h2>
+            <div className="space-y-4">{children}</div>
+        </div>
+    )
+}
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+    return (
+        <label className="block">
+            <span className="mb-2 block text-sm font-semibold text-white/70">{label}{required && <span className="text-[#D4AF37]"> *</span>}</span>
+            {children}
+        </label>
+    )
+}
+
+function TopNote({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+    return (
+        <div className="rounded-md border border-white/10 bg-white/[0.05] p-4">
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/40">
+                {icon}
+                {label}
+            </p>
+            <p className="mt-2 text-sm font-black text-white">{value}</p>
+        </div>
+    )
+}
+
+function ClosedRegistration({ competition }: { competition: PublicCompetition | null }) {
+    return (
+        <section className="mx-auto max-w-2xl rounded-lg border border-rose-300/25 bg-rose-400/[0.08] p-8 text-center shadow-2xl shadow-rose-950/20">
+            <ShieldCheck className="mx-auto h-10 w-10 text-rose-100" />
+            <h2 className="mt-4 text-3xl font-black">Registration Closed</h2>
+            <p className="mt-3 text-white/65">
+                {competition ? `${competition.shortTitle} is no longer accepting public registrations.` : "This competition is no longer accepting public registrations."}
+            </p>
+            {competition && (
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    <a href={`/competitions/${competition.slug}`} className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 font-bold text-white hover:border-[#D4AF37]">
+                        Competition Details
+                    </a>
+                    {(competition.resultsPublished || competition.registrationOpen) && (
+                        <a href={`/competitions/${competition.slug}/results`} className="inline-flex h-11 items-center justify-center rounded-md bg-[#D4AF37] px-4 font-bold text-black">
+                            View Results
+                        </a>
+                    )}
+                </div>
+            )}
+        </section>
+    )
+}
+
+function CompetitorCard({ registration, competition, onNew }: { registration: SavedRegistration; competition: PublicCompetition | null; onNew: () => void }) {
+    const isProvisionalForm = Boolean(competition?.config.requiresGuardianDetails)
+
+    return (
+        <section className="mx-auto max-w-5xl">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <p className="text-sm uppercase tracking-[0.25em] text-[#D4AF37]">Registration Complete</p>
+                    <h2 className="text-3xl font-black">{isProvisionalForm ? "Provisional Form Generated" : "Competitor Card Generated"}</h2>
+                </div>
+                <div className="flex gap-3">
+                    <button onClick={() => window.print()} className="inline-flex h-11 items-center gap-2 rounded-md border border-white/15 px-4 font-bold text-white hover:border-[#D4AF37]">
+                        <Printer className="h-4 w-4" />
+                        Print
+                    </button>
+                    <button onClick={onNew} className="inline-flex h-11 items-center gap-2 rounded-md bg-[#D4AF37] px-4 font-bold text-black">
+                        <Download className="h-4 w-4" />
+                        New Entry
+                    </button>
+                </div>
+            </div>
+            {isProvisionalForm ? (
+                <FaridkotProvisionalForm registration={registration} competition={competition} />
+            ) : (
+                <div className="print-card overflow-hidden rounded-lg bg-white text-black shadow-2xl">
+                    <div className="bg-neutral-950 px-8 py-6 text-white print:bg-white print:px-4 print:py-2 print:text-black">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <Medal className="h-12 w-12 text-[#D4AF37]" />
+                                <div>
+                                    <p className="text-3xl font-black text-[#D4AF37] print:text-2xl print:text-black">{(competition?.shortTitle ?? "Competition").toUpperCase()}</p>
+                                    <p className="text-sm uppercase tracking-[0.24em] text-white/60 print:text-black">Competitor Card</p>
+                                </div>
+                            </div>
+                            <Image src="/salvo-logo.png" alt="Salvo Shooters Arena" width={180} height={72} className="h-12 w-auto" />
+                        </div>
+                    </div>
+                    <CardBody registration={registration} competition={competition} title="COMPETITOR CARD" />
+                    <div className="mx-8 border-t-2 border-black" />
+                    <CardBody registration={registration} competition={competition} title="FOR OFFICE USE ONLY" />
+                </div>
+            )}
+        </section>
+    )
+}
+
+function FaridkotProvisionalForm({ registration, competition }: { registration: SavedRegistration; competition: PublicCompetition | null }) {
+    const firstEntry = registration.entries[0]
+    const matchNumbers = registration.entries.map((entry) => entry.categoryCode).join(", ")
+    const matchFees = registration.entries.map((entry) => `${entry.categoryCode}: ${formatCurrency(entry.fee)}`).join(", ")
+    const discipline = registration.entries.some((entry) => /pistol/i.test(entry.eventTitle)) ? "Pistol" : "Rifle"
+
+    return (
+        <div className="print-card overflow-hidden rounded-lg bg-white p-8 text-black shadow-2xl">
+            <div className="border-4 border-double border-black p-8 font-serif">
+                <div className="text-center">
+                    <p className="text-lg font-bold">(USE CAPITAL LETTER ONLY)</p>
+                    <h2 className="text-2xl font-bold">PROVISIONAL SHOOTER&apos;S REGISTRATION & ENTRY FORM</h2>
+                    <h3 className="text-xl font-bold">{competition?.shortTitle ?? "DRSA Faridkot 2026-27"}</h3>
+                </div>
+                <div className="mt-7 grid grid-cols-[1fr_150px] gap-8">
+                    <div className="space-y-4 text-lg">
+                        <FormLine label="Name of Competition/Event" value={competition?.title ?? firstEntry?.eventTitle ?? ""} />
+                        <FormLine label="Shooter Name" value={registration.name} />
+                        {registration.coachName && <FormLine label="Coach Name" value={registration.coachName} />}
+                        <FormLine label="Mother's Name" value={registration.motherName ?? ""} />
+                        <FormLine label="Father's Name" value={registration.fatherName ?? ""} />
+                        <FormLine label="Date of Birth" value={registration.dateOfBirth.slice(0, 10)} />
+                    </div>
+                    <div className="flex flex-col items-center gap-3">
+                        <p className="self-start text-lg">Category: {firstEntry?.categoryCode ?? ""}</p>
+                        <div className="flex h-40 w-32 items-center justify-center border-2 border-black text-center text-xs">
+                            {registration.studentPhotoPath ? "Photo Uploaded" : "Photo"}
+                        </div>
+                    </div>
+                </div>
+                <div className="mt-4 grid gap-4 text-lg">
+                    <p>Sex: <span className="ml-4">Male {registration.gender === "male" ? "[x]" : "[ ]"}</span><span className="ml-8">Female {registration.gender === "female" ? "[x]" : "[ ]"}</span></p>
+                    <FormLine label="Match No." value={matchNumbers} />
+                    <FormLine label="Match Fee" value={matchFees} />
+                    <p>Event: <span className="ml-4">Rifle {discipline === "Rifle" ? "[x]" : "[ ]"}</span><span className="ml-8">Pistol {discipline === "Pistol" ? "[x]" : "[ ]"}</span></p>
+                    <FormLine label="Address" value={registration.address ?? ""} />
+                    <FormLine label="Contact No." value={registration.phone} />
+                </div>
+                <div className="mt-8 rounded-md border border-black p-4 text-base leading-relaxed">
+                    <p className="font-bold">Declaration:</p>
+                    <p>I hereby declare and confirm that all the entries provided in this registration form are correct. I understand that false or incomplete information may lead to cancellation of registration.</p>
+                </div>
+                <div className="mt-6 grid gap-2 text-sm">
+                    <p>Documents uploaded: Shooter photo{registration.documents.map((document) => `, ${document.label}`).join("")}.</p>
+                    <p>Payment mode: {getPaymentModeLabel(registration.paymentMode)} | Amount: {formatCurrency(registration.amount)} | Status: {registration.paymentStatus}</p>
+                    <p>Match starts at {competition?.config.matchStartTime ?? "8:00 AM"}.</p>
+                </div>
+                <div className="mt-16 flex justify-between text-lg">
+                    <div>
+                        <p>(Signature of Shooter)</p>
+                        <div className="mt-12 w-56 border-b-2 border-black" />
+                    </div>
+                    <div>
+                        <p>(Signature of Parents/Guardian)</p>
+                        <div className="mt-12 w-72 border-b-2 border-black" />
+                    </div>
+                </div>
+                <p className="mt-8 text-lg">Date: {new Date().toISOString().slice(0, 10)}</p>
+            </div>
+        </div>
+    )
+}
+
+function FormLine({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="grid grid-cols-[220px_1fr] items-end gap-3">
+            <p>{label}:</p>
+            <p className="min-h-8 border-b border-dotted border-black px-2">{value}</p>
+        </div>
+    )
+}
+
+function CardBody({ registration, competition, title }: { registration: SavedRegistration; competition: PublicCompetition | null; title: string }) {
+    return (
+        <div className="px-8 py-7 font-serif text-lg print:break-inside-avoid print:px-4 print:py-3 print:text-sm">
+            <div className="mb-6 grid grid-cols-[1fr_auto] items-end gap-4 border-b-2 border-black pb-2 print:mb-2">
+                <h3 className="text-center text-xl font-bold underline print:text-base">{title}</h3>
+                <p><span className="font-bold">Date:</span> {formatDateLabel(registration.preferredDate.slice(0, 10), competition)}</p>
+            </div>
+            <div className="space-y-5 print:space-y-1">
+                <CardLine label="1. Name" value={registration.name} />
+                <CardLine label="2. Club Name" value={registration.academy} />
+                {registration.coachName && <CardLine label="2a. Coach Name" value={registration.coachName} />}
+                <CardLine label="3. Contact" value={registration.phone} />
+                <div>
+                    <p className="font-bold">4. Category/Event:</p>
+                    <div className="mt-2 space-y-2 pl-10 print:mt-1 print:space-y-0">
+                        {registration.entries.map((entry, index) => (
+                            <p key={entry.id} className="border-b border-dotted border-black pb-1">
+                                {String.fromCharCode(97 + index)}) {entry.categoryCode} - {entry.categoryLabel}
+                            </p>
+                        ))}
+                    </div>
+                </div>
+                <CardLine label="5. Slot" value={registration.preferredSlot} />
+                {registration.relayBooking && <CardLine label="Lane" value={`${registration.relayBooking.pool === "special" ? "Special" : "Standard"} lane ${registration.relayBooking.lane}`} />}
+                <CardLine label="6. Amount Paid" value={`${formatCurrency(registration.amount)} (${getPaymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`} />
+            </div>
+            <div className="mt-12 flex justify-between print:mt-5">
+                <p>Official Signature</p>
+                <p>Shooter Signature</p>
+            </div>
+        </div>
+    )
+}
+
+function CardLine({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="grid grid-cols-[170px_1fr] gap-4">
+            <p>{label}:</p>
+            <p className="border-b border-dotted border-black pb-1">{value}</p>
+        </div>
+    )
+}

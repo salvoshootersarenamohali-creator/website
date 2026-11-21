@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 import * as XLSX from "xlsx"
 
+vi.mock("next/cache", () => ({ unstable_cache: (load: () => unknown) => load }))
+
 const db = vi.hoisted(() => ({ registrations: vi.fn(), teams: vi.fn(), competition: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: { registration: { findMany: db.registrations }, teamEntry: { findMany: db.teams } } }))
 vi.mock("@/lib/admin", () => ({ isCompetitionAdminRequest: async () => true, adminUnauthorized: () => Response.json({}, { status: 401 }) }))
@@ -27,9 +29,10 @@ function shooter(eventId: string, categoryCode: string, isPara = false) {
     }
 }
 
+let revision = 0
 beforeEach(() => {
     vi.clearAllMocks()
-    db.competition.mockResolvedValue({ id: "super", slug: "super-cup-2026", isPublished: true, registrationOpen: true, resultsPublished: true, config: defaultCompetitionConfig })
+    db.competition.mockResolvedValue({ id: "super", updatedAt: new Date(++revision), slug: "super-cup-2026", isPublished: true, registrationOpen: true, resultsPublished: true, config: defaultCompetitionConfig })
     db.teams.mockResolvedValue([])
 })
 
@@ -149,4 +152,24 @@ it.each([
     expect(row).not.toHaveProperty("Precision Total")
     expect(row).not.toHaveProperty("Duelling Total")
     expect(row["10x"]).toBe("")
+})
+
+it("shares one ranking snapshot, caps TV groups, and checks publication before returning 304", async () => {
+    const athletes = Array.from({ length: 12 }, (_, i) => ({
+        ...shooter("nr-air-pistol", "S-11"), name: "Student " + i,
+    }))
+    db.registrations.mockResolvedValue(athletes)
+    const url = "http://localhost/api/competitions/super-cup-2026/results"
+    const full = await results(new NextRequest(url))
+    const tv = await results(new NextRequest(url + "?view=tv"))
+    const body = await tv.json()
+    expect((await full.json()).topStudents[2].rows).toHaveLength(12)
+    expect(body.topStudents[2].rows).toHaveLength(10)
+    expect(body).not.toHaveProperty("categories")
+    expect(tv.headers.get("etag")).not.toEqual(full.headers.get("etag"))
+    const headers = { "If-None-Match": tv.headers.get("etag")! }
+    expect((await results(new NextRequest(url + "?view=tv", { headers }))).status).toBe(304)
+    expect(db.registrations).toHaveBeenCalledTimes(1)
+    db.competition.mockResolvedValueOnce({ isPublished: false })
+    expect((await results(new NextRequest(url + "?view=tv", { headers }))).status).toBe(404)
 })

@@ -1,3 +1,4 @@
+import { webCompetitionKey } from "@/lib/bharat-cup"
 import { hasCompetitionEnded } from "@/lib/competition"
 import { serializeCompetition } from "@/lib/competition-server"
 import { toPublicParticipantDirectory } from "@/lib/participants"
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic"
 export async function GET(_request: Request, context: RouteContext) {
     try {
         const { slug } = await context.params
-        const competition = await prisma.competition.findUnique({ where: { slug } })
+        const competition = await prisma.competition.findUnique({ where: webCompetitionKey(slug) })
         if (!competition || !competition.isPublished) {
             return Response.json({ error: "Competition not found." }, { status: 404 })
         }

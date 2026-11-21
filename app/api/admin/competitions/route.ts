@@ -1,3 +1,4 @@
+import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
 import { NextRequest } from "next/server"
 import {
     adminUnauthorized,
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
     if (!isAdminRequest(request)) return adminUnauthorized()
 
     const competitions = await prisma.competition.findMany({
+        where: { slug: { not: BHARAT_CUP_SLUG } },
         orderBy: [
             { startDate: "desc" },
             { createdAt: "desc" },

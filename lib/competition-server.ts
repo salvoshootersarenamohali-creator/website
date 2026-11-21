@@ -1,3 +1,4 @@
+import { BHARAT_CUP_SLUG, webCompetitionKey } from "@/lib/bharat-cup"
 import { NextRequest } from "next/server"
 import { Prisma } from "@prisma/client"
 import {
@@ -66,22 +67,20 @@ export function getTemplatePublicCompetition(): PublicCompetition {
 }
 
 export function getCompetitionSlugFromRequest(request: NextRequest) {
-    const querySlug = request.nextUrl.searchParams.get("competition")
-    if (querySlug) return querySlug
-
     const segments = request.nextUrl.pathname.split("/").filter(Boolean)
     const competitionIndex = segments.indexOf("competitions")
     if (competitionIndex >= 0 && segments[competitionIndex + 1]) {
         return decodeURIComponent(segments[competitionIndex + 1])
     }
 
-    return null
+    return request.nextUrl.searchParams.get("competition") || null
 }
 
 export async function getActiveCompetition() {
     const activeCompetitions = await prisma.competition.findMany({
         where: {
             isPublished: true,
+            slug: { not: BHARAT_CUP_SLUG },
             registrationOpen: true,
         },
         orderBy: [
@@ -94,7 +93,7 @@ export async function getActiveCompetition() {
     if (active) return active
 
     return prisma.competition.findFirst({
-        where: { isPublished: true },
+        where: { isPublished: true, slug: { not: BHARAT_CUP_SLUG } },
         orderBy: [
             { startDate: "desc" },
             { createdAt: "desc" },
@@ -104,7 +103,7 @@ export async function getActiveCompetition() {
 
 export async function getCompetitionBySlugOrActive(slug: string | null) {
     if (slug) {
-        return prisma.competition.findUnique({ where: { slug } })
+        return prisma.competition.findUnique({ where: webCompetitionKey(slug) })
     }
     return getActiveCompetition()
 }

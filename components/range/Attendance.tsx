@@ -13,8 +13,34 @@ export function Attendance({ user, locationId }: { user: RangeActor; locationId:
     const [shifts, setShifts] = useState<Shift[]>([]), [open, setOpen] = useState<OpenShift | null>(null), [error, setError] = useState(""), [from, setFrom] = useState(rangeDay(new Date(Date.now() - 30 * 86400000))), [to, setTo] = useState(rangeDay()), [camera, setCamera] = useState<"in" | "out">(), [selected, setSelected] = useState<Shift>(), [request, setRequest] = useState<Correction>(), [coaches, setCoaches] = useState<Coach[]>([]), [refresh, setRefresh] = useState(0)
     const owner = user.role === "owner"
     const [loading, setLoading] = useState(true)
-    const load = useCallback(async () => { setLoading(true); try { const data = await rangeApi<{ shifts: Shift[]; openShift: OpenShift | null }>(`attendance?locationId=${encodeURIComponent(locationId)}&from=${from}&to=${to}`); setShifts(data.shifts); setOpen(data.openShift); setError(""); if (owner) setCoaches((await rangeApi<{ staff: Coach[] }>("staff")).staff.filter(c => canCoach(c) && (c.isMaster || c.memberships.some(m => m.locationId === locationId)))) } catch (e) { setError(e instanceof Error ? e.message : "Unable to load attendance.") } finally { setLoading(false) } }, [locationId, from, to, owner])
-    useEffect(() => { void Promise.resolve().then(load) }, [load])
+    const loadId = useRef(0), staffLocation = useRef("")
+    const load = useCallback(async (refreshStaff = true) => {
+        const current = ++loadId.current
+        setLoading(true)
+        try {
+            const [data, staff] = await Promise.all([
+                rangeApi<{ shifts: Shift[]; openShift: OpenShift | null }>(`attendance?locationId=${encodeURIComponent(locationId)}&from=${from}&to=${to}`),
+                owner && (refreshStaff || staffLocation.current !== locationId) ? rangeApi<{ staff: Coach[] }>("staff") : Promise.resolve(null),
+            ])
+            if (current !== loadId.current) return
+            setShifts(data.shifts)
+            setOpen(data.openShift)
+            if (staff) {
+                setCoaches(staff.staff.filter(c => canCoach(c) && (c.isMaster || c.memberships.some(m => m.locationId === locationId))))
+                staffLocation.current = locationId
+            }
+            setError("")
+        } catch (e) {
+            if (current === loadId.current) setError(e instanceof Error ? e.message : "Unable to load attendance.")
+        } finally {
+            if (current === loadId.current) setLoading(false)
+        }
+    }, [locationId, from, to, owner])
+    useEffect(() => {
+        let active = true
+        void Promise.resolve().then(() => { if (active) void load(false) })
+        return () => { active = false; loadId.current++ }
+    }, [load])
     const total = shifts.reduce((sum, s) => sum + (s.outAt ? new Date(s.outAt).getTime() - new Date(s.inAt).getTime() : 0), 0)
     if (loading && !shifts.length) return <LoadingState label="Loading coach shifts…" />
     return <div className="space-y-6">{error && <p role="alert">{error}</p>}{canCoach(user) && <Panel title="Your current shift"><p className="mb-4">{open ? `Checked in at ${formatRangeTime(open.inAt)} · ${open.location.name}` : "You are currently checked out."}</p>{open && rangeDay(new Date(open.inAt)) < rangeDay() && <p className="mb-4 text-amber-700">An earlier shift is still open. Request a correction if you forgot to check out.</p>}<Button disabled={Boolean(open && open.locationId !== locationId)} onClick={() => setCamera(open ? "out" : "in")}>{open ? "Check out with selfie" : "Check in with selfie"}</Button>{open && open.locationId !== locationId && <p>Choose {open.location.name} above to check out.</p>}{camera && <CameraCapture action={camera} locationId={locationId} cancel={() => setCamera(undefined)} done={async () => { setCamera(undefined); await load() }} />}</Panel>}

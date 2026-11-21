@@ -4,12 +4,8 @@ import type { FormEvent, ReactNode } from "react"
 import { AlertCircle, CheckCircle2, ChevronDown, Inbox, Loader2, Plus } from "lucide-react"
 import { Button, type ButtonProps } from "@/components/ui/button"
 
-export async function rangeApi<T = Record<string, unknown>>(path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`/api/range/${path}`, { method: body === undefined ? "GET" : "POST", headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body), cache: "no-store" })
-    const data = await response.json()
-    if (!response.ok) { if (response.status === 401 && !path.startsWith("login")) window.location.assign("/range/login"); throw new Error(data.error || "Unable to complete request.") }
-    return data
-}
+export { rangeApi } from "@/lib/range-api"
+
 type PanelProps = { title: string; children: ReactNode; description?: string; action?: ReactNode; className?: string; collapsible?: boolean; expanded?: boolean; id?: string }
 export function Panel({ title, children, description, action, className = "", collapsible, expanded, id }: PanelProps) {
     const headingId = useId(), contentId = useId(), ref = useRef<HTMLElement>(null)

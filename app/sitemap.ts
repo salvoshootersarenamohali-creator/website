@@ -1,3 +1,4 @@
+import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
 import type { MetadataRoute } from "next"
 import { courses } from "@/data/courses"
 import { techniques } from "@/data/techniques"
@@ -25,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ]
     const entries: MetadataRoute.Sitemap = paths.map((path) => ({ url: `${SITE_URL}${path}` }))
     const competitions = await prisma.competition.findMany({
-        where: { isPublished: true },
+        where: { isPublished: true, slug: { not: BHARAT_CUP_SLUG } },
         select: {
             slug: true,
             updatedAt: true,

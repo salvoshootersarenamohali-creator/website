@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import Image from "next/image"
+import Image from "@/components/CompetitionImage"
 import Link from "next/link"
 import { CalendarDays, Edit3, ExternalLink, Loader2, Lock, Plus, Save, Trash2, Trophy, Upload } from "lucide-react"
 import {

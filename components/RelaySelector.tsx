@@ -1,14 +1,44 @@
 "use client"
 
 import * as React from "react"
+import { usePolling } from "@/lib/use-polling"
 import { type PublicCompetition, type SelectedEntry } from "@/lib/competition"
 import { getBookingEligibility, getSelectedBookingEligibility, type RelayAvailability } from "@/lib/relay-booking"
 import { relayLabel, type RelayPool } from "@/lib/relay-config"
 
 export type PendingBooking = { date: string; slot: string; pool: RelayPool }
 
-export function RelaySelector({ competition, entries, dateOfBirth, gender, date, slot, onChange, refreshKey = 0, pending = [], currentBooking }: {
+export function useRelayAvailability(slug: string | null, refreshKey: number) {
+    const [availability, setAvailability] = React.useState<RelayAvailability[]>([])
+    const [error, setError] = React.useState("")
+    const [loading, setLoading] = React.useState(true)
+    const load = React.useCallback(async (signal: AbortSignal) => {
+        if (!slug) return
+        try {
+            const response = await fetch(`/api/competitions/${encodeURIComponent(slug)}/relays`, { cache: "no-store", signal })
+            const payload = await response.json()
+            if (!response.ok) throw new Error(payload.error ?? "Unable to check relay availability.")
+            if (signal.aborted) return
+            setAvailability(payload.relays)
+            setError("")
+            return true
+        } catch (e) {
+            if (!signal.aborted) setError(e instanceof Error ? e.message : "Unable to check relay availability.")
+            return false
+        } finally {
+            if (!signal.aborted) setLoading(false)
+        }
+    }, [slug])
+    const refresh = usePolling(load, 15_000, Boolean(slug))
+    React.useEffect(() => {
+        if (refreshKey) void refresh()
+    }, [refreshKey, refresh])
+    return { availability, error, loading }
+}
+
+export function RelaySelector({ competition, entries, dateOfBirth, gender, date, slot, onChange, refreshKey = 0, shared, pending = [], currentBooking }: {
     competition: PublicCompetition
+    shared?: ReturnType<typeof useRelayAvailability>
     entries: SelectedEntry[]
     dateOfBirth: string
     gender: string
@@ -19,9 +49,8 @@ export function RelaySelector({ competition, entries, dateOfBirth, gender, date,
     pending?: PendingBooking[]
     currentBooking?: { date: string; relayId: string; pool: string } | null
 }) {
-    const [availability, setAvailability] = React.useState<RelayAvailability[]>([])
-    const [error, setError] = React.useState("")
-    const [loading, setLoading] = React.useState(true)
+    const local = useRelayAvailability(shared ? null : competition.slug, refreshKey)
+    const { availability, error, loading } = shared ?? local
     const config = competition.config
     let eligibility: ReturnType<typeof getBookingEligibility> | null = null
     let selectionError = ""
@@ -32,23 +61,6 @@ export function RelaySelector({ competition, entries, dateOfBirth, gender, date,
     const ruleSet = eligibility?.ruleSet
     const onChangeRef = React.useRef(onChange)
     React.useEffect(() => { onChangeRef.current = onChange }, [onChange])
-    React.useEffect(() => {
-        let cancelled = false
-        async function refresh() {
-            try {
-                const response = await fetch(`/api/competitions/${encodeURIComponent(competition.slug)}/relays`, { cache: "no-store" })
-                const payload = await response.json()
-                if (!response.ok) throw new Error(payload.error ?? "Unable to check relay availability.")
-                if (!cancelled) { setAvailability(payload.relays); setError(""); setLoading(false) }
-            } catch (e) {
-                if (!cancelled) { setError(e instanceof Error ? e.message : "Unable to check relay availability."); setLoading(false) }
-            }
-        }
-        refresh()
-        const timer = window.setInterval(refresh, 15000)
-        window.addEventListener("focus", refresh)
-        return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("focus", refresh) }
-    }, [competition.slug, date, slot, refreshKey])
     const day = config.relayBooking.days.find((d) => d.date === date)
     const remaining = (relayId: string, label: string) => {
         if (!pool) return 0

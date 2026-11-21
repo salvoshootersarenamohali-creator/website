@@ -74,7 +74,7 @@ export default function GalleryPage() {
                                                 controls
                                                 muted
                                                 playsInline
-                                                preload="metadata"
+                                                preload="none"
                                             />
                                         )}
                                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/5 to-transparent opacity-80" />

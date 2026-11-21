@@ -1,4 +1,5 @@
-import Image from "next/image"
+import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
+import Image from "@/components/CompetitionImage"
 import Link from "next/link"
 import { ArrowRight, CalendarDays, Medal, ShieldCheck, Trophy } from "lucide-react"
 import { formatCompetitionDateRange, getCompetitionStatusLabel, isCompetitionRegistrationAvailable } from "@/lib/competition"
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic"
 
 export default async function CompetitionsPage() {
     const competitions = await prisma.competition.findMany({
-            where: { isPublished: true },
+            where: { isPublished: true, slug: { not: BHARAT_CUP_SLUG } },
             orderBy: [
                 { startDate: "desc" },
                 { createdAt: "desc" },

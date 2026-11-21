@@ -1,3 +1,4 @@
+import { webCompetitionKey } from "@/lib/bharat-cup"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic"
 export async function GET(_request: Request, context: RouteContext) {
     const { slug } = await context.params
     const templateCompetition = getTemplatePublicCompetition()
-    const competition = await prisma.competition.findUnique({ where: { slug } }).catch((error) => {
+    const competition = await prisma.competition.findUnique({ where: webCompetitionKey(slug) }).catch((error) => {
         if (process.env.NODE_ENV === "production") throw error
         return null
     })

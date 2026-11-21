@@ -1,3 +1,4 @@
+import { webCompetitionKey } from "@/lib/bharat-cup"
 import { NextRequest } from "next/server"
 import { adminUnauthorized, isAdminRequest } from "@/lib/admin"
 import { ImageUploadError, uploadImageToCloudinary } from "@/lib/cloudinary-upload"
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     try {
         const { slug } = await context.params
-        const competition = await prisma.competition.findUnique({ where: { slug } })
+        const competition = await prisma.competition.findUnique({ where: webCompetitionKey(slug) })
         if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
 
         const formData = await request.formData()

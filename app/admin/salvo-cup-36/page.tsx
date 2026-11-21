@@ -1,9 +1,10 @@
 "use client"
 
+import type { RosterRow, loadRegistrationSummary } from "@/lib/admin-roster"
 import * as React from "react"
-import Image from "next/image"
+import Image from "@/components/CompetitionImage"
 import { usePathname, useRouter } from "next/navigation"
-import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Plus, Printer, RefreshCw, Search, Trash2, Trophy, Upload, Users, X } from "lucide-react"
+import { Accessibility, BarChart3, CalendarDays, Download, FileSpreadsheet, Loader2, Lock, Medal, MessageCircle, Pencil, Printer, RefreshCw, Search, Trash2, Trophy, Upload, Users, X } from "lucide-react"
 import {
     CategoryOption,
     CompetitionConfig,
@@ -14,7 +15,6 @@ import {
     SelectedEntry,
     defaultCompetitionConfig,
     formatCurrency,
-    getPaymentModeLabel,
     getAgeFromDobYear,
     getEligibleCategories,
     getEntryFee,
@@ -27,16 +27,6 @@ import {
     LITTLE_CHAMP_ENTRY_FEE,
 } from "@/lib/competition"
 import {
-    buildDetailSchedule,
-    defaultDetailLanes,
-    DetailLaneConfig,
-    DetailScheduleConfig,
-    formatClockLabel,
-    formatDisplayDate,
-    getLaneType,
-    RuleSet,
-} from "@/lib/details"
-import {
     categorySortValue,
     formatScore,
     formatResultTotal,
@@ -48,89 +38,18 @@ import {
 } from "@/lib/results"
 import { getPaymentReferenceError, toProperCase } from "@/lib/registration-validation"
 import { getRegistrationParaState } from "@/lib/para-registration"
-import { getDisciplineLabel, getTeamEntryFee, getTeamEntryMemberCount, getTeamEntryTypeLabel, normalizeAcademyKey, supportsMixedTeamEntries, type TeamEntryType } from "@/lib/team-entries"
 import { RelaySelector } from "@/components/RelaySelector"
-import { BookedDetailsView } from "@/components/BookedDetailsView"
-import { BharatCupResultImport } from "@/components/BharatCupResultImport"
+import dynamic from "next/dynamic"
+import { MiniCount } from "@/components/admin/MiniCount"
+import { readResponseJson, scopedAdminPath, paymentModeLabel, type AdminEntry, type AdminRegistration, type AdminTeamEntry, type PaymentStatus, type RegistrationPaymentStatus } from "@/lib/admin-desk"
 import { ScoreSeries } from "@/components/ScoreSeries"
 import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT } from "@/lib/bharat-cup"
 
-type PaymentStatus = "Pending" | "Paid" | "Sponsored"
-type RegistrationPaymentStatus = PaymentStatus | typeof UNRECORDED_PAYMENT
+const TeamEntriesView = dynamic(() => import("@/components/admin/TeamEntriesView"))
+const DetailsView = dynamic(() => import("@/components/admin/DetailsView"))
+const BookedDetailsView = dynamic(() => import("@/components/BookedDetailsView").then(module => module.BookedDetailsView))
 
-type AdminEntry = {
-    id: string
-    eventId: string
-    eventTitle: string
-    discipline: string
-    ruleSet: string
-    categoryCode: string
-    categoryLabel: string
-    fee: number
-    seriesScores: (number | null)[] | null
-    shotScores: number[] | null
-    seriesInnerTenCounts: number[] | null
-    innerTenCount: number
-    totalScore: number | null
-    isPara: boolean
-    bharatCupResult?: { flaggedSeriesTwo: number | null } | null
-}
-
-type AdminRegistration = {
-    relayBooking?: { date: string; relayId: string; pool: string; lane: number } | null
-    batchId?: string | null
-    id: string
-    name: string
-    academy: string
-    coachName: string | null
-    motherName: string | null
-    fatherName: string | null
-    gender: string
-    dateOfBirth: string | null
-    phone: string
-    address: string | null
-    preferredDate: string | null
-    preferredSlot: string
-    paymentMode: PaymentMode | ""
-    paymentStatus: RegistrationPaymentStatus
-    paymentConfirmedBy: string | null
-    paymentConfirmedAt: string | null
-    amount: number
-    utrNumber: string | null
-    screenshotPath: string | null
-    studentPhotoPath: string | null
-    birthCertificatePath: string | null
-    aadhaarCardPath: string | null
-    documents: {
-        id: string
-        documentKey: string
-        label: string
-        path: string
-        mimeType: string
-    }[]
-    createdAt: string
-    entries: AdminEntry[]
-}
-
-type AdminTeamEntry = {
-    id: string
-    name: string
-    teamType: TeamEntryType
-    academy: string
-    discipline: Discipline
-    amount: number
-    paymentMode: PaymentMode
-    paymentStatus: PaymentStatus
-    createdAt: string
-    members: {
-        id: string
-        registration: AdminRegistration
-        registrationEntry: AdminEntry
-    }[]
-}
-
-type AdminView = "stats" | "registrations" | "team-entries" | "results" | "top-students" | "details"
-type RegistrationDateFilter = "all" | string
+type AdminView = "breakdowns" | "stats" | "registrations" | "team-entries" | "results" | "top-students" | "details"
 
 type ResultRow = {
     registration: AdminRegistration
@@ -161,28 +80,12 @@ function getAdminCompetitionSlug(pathname: string) {
     return FALLBACK_COMPETITION_SLUG
 }
 
-function scopedAdminPath(competitionSlug: string, path: string) {
-    return `/api/admin/competitions/${competitionSlug}${path}`
-}
-
 function dateOnly(value: string | null) {
     return value?.slice(0, 10) ?? ""
 }
 
-function registrationRelayLabel(registration: AdminRegistration) {
+function registrationRelayLabel(registration: Pick<AdminRegistration, "preferredDate" | "preferredSlot">) {
     return registration.preferredDate ? `${dateOnly(registration.preferredDate)} | ${registration.preferredSlot}` : "Relay unrecorded"
-}
-
-function selectedDateSortValue(registration: AdminRegistration, config: CompetitionConfig) {
-    const date = dateOnly(registration.preferredDate)
-    const dayIndex = config.slotOptions.findIndex((slot) => slot.date === date)
-    const slotIndex = config.slotOptions[dayIndex]?.slots.findIndex((slot) => slot === registration.preferredSlot) ?? -1
-
-    return {
-        date,
-        dayIndex: dayIndex === -1 ? Number.MAX_SAFE_INTEGER : dayIndex,
-        slotIndex: slotIndex === -1 ? Number.MAX_SAFE_INTEGER : slotIndex,
-    }
 }
 
 function paymentBadgeClass(status: RegistrationPaymentStatus) {
@@ -192,24 +95,9 @@ function paymentBadgeClass(status: RegistrationPaymentStatus) {
     return "bg-amber-500/15 text-amber-200"
 }
 
-function paymentModeLabel(mode: PaymentMode | "") {
-    return mode ? getPaymentModeLabel(mode) : UNRECORDED_PAYMENT
-}
-
 function formatPaymentAmount(registration: AdminRegistration) {
     if (registration.paymentStatus === UNRECORDED_PAYMENT) return "Payment unrecorded"
     return `${formatCurrency(registration.amount)} (${paymentModeLabel(registration.paymentMode)} - ${registration.paymentStatus})`
-}
-
-async function readResponseJson(response: Response) {
-    const text = await response.text()
-    if (!text) return {}
-
-    try {
-        return JSON.parse(text) as Record<string, unknown>
-    } catch {
-        return { error: text }
-    }
 }
 
 function entryKey(entry: Pick<AdminEntry, "eventId" | "categoryCode"> | SelectedEntry) {
@@ -357,19 +245,16 @@ export default function SalvoCupAdminPage() {
     const [activePin, setActivePin] = React.useState("")
     const [registrations, setRegistrations] = React.useState<AdminRegistration[]>([])
     const [teamEntries, setTeamEntries] = React.useState<AdminTeamEntry[]>([])
-    const [selectedId, setSelectedId] = React.useState("")
-    const [query, setQuery] = React.useState("")
-    const [filter, setFilter] = React.useState("all")
-    const [registrationDateFilter, setRegistrationDateFilter] = React.useState<RegistrationDateFilter>("all")
     const [view, setView] = React.useState<AdminView>("stats")
     const [selectedCategories, setSelectedCategories] = React.useState<string[]>([])
-    const [isLoading, setIsLoading] = React.useState(false)
+    const [summary, setSummary] = React.useState<Awaited<ReturnType<typeof loadRegistrationSummary>> | null>(null)
+    const [reload, setReload] = React.useState(0)
+    const [busy, setBusy] = React.useState(false)
     const [error, setError] = React.useState("")
     const competitionConfig = competition?.config ?? defaultCompetitionConfig
     const competitionTitle = competition?.title ?? "Competition"
     const filePrefix = competition?.slug ?? competitionSlug
 
-    const selected = registrations.find((registration) => registration.id === selectedId) ?? registrations[0]
 
     React.useEffect(() => {
         if (pathname === "/admin/salvo-cup-36") {
@@ -389,28 +274,6 @@ export default function SalvoCupAdminPage() {
             .sort((a, b) => categorySortValue(a.code).localeCompare(categorySortValue(b.code)))
     }, [registrations])
 
-    const filtered = React.useMemo(() => {
-        const originalOrder = new Map(registrations.map((registration, index) => [registration.id, index]))
-        const rows = registrations.filter((registration) => {
-            const haystack = `${registration.name} ${registration.academy} ${registration.coachName ?? ""} ${registration.phone} ${registration.entries.map((entry) => `${entry.eventTitle} ${entry.categoryCode}`).join(" ")}`.toLowerCase()
-            const matchesQuery = haystack.includes(query.toLowerCase())
-            const matchesFilter = filter === "all" || registration.paymentStatus === filter || registration.entries.some((entry) => entry.ruleSet === filter || entry.discipline === filter)
-            const matchesDate = registrationDateFilter === "all" || dateOnly(registration.preferredDate) === registrationDateFilter
-            return matchesQuery && matchesFilter && matchesDate
-        })
-
-        return rows.toSorted((a, b) => {
-            const aSort = selectedDateSortValue(a, competitionConfig)
-            const bSort = selectedDateSortValue(b, competitionConfig)
-            return aSort.dayIndex - bSort.dayIndex
-                || aSort.date.localeCompare(bSort.date)
-                || aSort.slotIndex - bSort.slotIndex
-                || a.preferredSlot.localeCompare(b.preferredSlot)
-                || a.name.localeCompare(b.name)
-                || (originalOrder.get(a.id) ?? 0) - (originalOrder.get(b.id) ?? 0)
-        })
-    }, [competitionConfig, filter, query, registrationDateFilter, registrations])
-
     React.useEffect(() => {
         setSelectedCategories((current) => {
             const availableCodes = categoryOptions.map((category) => category.code)
@@ -420,34 +283,37 @@ export default function SalvoCupAdminPage() {
         })
     }, [categoryOptions])
 
-    const loadRegistrations = React.useCallback(async (adminPin = activePin) => {
+    const loadRegistrations = React.useCallback(async (adminPin = activePin, signal?: AbortSignal) => {
         if (!adminPin) return
-        setIsLoading(true)
+        setBusy(true)
         setError("")
         try {
-            const response = await fetch(scopedAdminPath(competitionSlug, "/registrations"), { headers: { "x-admin-pin": adminPin } })
+            const response = await fetch(scopedAdminPath(competitionSlug, "/registrations" + (view === "stats" ? "?view=summary" : "")), { signal, headers: { "x-admin-pin": adminPin } })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to load registrations.")
+            if (signal?.aborted) return
+            if (data.summary) setSummary(data.summary as Awaited<ReturnType<typeof loadRegistrationSummary>>)
             if (data.competition && typeof data.competition === "object") {
                 const loaded = data.competition as PublicCompetition
                 setCompetition({ ...loaded, config: normalizeCompetitionConfig(loaded.config) })
             }
             const nextRegistrations = Array.isArray(data.registrations) ? data.registrations as AdminRegistration[] : []
             setRegistrations(nextRegistrations)
-            setSelectedId((current) => current || nextRegistrations[0]?.id || "")
+
         } catch (loadError) {
+            if (signal?.aborted) return
             const message = loadError instanceof Error ? loadError.message : "Unable to load registrations."
             if (canUseDemoData) {
                 setRegistrations(buildDemoRegistrations())
-                setSelectedId("demo-registration-0")
+                setSummary(null)
                 setError(`${message} Showing demo data so the admin graphs can be previewed.`)
             } else {
                 setError(message)
             }
         } finally {
-            setIsLoading(false)
+            if (!signal?.aborted) setBusy(false)
         }
-    }, [activePin, competitionSlug])
+    }, [activePin, competitionSlug, view])
 
     const loadTeamEntries = React.useCallback(async (adminPin = activePin) => {
         if (!adminPin) return
@@ -461,24 +327,22 @@ export default function SalvoCupAdminPage() {
         }
     }, [activePin, competitionSlug])
 
-    const refreshAdminData = React.useCallback(async (adminPin = activePin) => {
-        await Promise.all([loadRegistrations(adminPin), loadTeamEntries(adminPin)])
-    }, [activePin, loadRegistrations, loadTeamEntries])
-
     React.useEffect(() => {
-        if (activePin) return
-        const storedPin = window.sessionStorage.getItem(ADMIN_SESSION_PIN_KEY)
-        if (!storedPin) return
-        setPin(storedPin)
-        setActivePin(storedPin)
-        refreshAdminData(storedPin)
-    }, [activePin, refreshAdminData])
+        const stored = window.sessionStorage.getItem(ADMIN_SESSION_PIN_KEY)
+        if (stored) { setPin(stored); setActivePin(stored) }
+    }, [])
+    React.useEffect(() => {
+        if (!activePin) return
+        const controller = new AbortController()
+        if (view !== "registrations") void loadRegistrations(activePin, controller.signal)
+        if (view === "team-entries") void loadTeamEntries(activePin)
+        return () => controller.abort()
+    }, [activePin, view, reload, loadRegistrations, loadTeamEntries])
 
-    const login = async (event: React.FormEvent<HTMLFormElement>) => {
+    const login = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
         window.sessionStorage.setItem(ADMIN_SESSION_PIN_KEY, pin)
         setActivePin(pin)
-        await refreshAdminData(pin)
     }
 
     const exportWorkbook = async () => {
@@ -511,7 +375,7 @@ export default function SalvoCupAdminPage() {
                     </div>
                     {activePin && (
                         <div className="flex gap-3">
-                            <button onClick={() => refreshAdminData()} className="admin-button">
+                            <button onClick={() => setReload(value => value + 1)} className="admin-button">
                                 <RefreshCw className="h-4 w-4" />
                                 Refresh
                             </button>
@@ -535,7 +399,7 @@ export default function SalvoCupAdminPage() {
                 ) : (
                     <div>
                         <div className="mb-5 flex flex-wrap gap-2">
-                            <button onClick={() => setView("stats")} className={`admin-button ${view === "stats" ? "gold" : ""}`}>
+                            <button onClick={() => setView("stats")} className={`admin-button ${(view === "stats" || view === "breakdowns") ? "gold" : ""}`}>
                                 <BarChart3 className="h-4 w-4" />
                                 Stats
                             </button>
@@ -565,11 +429,20 @@ export default function SalvoCupAdminPage() {
 
                         {error && <p className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
 
-                        {competitionSlug === BHARAT_CUP_SLUG && view === "results" && (
-                            <BharatCupResultImport path={scopedAdminPath(competitionSlug, "/recorded-results")} adminPin={activePin} onImported={() => loadRegistrations()} />
-                        )}
-
-                        {view === "stats" ? (
+                        {view === "stats" && summary ? (
+                            <div className="space-y-5">
+                                <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                                    <Stat label="Registrations" value={String(summary.registrations)} />
+                                    <Stat label="Total Entries" value={String(summary.entries)} />
+                                    <Stat label="Paid" value={String(summary.paid)} />
+                                    <Stat label="Pending" value={String(summary.pending)} />
+                                    <Stat label="Sponsored" value={String(summary.sponsored)} />
+                                    <Stat label="Collected" value={formatCurrency(summary.collected)} />
+                                </section>
+                                <button className="admin-button" onClick={() => setView("breakdowns")}>View detailed statistics</button>
+                            </div>
+                        ) : busy && view !== "registrations" ? <p role="status">Loading competition data…</p>
+                        : view === "stats" || view === "breakdowns" ? (
                             <StatsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} onChanged={() => loadRegistrations()} />
                         ) : view === "team-entries" && competitionConfig.teamEntriesEnabled ? (
                             <TeamEntriesView
@@ -594,76 +467,7 @@ export default function SalvoCupAdminPage() {
                         ) : view === "details" ? (
                             competitionConfig.relayBooking.enabled ? <BookedDetailsView registrations={registrations} config={competitionConfig} title={competitionTitle} venue={competition?.venue ?? ""} slug={competitionSlug} adminPin={activePin} /> : <DetailsView registrations={registrations} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} />
                         ) : (
-                            <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
-                                <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
-                                    <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px_220px]">
-                                        <label className="relative">
-                                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-                                            <input value={query} onChange={(event) => setQuery(event.target.value)} className="field pl-10" placeholder="Search name, range, phone..." />
-                                        </label>
-                                        <select value={filter} onChange={(event) => setFilter(event.target.value)} className="field">
-                                            <option value="all">All</option>
-                                            <option value="Paid">Paid</option>
-                                            <option value="Sponsored">Sponsored</option>
-                                            <option value="Pending">Pending</option>
-                                            <option value="ISSF">ISSF</option>
-                                            <option value="NR">NR</option>
-                                            <option value="pistol">Pistol</option>
-                                            <option value="rifle">Rifle</option>
-                                        </select>
-                                        <select value={registrationDateFilter} onChange={(event) => setRegistrationDateFilter(event.target.value)} className="field">
-                                            <option value="all">All Competition Dates</option>
-                                            {competitionConfig.slotOptions.map((slot) => (
-                                                <option key={slot.date} value={slot.date}>{slot.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {isLoading ? (
-                                        <div className="flex h-52 items-center justify-center text-white/50">
-                                            <Loader2 className="h-6 w-6 animate-spin" />
-                                        </div>
-                                    ) : (
-                                        <div className="max-h-[680px] space-y-3 overflow-auto pr-1">
-                                            {filtered.map((registration) => (
-                                                <button
-                                                    key={registration.id}
-                                                    onClick={() => setSelectedId(registration.id)}
-                                                    className={`w-full rounded-md border p-4 text-left transition ${selected?.id === registration.id ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}
-                                                >
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div>
-                                                            <p className="font-bold">{registration.name}</p>
-                                                            <p className="text-sm text-white/55">{registration.academy}</p>
-                                                            {registration.coachName && <p className="text-xs text-white/45">Coach: {registration.coachName}</p>}
-                                                        </div>
-                                                        <span className={`rounded-full px-2 py-1 text-xs font-bold ${paymentBadgeClass(registration.paymentStatus)}`}>
-                                                            {registration.paymentStatus}
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-2 text-xs text-white/45">{registrationRelayLabel(registration)}</p>
-                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                        <p className="text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entries.length} entries</p>
-                                                        {!registration.studentPhotoPath && (
-                                                            <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-xs font-bold text-amber-100">
-                                                                Photo missing
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </section>
-
-                                <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
-                                    {selected ? (
-                                        <RegistrationDetail registration={selected} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} onChanged={() => loadRegistrations()} />
-                                    ) : (
-                                        <p className="text-white/50">No registrations found.</p>
-                                    )}
-                                </section>
-                            </div>
+                            competition && <RegistrationRoster key={competitionSlug} competition={competition} activePin={activePin} reload={reload} />
                         )}
                     </div>
                 )}
@@ -672,607 +476,137 @@ export default function SalvoCupAdminPage() {
     )
 }
 
-function TeamEntriesView({
-    registrations,
-    teamEntries,
-    adminPin,
-    competitionSlug,
-    teamEntryFee,
-    onChanged,
-}: {
-    registrations: AdminRegistration[]
-    teamEntries: AdminTeamEntry[]
-    adminPin: string
-    competitionSlug: string
-    teamEntryFee: number
-    onChanged: () => void
-}) {
-    const [teamName, setTeamName] = React.useState("")
-    const [teamType, setTeamType] = React.useState<TeamEntryType>("standard")
-    const [discipline, setDiscipline] = React.useState<Discipline>("pistol")
-    const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("cash")
-    const [paymentStatus, setPaymentStatus] = React.useState<PaymentStatus>("Pending")
-    const [memberEntryIds, setMemberEntryIds] = React.useState(["", "", ""])
-    const [saving, setSaving] = React.useState(false)
-    const [deletingId, setDeletingId] = React.useState("")
+function RegistrationRoster({ competition, activePin, reload }: { competition: PublicCompetition; activePin: string; reload: number }) {
+    const competitionConfig = competition.config, competitionTitle = competition.title, competitionSlug = competition.slug
+    const [roster, setRoster] = React.useState<{ rows: RosterRow[]; page: number; pages: number; total: number }>({ rows: [], page: 1, pages: 1, total: 0 })
+    const [page, setPage] = React.useState(1)
+    const [query, setQuery] = React.useState("")
+    const [filter, setFilter] = React.useState("all")
+    const [registrationDateFilter, setRegistrationDateFilter] = React.useState("all")
+    const [selectedId, setSelectedId] = React.useState("")
+    const [selected, setSelected] = React.useState<AdminRegistration | null>(null)
+    const [revision, setRevision] = React.useState(0)
+    const [isLoading, setLoading] = React.useState(true)
     const [error, setError] = React.useState("")
-    const [message, setMessage] = React.useState("")
-    const mixedTeamsEnabled = supportsMixedTeamEntries(competitionSlug)
-    const isMixedTeam = teamType === "mixed"
-    const memberCount = getTeamEntryMemberCount(teamType)
-
+    const url = scopedAdminPath(competitionSlug, "/registrations")
     React.useEffect(() => {
-        setMemberEntryIds(Array(memberCount).fill(""))
-        setError("")
-        setMessage("")
-    }, [discipline, memberCount])
-
+        const controller = new AbortController()
+        const params = new URLSearchParams({ view: "roster", page: String(page), q: query, filter, date: registrationDateFilter })
+        const timer = window.setTimeout(async () => {
+            setLoading(true)
+            setError("")
+            try {
+                const response = await fetch(url + "?" + params, { headers: { "x-admin-pin": activePin }, signal: controller.signal })
+                const data = await response.json()
+                if (!response.ok) throw new Error(data.error)
+                if (controller.signal.aborted) return
+                setRoster(data)
+                setSelectedId(id => data.rows.some((row: RosterRow) => row.id === id) ? id : data.rows[0]?.id ?? "")
+            } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Unable to load roster.") }
+            finally { if (!controller.signal.aborted) setLoading(false) }
+        }, query ? 180 : 0)
+        return () => { clearTimeout(timer); controller.abort() }
+    }, [activePin, url, page, query, filter, registrationDateFilter, reload, revision])
     React.useEffect(() => {
-        if (paymentMode === "upi" && paymentStatus === "Sponsored") {
-            setPaymentStatus("Pending")
+        if (!selectedId) return
+        const controller = new AbortController()
+        async function load() {
+            try {
+                const response = await fetch(url + "?view=detail&id=" + encodeURIComponent(selectedId), { headers: { "x-admin-pin": activePin }, signal: controller.signal })
+                const data = await response.json()
+                if (!response.ok) throw new Error(data.error)
+                if (!controller.signal.aborted) setSelected(data.registration)
+            } catch (e) { if (!controller.signal.aborted) { setSelected(null); setError(e instanceof Error ? e.message : "Unable to load registration.") } }
         }
-    }, [paymentMode, paymentStatus])
-
-    const eligibleOptions = React.useMemo(() => {
-        return registrations
-            .flatMap((registration) =>
-                registration.entries
-                    .filter((entry) => entry.discipline === discipline)
-                    .map((entry) => ({ registration, entry }))
-            )
-            .sort((a, b) =>
-                a.registration.academy.localeCompare(b.registration.academy)
-                || a.registration.name.localeCompare(b.registration.name)
-                || categorySortValue(a.entry.categoryCode).localeCompare(categorySortValue(b.entry.categoryCode))
-            )
-    }, [discipline, registrations])
-
-    const selectedOptions = memberEntryIds.map((entryId) => eligibleOptions.find((option) => option.entry.id === entryId) ?? null)
-    const selectedRegistrations = selectedOptions.flatMap((option) => option ? [option.registration.id] : [])
-    const selectedAcademyKeys = selectedOptions.flatMap((option) => option ? [normalizeAcademyKey(option.registration.academy)] : [])
-    const hasAllMembers = selectedOptions.length === memberCount && selectedOptions.every(Boolean)
-    const hasUniqueStudents = new Set(selectedRegistrations).size === selectedRegistrations.length
-    const hasSameClub = new Set(selectedAcademyKeys).size <= 1
-    const hasMixedGenders = selectedOptions.filter((option) => option?.registration.gender === "male").length === 1
-        && selectedOptions.filter((option) => option?.registration.gender === "female").length === 1
-    const canSubmit = hasAllMembers && hasUniqueStudents && (isMixedTeam ? hasMixedGenders : hasSameClub) && !saving
-
-    const updateMember = (index: number, value: string) => {
-        setMemberEntryIds((current) => current.map((entryId, memberIndex) => memberIndex === index ? value : entryId))
-        setError("")
-        setMessage("")
+        void load()
+        return () => controller.abort()
+    }, [activePin, url, selectedId, revision, reload])
+    function applyScore(entry: AdminEntry) {
+        setSelected(current => current && ({ ...current, entries: current.entries.map(old => old.id === entry.id ? { ...old, ...entry } : old) }))
     }
-
-    const createTeamEntry = async (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        setError("")
-        setMessage("")
-        if (!hasAllMembers) {
-            setError(`Select exactly ${memberCount} students for the team.`)
-            return
-        }
-        if (!hasUniqueStudents) {
-            setError(`Choose ${memberCount} different students for a team entry.`)
-            return
-        }
-        if (!isMixedTeam && !hasSameClub) {
-            setError("All 3 students must be from the same shooting club.")
-            return
-        }
-        if (isMixedTeam && !hasMixedGenders) {
-            setError("A mixed team requires one male and one female student.")
-            return
-        }
-
-        setSaving(true)
-        try {
-            const members = selectedOptions.map((option) => ({
-                registrationId: option?.registration.id,
-                registrationEntryId: option?.entry.id,
-            }))
-            const response = await fetch(scopedAdminPath(competitionSlug, "/team-entries"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify({ name: teamName, teamType, discipline, paymentMode, paymentStatus, members }),
-            })
-            const data = await readResponseJson(response)
-            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to create team entry.")
-            setTeamName("")
-            setMemberEntryIds(Array(memberCount).fill(""))
-            setPaymentMode("cash")
-            setPaymentStatus("Pending")
-            setMessage(isMixedTeam ? "Mixed team entry created." : "Team entry created.")
-            onChanged()
-        } catch (createError) {
-            setError(createError instanceof Error ? createError.message : "Unable to create team entry.")
-        } finally {
-            setSaving(false)
-        }
+    function applyPayment(row: AdminRegistration) {
+        setSelected(current => current?.id === row.id ? { ...current, paymentStatus: row.paymentStatus, paymentMode: row.paymentMode,
+            utrNumber: row.utrNumber, paymentConfirmedBy: row.paymentConfirmedBy, paymentConfirmedAt: row.paymentConfirmedAt } : current)
+        if (["Pending", "Sponsored", "Paid"].includes(filter)) setRevision(n => n + 1)
+        else setRoster(current => ({ ...current, rows: current.rows.map(old => old.id === row.id ? { ...old, paymentStatus: row.paymentStatus } : old) }))
     }
-
-    const deleteTeamEntry = async (teamEntry: AdminTeamEntry) => {
-        const confirmed = window.confirm(`Delete ${teamEntry.name}?`)
-        if (!confirmed) return
-
-        setDeletingId(teamEntry.id)
-        setError("")
-        setMessage("")
-        try {
-            const response = await fetch(scopedAdminPath(competitionSlug, `/team-entries/${teamEntry.id}`), {
-                method: "DELETE",
-                headers: { "x-admin-pin": adminPin },
-            })
-            const data = await readResponseJson(response)
-            if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to delete team entry.")
-            setMessage("Team entry deleted.")
-            onChanged()
-        } catch (deleteError) {
-            setError(deleteError instanceof Error ? deleteError.message : "Unable to delete team entry.")
-        } finally {
-            setDeletingId("")
-        }
-    }
-
-    return (
-        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
-                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h2 className="text-2xl font-black">Create Team Entry</h2>
-                        <p className="mt-1 text-sm text-white/50">
-                            {isMixedTeam
-                                ? "Select one male and one female student in the same discipline. They can be from different clubs."
-                                : "Select 3 students from the same club and same discipline."}
-                        </p>
-                    </div>
-                    <p className="rounded-md border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-2 text-sm font-bold text-[#E5C558]">
-                        {formatCurrency(getTeamEntryFee(teamType, teamEntryFee))}
-                    </p>
-                </div>
-
-                <form onSubmit={createTeamEntry} className="space-y-4">
-                    {mixedTeamsEnabled && (
-                        <label className="block">
-                            <span className="mb-2 block text-sm font-semibold text-white/70">Team Type</span>
-                            <select value={teamType} onChange={(event) => setTeamType(event.target.value as TeamEntryType)} className="field">
-                                <option value="standard">Standard Team — 3 shooters</option>
-                                <option value="mixed">Mixed Team — 1 male + 1 female</option>
-                            </select>
-                        </label>
-                    )}
-                    <label className="block">
-                        <span className="mb-2 block text-sm font-semibold text-white/70">Team Name</span>
-                        <input value={teamName} onChange={(event) => setTeamName(toProperCase(event.target.value))} className="field" placeholder="Optional" />
-                    </label>
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <label>
-                            <span className="mb-2 block text-sm font-semibold text-white/70">Discipline</span>
-                            <select value={discipline} onChange={(event) => setDiscipline(event.target.value as Discipline)} className="field">
-                                <option value="pistol">Pistol</option>
-                                <option value="rifle">Rifle</option>
-                            </select>
-                        </label>
-                        <label>
-                            <span className="mb-2 block text-sm font-semibold text-white/70">Payment Mode</span>
-                            <select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)} className="field">
-                                <option value="cash">Cash</option>
-                                <option value="upi">Online</option>
-                            </select>
-                        </label>
-                        <label>
-                            <span className="mb-2 block text-sm font-semibold text-white/70">Payment Status</span>
-                            <select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus)} className="field">
-                                <option value="Pending">Pending</option>
-                                <option value="Paid">Paid</option>
-                                {paymentMode === "cash" && <option value="Sponsored">Sponsored</option>}
-                            </select>
-                        </label>
-                    </div>
-
-                    <div className="space-y-3">
-                        {Array.from({ length: memberCount }, (_, index) => (
-                            <label key={index} className="block">
-                                <span className="mb-2 block text-sm font-semibold text-white/70">{isMixedTeam ? index === 0 ? "Male Shooter" : "Female Shooter" : `Student ${index + 1}`}</span>
-                                <select value={memberEntryIds[index]} onChange={(event) => updateMember(index, event.target.value)} className="field">
-                                    <option value="">Select registered student</option>
-                                    {eligibleOptions.filter(({ registration }) => !isMixedTeam || registration.gender === (index === 0 ? "male" : "female")).map(({ registration, entry }) => (
-                                        <option key={`${index}-${entry.id}`} value={entry.id}>
-                                            {registration.academy} - {registration.name} - {entry.categoryCode} ({entry.eventTitle})
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        ))}
-                    </div>
-
-                    {eligibleOptions.length === 0 && (
-                        <p className="rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">
-                            No registered students with individual {getDisciplineLabel(discipline)} entries yet.
-                        </p>
-                    )}
-                    {!hasUniqueStudents && selectedRegistrations.length > 0 && (
-                        <p className="rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
-                            The same student cannot be selected twice in one team.
-                        </p>
-                    )}
-                    {isMixedTeam && (["male", "female"] as const).map((gender) => !eligibleOptions.some(({ registration }) => registration.gender === gender) && (
-                        <p key={gender} className="rounded-md border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-100">
-                            No registered {gender} students with individual {getDisciplineLabel(discipline)} entries yet.
-                        </p>
+    return <>{error && <p role="alert" className="text-red-300">{error}</p>}
+    <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr]">
+        <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
+            <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_180px_220px]">
+                <label className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                    <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} className="field pl-10" placeholder="Search name, range, phone..." />
+                </label>
+                <select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1) }} className="field">
+                    <option value="all">All</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Sponsored">Sponsored</option>
+                    <option value="Pending">Pending</option>
+                    <option value="ISSF">ISSF</option>
+                    <option value="NR">NR</option>
+                    <option value="pistol">Pistol</option>
+                    <option value="rifle">Rifle</option>
+                </select>
+                <select value={registrationDateFilter} onChange={(event) => { setRegistrationDateFilter(event.target.value); setPage(1) }} className="field">
+                    <option value="all">All Competition Dates</option>
+                    {competitionConfig.slotOptions.map((slot) => (
+                        <option key={slot.date} value={slot.date}>{slot.label}</option>
                     ))}
-                    {!isMixedTeam && !hasSameClub && selectedAcademyKeys.length > 1 && (
-                        <p className="rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-100">
-                            Selected students must be from the same shooting club.
-                        </p>
-                    )}
-                    {error && <p className="text-sm text-red-300">{error}</p>}
-                    {message && <p className="text-sm text-emerald-200">{message}</p>}
+                </select>
+            </div>
 
-                    <button disabled={!canSubmit} className="admin-button gold disabled:opacity-50">
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                        {saving ? "Creating..." : isMixedTeam ? "Create Mixed Team Entry" : "Create Team Entry"}
-                    </button>
-                </form>
-            </section>
-
-            <section className="rounded-lg border border-white/10 bg-neutral-950 p-5">
-                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h2 className="text-2xl font-black">Team Entries</h2>
-                        <p className="mt-1 text-sm text-white/50">{teamEntries.length} team{teamEntries.length === 1 ? "" : "s"} entered.</p>
-                    </div>
+            {isLoading ? (
+                <div className="flex h-52 items-center justify-center text-white/50">
+                    <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
-
-                <div className="space-y-3">
-                    {teamEntries.length ? teamEntries.map((teamEntry) => (
-                        <div key={teamEntry.id} className="rounded-md border border-white/10 bg-black/25 p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
+            ) : (
+                <div className="max-h-[680px] space-y-3 overflow-auto pr-1">
+                    {roster.rows.map((registration) => (
+                        <button
+                            key={registration.id}
+                            onClick={() => setSelectedId(registration.id)}
+                            className={`w-full rounded-md border p-4 text-left transition ${selectedId === registration.id ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"}`}
+                        >
+                            <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <p className="text-lg font-black">{teamEntry.name}</p>
-                                    <p className="mt-1 text-sm text-white/55">{teamEntry.academy} | {getDisciplineLabel(teamEntry.discipline)} | {getTeamEntryTypeLabel(teamEntry.teamType)}</p>
-                                    <p className="mt-1 text-sm text-[#D4AF37]">{formatCurrency(teamEntry.amount)} ({paymentModeLabel(teamEntry.paymentMode)} - {teamEntry.paymentStatus})</p>
+                                    <p className="font-bold">{registration.name}</p>
+                                    <p className="text-sm text-white/55">{registration.academy}</p>
+                                    {registration.coachName && <p className="text-xs text-white/45">Coach: {registration.coachName}</p>}
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => deleteTeamEntry(teamEntry)}
-                                    disabled={deletingId === teamEntry.id}
-                                    className="inline-flex h-10 items-center gap-2 rounded-md border border-red-400/30 bg-red-500/10 px-3 text-sm font-bold text-red-200 disabled:opacity-60"
-                                >
-                                    {deletingId === teamEntry.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                    Delete
-                                </button>
+                                <span className={`rounded-full px-2 py-1 text-xs font-bold ${paymentBadgeClass(registration.paymentStatus as RegistrationPaymentStatus)}`}>
+                                    {registration.paymentStatus}
+                                </span>
                             </div>
-                            <div className="mt-4 grid gap-2">
-                                {teamEntry.members.map((member, index) => (
-                                    <div key={member.id} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="font-bold">{index + 1}. {member.registration.name}</p>
-                                        {teamEntry.teamType === "mixed" && <p className="text-sm text-white/55">{member.registration.gender === "male" ? "Male" : "Female"} | {member.registration.academy}</p>}
-                                        <p className="text-sm text-white/55">{member.registrationEntry.categoryCode} - {member.registrationEntry.categoryLabel}</p>
-                                    </div>
-                                ))}
+                            <p className="mt-2 text-xs text-white/45">{registrationRelayLabel(registration)}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <p className="text-sm text-[#D4AF37]">{formatCurrency(registration.amount)} | {registration.entryCount} entries</p>
+                                {!registration.hasPhoto && (
+                                    <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-0.5 text-xs font-bold text-amber-100">
+                                        Photo missing
+                                    </span>
+                                )}
                             </div>
-                        </div>
-                    )) : (
-                        <p className="rounded-md border border-white/10 bg-white/[0.03] p-6 text-white/50">No team entries yet.</p>
-                    )}
-                </div>
-            </section>
-        </div>
-    )
-}
-
-function DetailsView({
-    registrations,
-    adminPin,
-    competitionSlug,
-    competitionTitle,
-    config,
-}: {
-    registrations: AdminRegistration[]
-    adminPin: string
-    competitionSlug: string
-    competitionTitle: string
-    config: CompetitionConfig
-}) {
-    const firstDate = config.slotOptions[0]?.date ?? new Date().toISOString().slice(0, 10)
-    const configuredFirstSightingTimes = config.detailDefaults.firstSightingTimes
-    const [selectedDate, setSelectedDate] = React.useState(firstDate)
-    const [ruleSetMode, setRuleSetMode] = React.useState<"both" | RuleSet>("both")
-    const [lanes, setLanes] = React.useState<DetailLaneConfig>(defaultDetailLanes)
-    const [firstSightingTimes, setFirstSightingTimes] = React.useState<Record<RuleSet, string>>(configuredFirstSightingTimes)
-    const [generatedConfig, setGeneratedConfig] = React.useState<DetailScheduleConfig>(() => ({
-        date: firstDate,
-        ruleSets: ["NR", "ISSF"],
-        lanes: defaultDetailLanes,
-        firstSightingTimes: configuredFirstSightingTimes,
-    }))
-    const [downloadState, setDownloadState] = React.useState<"idle" | "saving">("idle")
-    const [message, setMessage] = React.useState("")
-
-    const selectedRuleSets = React.useMemo<RuleSet[]>(
-        () => ruleSetMode === "both" ? ["NR", "ISSF"] : [ruleSetMode],
-        [ruleSetMode]
-    )
-    const schedule = React.useMemo(() => buildDetailSchedule(registrations, generatedConfig), [registrations, generatedConfig])
-    const totalDetails = schedule.details.length
-    const totalRows = schedule.details.reduce((sum, detail) => sum + detail.rows.length, 0)
-
-    React.useEffect(() => {
-        setSelectedDate(firstDate)
-        setFirstSightingTimes(configuredFirstSightingTimes)
-        setGeneratedConfig((current) => ({
-            ...current,
-            date: firstDate,
-            firstSightingTimes: configuredFirstSightingTimes,
-        }))
-    }, [firstDate, configuredFirstSightingTimes])
-
-    const updateLane = (laneType: keyof DetailLaneConfig, index: number, value: string) => {
-        setLanes((current) => ({
-            ...current,
-            [laneType]: current[laneType].map((lane, laneIndex) => laneIndex === index ? value : lane),
-        }))
-    }
-
-    const addLane = (laneType: keyof DetailLaneConfig) => {
-        setLanes((current) => {
-            const prefix = laneType === "manual" ? "M" : "E"
-            return { ...current, [laneType]: [...current[laneType], `${prefix}${current[laneType].length + 1}`] }
-        })
-    }
-
-    const removeLane = (laneType: keyof DetailLaneConfig, index: number) => {
-        setLanes((current) => ({
-            ...current,
-            [laneType]: current[laneType].filter((_, laneIndex) => laneIndex !== index),
-        }))
-    }
-
-    const generate = () => {
-        setMessage("")
-        setGeneratedConfig({
-            date: selectedDate,
-            ruleSets: selectedRuleSets,
-            lanes: {
-                manual: [...lanes.manual],
-                electronic: [...lanes.electronic],
-            },
-            firstSightingTimes: { ...firstSightingTimes },
-        })
-    }
-
-    const downloadDetails = async () => {
-        setDownloadState("saving")
-        setMessage("")
-        try {
-            const response = await fetch(scopedAdminPath(competitionSlug, "/details/export"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "x-admin-pin": adminPin },
-                body: JSON.stringify(generatedConfig),
-            })
-            if (!response.ok) {
-                const data = await readResponseJson(response)
-                throw new Error(typeof data.error === "string" ? data.error : "Detail export failed.")
-            }
-
-            const blob = await response.blob()
-            const url = URL.createObjectURL(blob)
-            const link = document.createElement("a")
-            link.href = url
-            link.download = `${competitionSlug}-details-${generatedConfig.date}.xlsx`
-            link.click()
-            URL.revokeObjectURL(url)
-        } catch (downloadError) {
-            setMessage(downloadError instanceof Error ? downloadError.message : "Detail export failed.")
-        } finally {
-            setDownloadState("idle")
-        }
-    }
-
-    return (
-        <div className="space-y-6">
-            <section className="no-print rounded-lg border border-white/10 bg-neutral-950 p-5">
-                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h2 className="text-2xl font-black">Detail Sheets</h2>
-                        <p className="mt-1 text-sm text-white/50">Generate lane-wise NR and ISSF details from all registered entries for a selected day.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                        <button onClick={generate} className="admin-button gold">
-                            <RefreshCw className="h-4 w-4" />
-                            Generate
                         </button>
-                        <button onClick={() => window.print()} disabled={!totalDetails} className="admin-button disabled:opacity-50">
-                            <Printer className="h-4 w-4" />
-                            Print
-                        </button>
-                        <button onClick={downloadDetails} disabled={!totalDetails || downloadState === "saving"} className="admin-button disabled:opacity-50">
-                            {downloadState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                            Excel
-                        </button>
-                    </div>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <label>
-                            <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/40">Day</span>
-                            <select value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="field">
-                                {config.slotOptions.map((option) => (
-                                    <option key={option.date} value={option.date}>{option.label}</option>
-                                ))}
-                            </select>
-                        </label>
-                        <label>
-                            <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/40">Details</span>
-                            <select value={ruleSetMode} onChange={(event) => setRuleSetMode(event.target.value as "both" | RuleSet)} className="field">
-                                <option value="both">NR + ISSF</option>
-                                <option value="NR">NR Manual</option>
-                                <option value="ISSF">ISSF Electronic</option>
-                            </select>
-                        </label>
-                        <div className="grid grid-cols-2 gap-3">
-                            <label>
-                                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/40">NR Sighting</span>
-                                <input
-                                    value={firstSightingTimes.NR}
-                                    onChange={(event) => setFirstSightingTimes((current) => ({ ...current, NR: event.target.value }))}
-                                    type="time"
-                                    className="field"
-                                />
-                            </label>
-                            <label>
-                                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-white/40">ISSF Sighting</span>
-                                <input
-                                    value={firstSightingTimes.ISSF}
-                                    onChange={(event) => setFirstSightingTimes((current) => ({ ...current, ISSF: event.target.value }))}
-                                    type="time"
-                                    className="field"
-                                />
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <MiniCount label="Entries" value={totalRows} />
-                        <MiniCount label="Details" value={totalDetails} />
-                        <MiniCount label="Date" value={formatDisplayDate(generatedConfig.date)} />
-                    </div>
-                </div>
-
-                <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                    <LaneEditor
-                        title="Manual NR Lanes"
-                        laneType="manual"
-                        lanes={lanes.manual}
-                        onAdd={() => addLane("manual")}
-                        onRemove={(index) => removeLane("manual", index)}
-                        onUpdate={(index, value) => updateLane("manual", index, value)}
-                    />
-                    <LaneEditor
-                        title="Electronic ISSF Lanes"
-                        laneType="electronic"
-                        lanes={lanes.electronic}
-                        onAdd={() => addLane("electronic")}
-                        onRemove={(index) => removeLane("electronic", index)}
-                        onUpdate={(index, value) => updateLane("electronic", index, value)}
-                    />
-                </div>
-
-                {schedule.warnings.length > 0 && (
-                    <div className="mt-5 rounded-md border border-amber-400/20 bg-amber-400/[0.07] p-3 text-sm text-amber-100">
-                        {schedule.warnings.map((warning) => <p key={warning}>{warning}</p>)}
-                    </div>
-                )}
-                {message && <p className="mt-4 rounded-md border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">{message}</p>}
-            </section>
-
-            <section className="print-details rounded-lg border border-white/10 bg-white p-4 text-black">
-                <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3 text-black">
-                    <div>
-                        <h3 className="text-xl font-black">Preview</h3>
-                        <p className="text-sm text-black/55">{totalRows ? `${totalRows} entries across ${totalDetails} details.` : "No entries match the generated settings."}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {(["NR", "ISSF"] as RuleSet[]).map((ruleSet) => (
-                            <span key={ruleSet} className="rounded-full border border-black/10 px-3 py-1 text-xs font-bold">
-                                {ruleSet}: {schedule.totals[ruleSet]} entries
-                            </span>
-                        ))}
-                    </div>
-                </div>
-                {schedule.details.length ? (
-                    <div className="detail-print-stack">
-                        {schedule.details.map((detail) => <PrintableDetailSheet key={detail.id} detail={detail} competitionTitle={competitionTitle} />)}
-                    </div>
-                ) : (
-                    <div className="p-8 text-center text-black/55">Generate detail sheets after choosing a date, lanes, and first sighting time.</div>
-                )}
-            </section>
-        </div>
-    )
-}
-
-function LaneEditor({
-    title,
-    laneType,
-    lanes,
-    onAdd,
-    onRemove,
-    onUpdate,
-}: {
-    title: string
-    laneType: keyof DetailLaneConfig
-    lanes: string[]
-    onAdd: () => void
-    onRemove: (index: number) => void
-    onUpdate: (index: number, value: string) => void
-}) {
-    return (
-        <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                    <p className="font-bold">{title}</p>
-                    <p className="text-sm text-white/45">{lanes.length} configured {laneType} lanes</p>
-                </div>
-                <button onClick={onAdd} className="admin-button h-10 px-3">
-                    <Plus className="h-4 w-4" />
-                    Lane
-                </button>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {lanes.map((lane, index) => (
-                    <label key={`${laneType}-${index}`} className="grid grid-cols-[1fr_40px] gap-2">
-                        <input value={lane} onChange={(event) => onUpdate(index, event.target.value)} className="field px-3 py-2" placeholder={`Lane ${index + 1}`} />
-                        <button onClick={() => onRemove(index)} type="button" className="inline-flex h-10 items-center justify-center rounded-md border border-white/10 text-white/70 hover:border-red-300 hover:text-red-200">
-                            <X className="h-4 w-4" />
-                        </button>
-                    </label>
-                ))}
-            </div>
-        </div>
-    )
-}
-
-function PrintableDetailSheet({ detail, competitionTitle }: { detail: ReturnType<typeof buildDetailSchedule>["details"][number]; competitionTitle: string }) {
-    return (
-        <article className="detail-sheet">
-            <h2>{competitionTitle.toUpperCase()}</h2>
-            <div className="detail-meta-grid">
-                <p><span>DETAIL NO.</span> {detail.detailNumber} ({detail.ruleSet})</p>
-                <p><span>REPORTING TIME:</span> {formatClockLabel(detail.reportingTime)}</p>
-                <p><span>DATE:</span> {formatDisplayDate(detail.date)}</p>
-                <p><span>SIGHTING TIME:</span> {formatClockLabel(detail.sightingTime)}</p>
-                <p><span>LANES:</span> {getLaneType(detail.ruleSet).toUpperCase()}</p>
-                <p><span>MATCH TIME:</span> {formatClockLabel(detail.matchTime)}</p>
-                {detail.matchEndTime && <p className="detail-meta-end"><span>MATCH END:</span> {formatClockLabel(detail.matchEndTime)}</p>}
-            </div>
-            <p className="detail-venue">SALVO SHOOTERS ARENA SEC- 86, MOHALI</p>
-            <table className="detail-table">
-                <thead>
-                    <tr>
-                        <th>SR. NO.</th>
-                        <th>NAME</th>
-                        <th>MATCH NO.</th>
-                        <th>NAME OF ACADEMY/CLUB</th>
-                        <th>LANE NO.</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {detail.rows.map((row) => (
-                        <tr key={row.entryId}>
-                            <td>{row.serial}</td>
-                            <td>{row.name}</td>
-                            <td>{row.matchNo}</td>
-                            <td>{row.academy}</td>
-                            <td>{row.laneNo}</td>
-                        </tr>
                     ))}
-                </tbody>
-            </table>
-        </article>
-    )
+                </div>
+            )}
+            <div className="mt-4 flex items-center justify-between">
+                <button className="admin-button" disabled={roster.page <= 1} onClick={() => setPage(roster.page - 1)}>Previous</button>
+                <span>{roster.total} registrations · Page {roster.page} of {roster.pages}</span>
+                <button className="admin-button" disabled={roster.page >= roster.pages} onClick={() => setPage(roster.page + 1)}>Next</button>
+            </div>
+        </section>
+
+        <section className="min-w-0 rounded-lg border border-white/10 bg-neutral-950 p-5">
+            {selected && selected.id === selectedId ? (
+                <RegistrationDetail key={selected.id} registration={selected} onScore={applyScore} onPayment={applyPayment} adminPin={activePin} competitionSlug={competitionSlug} competitionTitle={competitionTitle} config={competitionConfig} onChanged={() => setRevision(n => n + 1)} />
+            ) : (
+                <p className="text-white/50">{selectedId ? "Loading registration…" : "No registrations found."}</p>
+            )}
+        </section>
+    </div>
+    </>
 }
 
 function StatsView({ registrations, adminPin, competitionSlug, onChanged }: { registrations: AdminRegistration[]; adminPin: string; competitionSlug: string; onChanged: () => void }) {
@@ -1675,13 +1009,15 @@ function RegistrationDetail({
     competitionSlug,
     competitionTitle,
     config,
-    onChanged,
+    onChanged, onScore, onPayment,
 }: {
     registration: AdminRegistration
     adminPin: string
     competitionSlug: string
     competitionTitle: string
     config: CompetitionConfig
+    onScore: (entry: AdminEntry) => void
+    onPayment: (row: AdminRegistration) => void
     onChanged: () => void
 }) {
     const [deleting, setDeleting] = React.useState(false)
@@ -1853,7 +1189,7 @@ function RegistrationDetail({
             )}
 
             {registration.paymentStatus === "Pending" && (
-                <PaymentConfirmation registrationId={registration.id} adminPin={adminPin} competitionSlug={competitionSlug} onChanged={onChanged} />
+                <PaymentConfirmation onPayment={onPayment} registrationId={registration.id} adminPin={adminPin} competitionSlug={competitionSlug} />
             )}
 
             <div className="mb-6 rounded-md border border-red-400/20 bg-red-500/[0.06] p-4">
@@ -1875,7 +1211,7 @@ function RegistrationDetail({
 
             <div className="mb-8 space-y-4">
                 {registration.entries.map((entry) => (
-                    <ScoreRow key={entry.id} registration={registration} entry={entry} adminPin={adminPin} competitionSlug={competitionSlug} onChanged={onChanged} />
+                    <ScoreRow onScore={onScore} key={entry.id} registration={registration} entry={entry} adminPin={adminPin} competitionSlug={competitionSlug} onChanged={onChanged} />
                 ))}
             </div>
 
@@ -2339,7 +1675,7 @@ function RegistrationEditForm({
     )
 }
 
-function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onChanged }: { registrationId: string; adminPin: string; competitionSlug: string; onChanged: () => void }) {
+function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onPayment }: { registrationId: string; adminPin: string; competitionSlug: string; onPayment: (row: AdminRegistration) => void }) {
     const [coachName, setCoachName] = React.useState(coachNames[0])
     const [coachCode, setCoachCode] = React.useState("")
     const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("cash")
@@ -2362,7 +1698,7 @@ function PaymentConfirmation({ registrationId, adminPin, competitionSlug, onChan
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to update payment status.")
             setCoachCode("")
             setUtrNumber("")
-            onChanged()
+            onPayment(data.registration as AdminRegistration)
         } catch (updateError) {
             setError(updateError instanceof Error ? updateError.message : "Unable to update payment status.")
         } finally {
@@ -2434,12 +1770,13 @@ function ScoreRow({
     entry,
     adminPin,
     competitionSlug,
-    onChanged,
+    onChanged, onScore,
 }: {
     registration: Pick<AdminRegistration, "name" | "phone">
     entry: AdminEntry
     adminPin: string
     competitionSlug: string
+    onScore: (entry: AdminEntry) => void
     onChanged: () => void
 }) {
     const ruleSet = getRuleSet(entry)
@@ -2506,7 +1843,7 @@ function ScoreRow({
             })
             const data = await readResponseJson(response)
             if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Unable to save score.")
-            onChanged()
+            onScore(data.entry as AdminEntry)
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "Unable to save score.")
         } finally {
@@ -2727,15 +2064,6 @@ function Bar({ value, max }: { value: number; max: number }) {
     return (
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
             <div className="h-full rounded-full bg-[#D4AF37]" style={{ width: `${width}%` }} />
-        </div>
-    )
-}
-
-function MiniCount({ label, value }: { label: string; value: string | number }) {
-    return (
-        <div className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">{label}</p>
-            <p className="mt-1 font-bold">{value}</p>
         </div>
     )
 }

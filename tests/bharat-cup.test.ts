@@ -131,4 +131,25 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Bharat Cup registration and imp
         expect(await prisma.bharatCupRecordedResult.count()).toBe(436)
         expect(await prisma.competition.findUniqueOrThrow({ where: { id: competitionId } })).toMatchObject({ resultsPublished: true, registrationOpen: true })
     })
+
+    it("archives this competition while retaining every historical registration and recorded result", async () => {
+        const fixture = await registrationRequest({ name: "Archive preservation fixture" })
+        expect(fixture.status).toBe(201)
+        const readHistory = () => prisma.registration.findMany({
+            where: { competitionId },
+            orderBy: { id: "asc" },
+            include: {
+                entries: { orderBy: { id: "asc" }, include: { bharatCupResult: true } },
+                documents: { orderBy: { id: "asc" } }, relayBooking: true, batch: true,
+            },
+        })
+        const before = await readHistory()
+        const sql = readFileSync("prisma/migrations/20261121000000_archive_first_bharat_cup/migration.sql", "utf8")
+        await prisma.$executeRawUnsafe(sql)
+        const archived = await prisma.competition.findUniqueOrThrow({ where: { id: competitionId } })
+        expect(archived).toMatchObject({ slug: BHARAT_CUP_SLUG, status: "archived", isPublished: false, registrationOpen: false, resultsPublished: false })
+        expect(await readHistory()).toEqual(before)
+        expect((await registrationRequest({})).status).toBe(404)
+    })
+
 })

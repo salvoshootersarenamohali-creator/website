@@ -1,4 +1,5 @@
 "use client"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Bell, ArrowLeft, ArrowRightLeft, BarChart3, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, Crosshair, LayoutDashboard, LockKeyhole, LogOut, MapPin, Menu, ReceiptText, Settings2, ShieldCheck, Users, Wallet } from "lucide-react"
@@ -6,18 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { RangeActor, LocationOption } from "@/lib/range/shared"
 import { ActionForm, EmptyState, Field, LoadingState, Panel, rangeApi } from "./shared"
-import { Attendance } from "./Attendance"
-import { Students } from "./Students"
-import { Finance } from "./Finance"
-import { Fees } from "./Fees"
-import { Transfers } from "./Transfers"
-import { Salaries } from "./Salaries"
 import { Dashboard } from "./Dashboard"
-import { Reports } from "./Reports"
-import { Training } from "./Training"
-import { PasswordForm } from "./AccountSecurity"
-import { Tutorial } from "./Tutorial"
 import { FinancialActivity, FinancialActivityBell } from "./FinancialActivity"
+
+const Attendance = dynamic(() => import("./Attendance").then(module => module.Attendance), { loading: () => <LoadingState /> })
+const Students = dynamic(() => import("./Students").then(module => module.Students), { loading: () => <LoadingState /> })
+const Finance = dynamic(() => import("./Finance").then(module => module.Finance), { loading: () => <LoadingState /> })
+const Fees = dynamic(() => import("./Fees").then(module => module.Fees), { loading: () => <LoadingState /> })
+const Transfers = dynamic(() => import("./Transfers").then(module => module.Transfers), { loading: () => <LoadingState /> })
+const Salaries = dynamic(() => import("./Salaries").then(module => module.Salaries), { loading: () => <LoadingState /> })
+const Reports = dynamic(() => import("./Reports").then(module => module.Reports), { loading: () => <LoadingState /> })
+const Training = dynamic(() => import("./Training").then(module => module.Training), { loading: () => <LoadingState /> })
+const Tutorial = dynamic(() => import("./Tutorial").then(module => module.Tutorial), { loading: () => <LoadingState /> })
+const PasswordForm = dynamic(() => import("./AccountSecurity").then(module => module.PasswordForm), { loading: () => <LoadingState /> })
 
 const sections = [
     { key: "training", label: "Training & progress", icon: Crosshair, group: "Workspace", description: "Plan training, review diaries, and follow your students’ progress." },
@@ -65,7 +67,7 @@ export function Workspace() {
         <div className="range-sidebar-bottom"><div className="range-user"><span className="range-avatar">{user.name.split(/\s+/).map(n => n[0]).slice(0, 2).join("")}</span><div><strong>{user.name}</strong><small>{user.isMaster ? "Master" : owner ? "Owner" : user.role === "finance" ? "Finance" : "Coach"} workspace</small></div><ShieldCheck size={17} aria-hidden="true" /></div><button className="range-signout" disabled={signingOut} onClick={signOut}><LogOut size={17} aria-hidden="true" />{signingOut ? "Signing out…" : "Sign out"}</button><Link href="/" className="range-site-link"><ArrowLeft size={14} aria-hidden="true" />Back to Salvo website</Link></div>
     </>
     return <div className="range-shell"><a className="range-skip" href="#workspace-content">Skip to content</a><aside className="range-sidebar">{sidebar}</aside><div className="range-main">
-        <header className="range-topbar"><div className="flex min-w-0 items-center gap-3"><Sheet open={menuOpen} onOpenChange={setMenuOpen}><SheetTrigger asChild><Button variant="outline" size="icon" className="range-menu-button" aria-label="Open workspace navigation"><Menu size={20} /></Button></SheetTrigger><SheetContent side="left" className="range-app range-mobile-sheet" onCloseAutoFocus={event => { if (focusContentAfterMenu.current) { event.preventDefault(); focusContentAfterMenu.current = false; heading.current?.focus() } }}><SheetTitle className="sr-only">Workspace navigation</SheetTitle><SheetDescription className="sr-only">Navigate your Salvo range workspace.</SheetDescription>{sidebar}</SheetContent></Sheet><span className="range-breadcrumb">Workspace <ChevronRight size={14} aria-hidden="true" /><strong>{label}</strong></span></div><div className="range-topbar-tools">{user.isMaster && !user.mustChangePassword && <FinancialActivityBell open={() => navigate("notifications")} />}<span className="range-date"><CalendarDays size={15} aria-hidden="true" />{date}<span>IST</span></span><label className="range-location"><MapPin size={16} aria-hidden="true" /><span className="sr-only">Location</span><select aria-label="Location" value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!locations.length}>{!locations.length && <option value="">No location</option>}{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label></div></header>
+        <header className="range-topbar"><div className="flex min-w-0 items-center gap-3"><Sheet open={menuOpen} onOpenChange={setMenuOpen}><SheetTrigger asChild><Button variant="outline" size="icon" className="range-menu-button" aria-label="Open workspace navigation"><Menu size={20} /></Button></SheetTrigger><SheetContent side="left" className="range-app range-mobile-sheet" onCloseAutoFocus={event => { if (focusContentAfterMenu.current) { event.preventDefault(); focusContentAfterMenu.current = false; heading.current?.focus() } }}><SheetTitle className="sr-only">Workspace navigation</SheetTitle><SheetDescription className="sr-only">Navigate your Salvo range workspace.</SheetDescription>{sidebar}</SheetContent></Sheet><span className="range-breadcrumb">Workspace <ChevronRight size={14} aria-hidden="true" /><strong>{label}</strong></span></div><div className="range-topbar-tools">{user.isMaster && !user.mustChangePassword && <FinancialActivityBell polling={tab !== "notifications"} open={() => navigate("notifications")} />}<span className="range-date"><CalendarDays size={15} aria-hidden="true" />{date}<span>IST</span></span><label className="range-location"><MapPin size={16} aria-hidden="true" /><span className="sr-only">Location</span><select aria-label="Location" value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!locations.length}>{!locations.length && <option value="">No location</option>}{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label></div></header>
         <div id="workspace-content" className="range-content"><div className="range-page-heading"><div><p className="range-eyebrow">{user.isMaster ? "Master workspace" : owner ? "Owner workspace" : user.role === "finance" ? "Finance workspace" : "Coach workspace"}</p><h1 ref={heading} tabIndex={-1}>{passwordRequired ? "Let’s secure your account" : tab === "home" ? `Welcome back, ${user.name.split(" ")[0]}.` : label}</h1><p>{passwordRequired ? "Choose your own password to get started." : !owner && current.coachDescription ? current.coachDescription : current.description}</p></div><span className="range-role-pill"><ShieldCheck size={15} aria-hidden="true" />{user.isMaster ? "Master access" : owner ? "Owner access" : user.role === "finance" ? "Finance access" : "Coach access"}</span></div>
         {error && <p className="range-feedback range-feedback-error" role="alert">{error}</p>}
         {passwordRequired ? <Panel title="Set your own password" className="range-narrow"><PasswordForm onDone={load} /></Panel> : <>

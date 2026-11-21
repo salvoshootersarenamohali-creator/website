@@ -2,19 +2,18 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { BharatCupFinalists } from "@/components/BharatCupFinalists"
 import { BharatCupRecordedResults } from "@/components/BharatCupRecordedResults"
-import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
+import { BHARAT_CUP_SLUG, webCompetitionKey } from "@/lib/bharat-cup"
 import { getBharatCupFinals } from "@/lib/bharat-cup-finals"
 import { normalizeCompetitionConfig } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
-export const metadata = { title: "Recorded Results | First Bharat Cup" }
 
 export default async function RecordedResultsPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
     if (slug !== BHARAT_CUP_SLUG) notFound()
     const competition = await prisma.competition.findUnique({
-        where: { slug },
+        where: webCompetitionKey(slug),
         select: { id: true, title: true, isPublished: true, resultsPublished: true, config: true },
     })
     if (!competition?.isPublished || !competition.resultsPublished) notFound()

@@ -645,6 +645,7 @@ model RegistrationEntry {
 
   bharatCupResult BharatCupRecordedResult?
 
+  @@index([registrationId])
   @@index([eventId])
   @@index([categoryCode])
   @@index([ruleSet])

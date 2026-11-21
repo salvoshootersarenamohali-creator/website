@@ -8,17 +8,23 @@ import { paise } from "./money"
 import { attendancePhotoUrl, removeAttendancePhoto, uploadReceipt } from "./media"
 
 export const financeInclude = { movements: { include: { account: { select: { id: true, name: true, custodian: true, coachId: true, channel: true } } } }, recordedBy: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } } } as const
-export async function accountBalances(locationId: string, through = rangeDay()) {
-    const rows = await prisma.$queryRaw<{ id: string; balance: bigint }[]>(Prisma.sql`SELECT a.id, a."openingPaise"::bigint + COALESCE(SUM(CASE WHEN t.status = 'posted' AND t."occurredOn" >= a."openingDate" AND t."occurredOn" <= ${through} THEN m."amountPaise" ELSE 0 END), 0)::bigint AS balance FROM "RangeMoneyAccount" a LEFT JOIN "RangeMoneyMovement" m ON m."accountId" = a.id LEFT JOIN "RangeFinanceTransaction" t ON t.id = m."transactionId" WHERE a."locationId" = ${locationId} AND a."openingDate" <= ${through} GROUP BY a.id`)
+export async function accountBalances(locationId: string | string[], through = rangeDay()) {
+    const ids = typeof locationId === "string" ? [locationId] : locationId
+    if (!ids.length) return new Map<string, number>()
+    const rows = await prisma.$queryRaw<{ id: string; balance: bigint }[]>(Prisma.sql`SELECT a.id, a."openingPaise"::bigint + COALESCE(SUM(CASE WHEN t.status = 'posted' AND t."occurredOn" >= a."openingDate" AND t."occurredOn" <= ${through} THEN m."amountPaise" ELSE 0 END), 0)::bigint AS balance FROM "RangeMoneyAccount" a LEFT JOIN "RangeMoneyMovement" m ON m."accountId" = a.id LEFT JOIN "RangeFinanceTransaction" t ON t.id = m."transactionId" WHERE a."locationId" IN (${Prisma.join(ids)}) AND a."openingDate" <= ${through} GROUP BY a.id`)
     return new Map(rows.map(r => [r.id, Number(r.balance)]))
 }
 export async function financeMeta(request: NextRequest, actor: RangeActor) {
     const locationId = textField(request.nextUrl.searchParams.get("locationId"), "Location")
     await locationAccess(actor, locationId)
     const owner = canManageFinance(actor)
-    const accounts = await prisma.rangeMoneyAccount.findMany({ where: { locationId, ...(owner ? {} : { active: true, OR: [{ coachId: actor.id }, { custodian: { in: ["kartik", "salvo"] } }] }) }, include: { _count: { select: { movements: true, transfersFrom: true, transfersTo: true } } }, orderBy: { name: "asc" } })
-    const balances = await accountBalances(locationId)
-    return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, _count, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate, canDelete: !_count.movements && !_count.transfersFrom && !_count.transfersTo } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products: await prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }), categories: await prisma.rangeFinanceCategory.findMany({ where: { locationId, kind: { in: ["income", "expense"] }, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }) })
+    const [accounts, balances, products, categories] = await Promise.all([
+        prisma.rangeMoneyAccount.findMany({ where: { locationId, ...(owner ? {} : { active: true, OR: [{ coachId: actor.id }, { custodian: { in: ["kartik", "salvo"] } }] }) }, include: { _count: { select: { movements: true, transfersFrom: true, transfersTo: true } } }, orderBy: { name: "asc" } }),
+        accountBalances(locationId),
+        prisma.rangeProduct.findMany({ where: { locationId, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }),
+        prisma.rangeFinanceCategory.findMany({ where: { locationId, kind: { in: ["income", "expense"] }, ...(owner ? {} : { active: true }) }, orderBy: { name: "asc" } }),
+    ])
+    return Response.json({ accounts: accounts.map(({ openingPaise, openingDate, _count, ...account }) => ({ ...account, ...(owner ? { openingPaise, openingDate, canDelete: !_count.movements && !_count.transfersFrom && !_count.transfersTo } : {}), ...(owner || account.coachId === actor.id ? { balancePaise: balances.get(account.id) || 0 } : {}) })), products, categories })
 }
 export async function financeSettings(request: NextRequest, actor: RangeActor) {
     financeOnly(actor)

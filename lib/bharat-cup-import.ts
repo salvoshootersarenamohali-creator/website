@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto"
 import { Prisma } from "@prisma/client"
-import { BHARAT_CUP_SLUG, UNRECORDED_PAYMENT, bharatCupEntryKey } from "@/lib/bharat-cup"
+import { webCompetitionKey, BHARAT_CUP_SLUG, UNRECORDED_PAYMENT, bharatCupEntryKey } from "@/lib/bharat-cup"
 import { BharatCupImportError, normalizeBharatCupMatchCode, type BharatCupWorkbookRow } from "@/lib/bharat-cup-workbook"
 import { getCompetitionCategories, normalizeCompetitionConfig } from "@/lib/competition"
 
 export async function importBharatCupResults(tx: Prisma.TransactionClient, rows: BharatCupWorkbookRow[], confirmedPreview?: string) {
-    const competition = await tx.competition.findUnique({ where: { slug: BHARAT_CUP_SLUG } })
+    const competition = await tx.competition.findUnique({ where: webCompetitionKey(BHARAT_CUP_SLUG) })
     if (!competition) throw new BharatCupImportError("First Bharat Cup is missing from this database.")
     const config = normalizeCompetitionConfig(competition.config)
     const existing = await tx.registrationEntry.findMany({

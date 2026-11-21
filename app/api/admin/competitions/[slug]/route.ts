@@ -1,3 +1,4 @@
+import { webCompetitionKey } from "@/lib/bharat-cup"
 import { NextRequest } from "next/server"
 import {
     adminUnauthorized,
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const { slug } = await context.params
     const competition = await prisma.competition.findUnique({
-        where: { slug },
+        where: webCompetitionKey(slug),
         include: { _count: { select: { registrations: true } } },
     })
     if (!competition) return Response.json({ error: "Competition not found." }, { status: 404 })
@@ -58,7 +59,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     try {
         const { slug } = await context.params
-        const existing = await prisma.competition.findUnique({ where: { slug } })
+        const existing = await prisma.competition.findUnique({ where: webCompetitionKey(slug) })
         if (!existing) return Response.json({ error: "Competition not found." }, { status: 404 })
 
         const body = await request.json() as Record<string, unknown>

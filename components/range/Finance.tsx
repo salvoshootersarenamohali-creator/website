@@ -22,19 +22,26 @@ export function PaymentParts({ accounts, value, onChange }: { accounts: MoneyAcc
 export function Finance({ user, locationId }: { user: RangeActor; locationId: string }) {
     const [meta, setMeta] = useState<FinanceMeta>({ accounts: [], products: [], categories: [] }), [entries, setEntries] = useState<FinanceEntry[]>([]), [error, setError] = useState(""), [from, setFrom] = useState(rangeDay(new Date(Date.now() - 30 * 86400000))), [to, setTo] = useState(rangeDay()), [editing, setEditing] = useState<FinanceEntry>(), [request, setRequest] = useState<Correction>(), [refresh, setRefresh] = useState(0), [correctionEntry, setCorrectionEntry] = useState<FinanceEntry>()
     const owner = user.role === "owner" || user.role === "finance"
-    const [loading, setLoading] = useState(true), loadId = useRef(0)
-    const load = useCallback(async () => {
+    const [loading, setLoading] = useState(true), loadId = useRef(0), metadataLocation = useRef("")
+    const load = useCallback(async (refreshMetadata = true) => {
         const current = ++loadId.current
         setLoading(true)
-        const [settings, records] = await Promise.allSettled([rangeApi<FinanceMeta>(`finance/meta?locationId=${locationId}`), rangeApi<{ entries: FinanceEntry[] }>(`finance?locationId=${locationId}&from=${from}&to=${to}`)])
+        const [settings, records] = await Promise.allSettled([refreshMetadata || metadataLocation.current !== locationId ? rangeApi<FinanceMeta>(`finance/meta?locationId=${locationId}`) : Promise.resolve(null), rangeApi<{ entries: FinanceEntry[] }>(`finance?locationId=${locationId}&from=${from}&to=${to}`)])
         if (current !== loadId.current) return
-        if (settings.status === "fulfilled") setMeta(settings.value)
+        if (settings.status === "fulfilled" && settings.value) {
+            setMeta(settings.value)
+            metadataLocation.current = locationId
+        }
         if (records.status === "fulfilled") setEntries(records.value.entries)
         const errors = [settings, records].flatMap(result => result.status === "rejected" ? [result.reason instanceof Error ? result.reason.message : "Unable to load finances."] : [])
         setError([...new Set(errors)].join(" "))
         setLoading(false)
     }, [locationId, from, to])
-    useEffect(() => { void Promise.resolve().then(load) }, [load])
+    useEffect(() => {
+        let active = true
+        void Promise.resolve().then(() => { if (active) void load(false) })
+        return () => { active = false; loadId.current++ }
+    }, [load])
     const balances = meta.accounts.filter(a => a.balancePaise !== undefined)
     return <div className="space-y-6">{error && <p role="alert">{error}</p>}<Panel title={owner ? "Tracked range funds" : "My range funds"}><p className="mb-4 text-sm text-[#71806b]">Current balances through {rangeDay()} · India time</p><details className="mb-4 text-xs"><summary>How are balances calculated?</summary><p className="range-muted pb-2">Includes opening range funds and recorded movements since each account’s tracking start. Balances do not reset each day. Date filters below only change the record list.</p></details><div className="grid gap-3 sm:grid-cols-3">{balances.map(a => <div key={a.id} className="range-balance-card"><p>{a.name}{!a.active ? " · Inactive" : ""}</p><p className="mt-2 text-sm text-[#71806b]">Current balance</p><strong className={a.balancePaise! < 0 ? "text-amber-700" : "text-[#3c6239]"}>{formatMoney(a.balancePaise!)}</strong>{a.openingDate && <p className="mt-2 text-sm text-[#71806b]">Opening {formatMoney(a.openingPaise || 0)} at start of {a.openingDate} (India). Earlier payments are excluded.</p>}{a.balancePaise! < 0 && <p className="text-sm">Below zero — check opening balance and missing entries.</p>}</div>)}</div>{loading && <p role="status">Updating balances and records…</p>}{!loading && !error && !meta.accounts.length && <p>The owner needs to add payment accounts before entries can be recorded.</p>}<Button className="mt-3" type="button" variant="outline" disabled={loading} onClick={() => void load()}>Refresh balances and records</Button></Panel>
         <Panel collapsible expanded={Boolean(editing || request)} title={editing ? "Replace incorrect financial entry" : "Record income or expense"} description="Add income, a product sale, an expense, or a refund."><FinanceForm key={`${editing?.id || "new"}-${request?.id || "direct"}`} locationId={locationId} owner={owner} meta={meta} entries={entries} entry={editing} request={request} done={async () => { setEditing(undefined); setRequest(undefined); setRefresh(n => n + 1); await load() }} />{editing && <><Button className="mt-3" variant="outline" onClick={() => { setEditing(undefined); setRequest(undefined) }}>Cancel correction</Button><div className="mt-5 border-t border-[#e2e8dc] pt-4"><p className="mb-3 text-sm">For an entry made by mistake, void it below. If money was actually returned, record a refund instead.</p><ActionForm submit="Void incorrect entry" onSubmit={async form => { await rangeApi("finance/void", { id: editing.id, version: editing.version, reason: new FormData(form).get("reason"), requestId: request?.id }); setEditing(undefined); setRequest(undefined); setRefresh(n => n + 1); await load() }}><Field label="Reason for voiding"><input className="field" name="reason" required maxLength={1000} /></Field></ActionForm></div></>}</Panel>

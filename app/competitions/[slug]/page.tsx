@@ -1,11 +1,11 @@
-import Image from "next/image"
+import Image from "@/components/CompetitionImage"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { ArrowRight, CalendarDays, ClipboardList, Clock, CreditCard, FileText, MapPin, Medal, ShieldCheck, Trophy } from "lucide-react"
 import { CashPrizeSchedule } from "@/components/CashPrizeSchedule"
-import { BHARAT_CUP_SLUG } from "@/lib/bharat-cup"
+import { BHARAT_CUP_SLUG, webCompetitionKey } from "@/lib/bharat-cup"
 import { formatCompetitionDateRange, formatCurrency, getCompetitionStatusLabel, getPaymentModeLabel, hasCompetitionEnded, isCompetitionRegistrationAvailable } from "@/lib/competition"
 import { prisma } from "@/lib/prisma"
 import { getTemplatePublicCompetition, serializeCompetition } from "@/lib/competition-server"
@@ -55,7 +55,7 @@ export default async function CompetitionPage({ params }: PageProps) {
     const { slug } = await params
     const templateCompetition = getTemplatePublicCompetition()
     const competitionRecord = await prisma.competition.findUnique({
-        where: { slug },
+        where: webCompetitionKey(slug),
     }).catch((error) => {
         if (process.env.NODE_ENV === "production") throw error
         return null

@@ -51,10 +51,17 @@ export type RelayAvailability = {
     special: { booked: number; remaining: number; capacity: number }
 }
 
-export function buildRelayAvailability(config: CompetitionConfig, bookings: { date: string; relayId: string; pool: string }[]): RelayAvailability[] {
+export function buildRelayAvailability(config: CompetitionConfig, bookings: { date: string; relayId: string; pool: string; count?: number }[]): RelayAvailability[] {
+    const counts = new Map<string, number>()
+    for (const booking of bookings) {
+        const key = JSON.stringify([booking.date, booking.relayId, booking.pool])
+        counts.set(key, (counts.get(key) ?? 0) + (booking.count ?? 1))
+    }
     return config.relayBooking.days.flatMap((day) => day.relays.map((relay) => {
-        const count = (pool: RelayPool) => bookings.filter((b) => b.date === day.date && b.relayId === relay.id && b.pool === pool).length
-        const pool = (name: RelayPool, capacity: number) => ({ booked: count(name), remaining: Math.max(0, capacity - count(name)), capacity })
+        const pool = (name: RelayPool, capacity: number) => {
+            const booked = counts.get(JSON.stringify([day.date, relay.id, name])) ?? 0
+            return { booked, remaining: Math.max(0, capacity - booked), capacity }
+        }
         return { date: day.date, relayId: relay.id, standard: pool("standard", config.relayBooking.standardCapacity), special: pool("special", config.relayBooking.specialCapacity) }
     }))
 }

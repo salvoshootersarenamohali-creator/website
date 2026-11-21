@@ -24,14 +24,17 @@ export async function financialActivity(request: NextRequest, actor: RangeActor)
         return Response.json({ ok: true })
     }
     const unread = { AND: [base, { financeNotificationReads: { none: { userId: actor.id } } }] } satisfies Prisma.RangeAuditWhereInput
-    const unreadCount = await prisma.rangeAudit.count({ where: unread })
-    if (request.nextUrl.searchParams.get("countOnly") === "1") return Response.json({ unreadCount })
+    if (request.nextUrl.searchParams.get("countOnly") === "1") {
+        return Response.json({ unreadCount: await prisma.rangeAudit.count({ where: unread }) })
+    }
     const page = Number(request.nextUrl.searchParams.get("page") || "1")
     if (!Number.isInteger(page) || page < 1 || page > 10000) throw new RangeError("Invalid page.")
-    const where = request.nextUrl.searchParams.get("all") === "1" ? base : unread
-    const [total, updates] = await prisma.$transaction([
+    const all = request.nextUrl.searchParams.get("all") === "1"
+    const where = all ? base : unread
+    const [total, updates, unreadTotal] = await prisma.$transaction([
         prisma.rangeAudit.count({ where }),
         prisma.rangeAudit.findMany({ where, include: { actor: { select: { name: true } }, location: { select: { name: true } }, financeNotificationReads: { where: { userId: actor.id }, select: { readAt: true } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50, skip: (page - 1) * 50 }),
+        ...(all ? [prisma.rangeAudit.count({ where: unread })] : []),
     ])
-    return Response.json({ unreadCount, total, page, updates: updates.map(({ financeNotificationReads, ...update }) => ({ ...update, read: financeNotificationReads.length > 0 })) })
+    return Response.json({ unreadCount: all ? unreadTotal : total, total, page, updates: updates.map(({ financeNotificationReads, ...update }) => ({ ...update, read: financeNotificationReads.length > 0 })) })
 }
